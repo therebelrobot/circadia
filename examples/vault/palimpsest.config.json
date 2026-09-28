@@ -1,0 +1,24 @@
+{
+  "$schemaVersion": 1,
+  "graph": {
+    "defaultExtraction": "typed",
+    "scopes": [
+      { "match": { "tags": ["deep"] }, "extract": "hipporag" },
+      { "match": { "paths": ["entities/people/**"] }, "extract": "wikilink" }
+    ],
+    "query": { "mode": "auto" }
+  },
+  "retrieval": { "topK": 5, "tokenBudget": 1200 },
+  "predicates": {
+    "strict": false,
+    "defs": {
+      "runs_on":       { "object": "entity",  "inverse": "hosts", "description": "software/service runs on a host" },
+      "depends_on":    { "object": "entity",  "inverse": "dependency_of" },
+      "maintained_by": { "object": "entity",  "inverse": "maintains" },
+      "measures":      { "object": "entity",  "inverse": "measured_by" },
+      "part_of":       { "object": "entity",  "inverse": "has_part" },
+      "status":        { "object": "literal", "values": ["active", "paused", "done", "archived"] },
+      "sample_interval": { "object": "literal", "description": "how often readings are taken" }
+    }
+  }
+}

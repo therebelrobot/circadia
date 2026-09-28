@@ -1,0 +1,4 @@
+node_modules/
+*.log
+# derived indexes in any vault, including the example
+**/.palimpsest/index.sqlite*

@@ -1,0 +1,25 @@
+{
+  "name": "palimpsest",
+  "version": "0.1.0",
+  "description": "Markdown-vault agent memory with a derived, brain-inspired graph index (hippocampal indexing, spreading activation, bi-temporal facts).",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "palimpsest": "bin/palimpsest.mjs"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "palimpsest": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/cli/main.ts",
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit -p .",
+    "example:index": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/cli/main.ts index --vault examples/vault",
+    "example:recall": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/cli/main.ts recall --vault examples/vault --no-log"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "@types/node": "^22.18.0"
+  }
+}

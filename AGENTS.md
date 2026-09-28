@@ -1,0 +1,139 @@
+# AGENTS.md
+
+You are picking up **Palimpsest**, a markdown-vault memory system with a derived graph
+index. Assume you have **no other context**. This file tells you how to work in the repo
+without breaking its invariants. Read it fully before editing anything.
+
+## 1. Orientation, in order
+
+1. Read `README.md` for what this is and the current status.
+2. Read `docs/SCHEMA.md`. It is the contract; the vault format beats the code.
+3. Read `docs/ARCHITECTURE.md` for why each piece exists. Every mechanism traces to a
+   cognitive-science finding; keep that traceability when you add things.
+4. Read `docs/ROADMAP.md` and find the first phase whose items aren't checked. That is your
+   work.
+5. Run `npm install && npm test && npm run typecheck`. All three must pass before and after
+   your change.
+
+## 2. Commands
+
+```bash
+npm test                  # node:test, ~1s. 34 tests at handoff.
+npm run typecheck         # tsc --noEmit, strict + erasableSyntaxOnly
+npm run example:index     # index examples/vault (writes examples/vault/.palimpsest/index.sqlite, gitignored)
+npm run example:recall -- "query"   # --no-log is baked in so the example access log stays clean
+node bin/palimpsest.mjs --help
+```
+
+## 3. Hard constraints
+
+1. **Zero runtime dependencies.** Use Node built-ins only: `node:sqlite`, `node:crypto`,
+   `node:fs`, `node:test`, and global `fetch`. Dev dependencies stay limited to `typescript`
+   and `@types/node`. If you believe a dependency is truly needed, write an ADR in
+   `docs/decisions/` arguing for it and stop for human review.
+2. **TypeScript that Node can run with type stripping.** No build step. That means:
+   - Import with `.ts` extensions (`import { x } from './y.ts'`).
+   - Use `import type` for type-only imports; `verbatimModuleSyntax` is on.
+   - No `enum`, no `namespace`, no constructor parameter properties, no decorators.
+     `erasableSyntaxOnly` enforces this. Use string-literal unions and `as const` objects.
+3. **Node ≥ 22.18.** Don't use APIs newer than that without bumping `engines`.
+4. **Model providers.** Never default to, recommend, or configure OpenAI or xAI (Grok)
+   models, and avoid Meta models unless the alternatives are poor. This is an owner
+   requirement. "OpenAI-compatible HTTP API" as a *wire format* is fine; llama.cpp's
+   `llama-server` speaks it. Defaults point at `http://127.0.0.1:8080` (local llama.cpp).
+   For hosted models, route through OpenRouter to non-OpenAI, non-xAI models.
+5. **No private hostnames, personal domains, or machine names** in code, config, docs, or
+   examples. Use `example.com`, `127.0.0.1`, or `<docker-host>`.
+6. **Network services bind to loopback and require auth by default** (Phase 3+). See
+   `docs/SECURITY.md`. Prior audits of comparable projects found unauthenticated `0.0.0.0`
+   binds to be the most common real-world failure; don't repeat it.
+
+## 4. Invariants (tests rely on these; don't break them)
+
+- **The vault is the source of truth.** Everything in `.palimpsest/index.sqlite` must be
+  reproducible by deleting it and running `palimpsest index`. The only non-derivable state
+  is the vault itself, `.palimpsest/access.jsonl`, and `.palimpsest/triples/` (a cache of
+  LLM output).
+- **Episodes are append-only.** Code never edits an episode body. The one exception:
+  consolidation may set the `consolidated:` frontmatter field.
+- **Facts are never deleted.** A changed fact is struck through
+  (`~~claim~~ [superseded:: date]`) and moved to `## History`. The new fact goes in
+  `## Facts`. See `formatFact()` in `src/vault/facts.ts` for the canonical serializer.
+- **Agents never write facts directly.** The MCP `remember` tool writes *episodes*. Only
+  consolidation promotes episode content to facts, and those facts carry `by:: agent` and
+  `src:: [[episode]]`. This is the memory-poisoning defense.
+- **Provenance is mandatory for non-human facts.** `by:: agent|tool|web` requires `src::`.
+  The linter errors otherwise.
+- **Low-trust content is fenced as data.** `renderForContext()` wraps `trust: low`
+  passages in `<untrusted-data>` and escapes attempts to close the fence. Anything new
+  that emits memory into a model context must do the same.
+- **Query text is never logged.** The access log stores a hash (`q`), not the query.
+- **The index is only an index.** Passage text is copied into SQLite for FTS, but nothing
+  may write to the index that isn't derived from the vault or the triple cache.
+
+## 5. Repo map and responsibilities
+
+| path | owns | notes |
+|---|---|---|
+| `src/types.ts` | shared types | string-literal unions only |
+| `src/config.ts` | defaults, deep-merge, validation | every new key needs a default, a validation rule if constrained, and a row in `docs/CONFIG.md` |
+| `src/vault/frontmatter.ts` | YAML **subset** parser | flat maps only; don't grow it into full YAML |
+| `src/vault/time.ts` | period/interval parsing | half-open intervals, UTC for date-only values |
+| `src/vault/facts.ts` | fact-line grammar + serializer | must match `docs/SCHEMA.md` §4 exactly |
+| `src/vault/parse.ts` | note → passages, links, facts, problems | passage ids are `<noteId>#<n>` and `<noteId>#facts` |
+| `src/vault/walk.ts` | file discovery | skips dot-folders, `_meta/`, `vault.ignore` globs |
+| `src/extract/scope.ts` | per-note extraction mode | precedence: frontmatter > first scope rule > default |
+| `src/extract/triples.ts` | hipporag triple cache + `TripleExtractor` contract | Phase 5 implements an extractor |
+| `src/index/db.ts` | SQLite schema, FTS5 probe | bump `INDEX_SCHEMA_VERSION` on schema changes |
+| `src/index/indexer.ts` | full rebuild | incremental indexing is Phase 2 |
+| `src/retrieval/*` | keyword, PPR, ACT-R, modes, recall | `recall.ts` is the orchestrator |
+| `src/cli/main.ts` | CLI | `main(argv)` returns an exit code, so it's testable |
+| `src/mcp/`, `src/consolidation/` | contracts only | read their READMEs |
+
+## 6. How to make a change
+
+1. **Schema changes** (vault format): update `docs/SCHEMA.md` first, then the parser, then
+   `templates/` and `examples/vault/`, then tests. If existing vaults break, bump the schema
+   version and add a migration under `src/vault/migrate/`.
+2. **New config**: update `src/config.ts` (type, default, validation), then
+   `docs/CONFIG.md`, then add a test.
+3. **Retrieval changes**: keep scores explainable. Every hit carries
+   `components: { graph, activation, importance, seed }`. If you add a signal, add a
+   component, a weight in `retrieval.weights`, and a line in `docs/RETRIEVAL.md` §Scoring.
+4. **Design decisions**: add `docs/decisions/ADR-NNNN-title.md` using the existing ADRs'
+   format (Context / Decision / Consequences / Status).
+5. **Sources**: if a paper, doc, or issue informed the change, add it to `docs/SOURCES.md`.
+6. Update the checkboxes in `docs/ROADMAP.md`.
+
+## 7. Testing expectations
+
+- Unit tests for every parser rule and scoring function; integration tests over
+  `examples/vault/`.
+- Tests must **not** mutate `examples/vault/`. Pass `dbPath` to a temp dir and
+  `logAccess: false`.
+- If you change the example vault, update the counts asserted in
+  `test/integration.test.ts` and state why in the commit.
+- Security behaviors (fencing, trust floor, provenance lint) have tests. Keep them green;
+  add one for every new path that emits memory content.
+
+## 8. Style
+
+- Small modules, pure functions where possible, and I/O at the edges (the CLI, and recall's
+  db and access-log calls).
+- Explain *why* in comments, especially where a cognitive mechanism is implemented.
+- Errors are `Problem` objects with stable `code`s (`fact.missing-src`, `link.unresolved`,
+  and so on). Add new codes rather than reusing ones with a different meaning.
+- Keep the CLI output human-readable, and support `--json` for anything an agent will parse.
+
+## 9. Known limitations at handoff (all tracked in ROADMAP)
+
+- Full rebuild on every `index`. Fine to ~10⁴ notes; incremental indexing is Phase 2.
+- No embeddings yet. Seeds are keyword plus entity names only. Config keys exist; the
+  client is Phase 2.
+- `--as-of` is exact for facts but approximate for prose: note creation stands in for
+  system time, because prose edits aren't versioned in the index. Git-backed as-of is
+  Phase 6.
+- The hipporag triple extractor is not implemented. The example vault ships a
+  hand-written triple cache to exercise the path.
+- Recall re-reads edges from SQLite per query. Fine at the target scale; cache the
+  adjacency if profiling says so.
