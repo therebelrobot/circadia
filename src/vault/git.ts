@@ -4,6 +4,109 @@
 
 import { execSync } from 'node:child_process';
 
+export interface ConsolidationCommitOptions {
+  promoted: number;
+  queued: number;
+  superseded: number;
+}
+
+export interface CommitResult {
+  hash: string;
+}
+
+/**
+ * Create a git commit for consolidation changes.
+ */
+export function createConsolidationCommit(vaultRoot: string, opts: ConsolidationCommitOptions): CommitResult | null {
+  if (!isGitRepo(vaultRoot)) {
+    return null;
+  }
+
+  try {
+    // Stage all changed files in the vault
+    execSync('git add -A', {
+      cwd: vaultRoot,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    // Check if there are any changes
+    const statusOutput = execSync('git status --porcelain', {
+      cwd: vaultRoot,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    if (!statusOutput.trim()) {
+      // No changes, nothing to commit
+      return null;
+    }
+
+    // Build commit message summary
+    const parts: string[] = ['consolidation run'];
+    if (opts.promoted > 0) {
+      parts.push(`promoted ${opts.promoted} candidate(s)`);
+    }
+    if (opts.queued > 0) {
+      parts.push(`queued ${opts.queued} candidate(s)`);
+    }
+    if (opts.superseded > 0) {
+      parts.push(`superseded ${opts.superseded} fact(s)`);
+    }
+
+    const message = parts.join('; ');
+
+    // Commit with the message
+    execSync(`git commit -m "${message}"`, {
+      cwd: vaultRoot,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    // Get the commit hash
+    const hashOutput = execSync('git rev-parse HEAD', {
+      cwd: vaultRoot,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    return { hash: hashOutput.trim() };
+  } catch (e) {
+    console.error(`git commit failed: ${(e as Error).message}`);
+    throw e;
+  }
+}
+
+/**
+ * Print the git diff that would be committed (for --dry-run mode).
+ */
+export function printConsolidationDiff(vaultRoot: string): void {
+  if (!isGitRepo(vaultRoot)) {
+    console.log('not a git repository');
+    return;
+  }
+
+  try {
+    // Stage all changes temporarily
+    execSync('git add -A', {
+      cwd: vaultRoot,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    // Print diff
+    const diff = execSync('git diff --staged', {
+      cwd: vaultRoot,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    console.log(diff);
+  } catch (e) {
+    console.error(`git diff failed: ${(e as Error).message}`);
+  }
+}
+
 export interface GitCommit {
   hash: string;
   timestamp: number; // epoch ms

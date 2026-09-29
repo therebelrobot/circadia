@@ -52,6 +52,8 @@ options
   --json                machine-readable output
   --no-log              don't append this recall to the access log
   --warnings            (lint/index) also print warnings
+  --dry-run             (consolidate) print changes without committing
+  --no-commit           (consolidate) skip git commit even if it would normally run
   -h, --help            this help
 `;
 
@@ -420,11 +422,20 @@ export async function main(argv: string[]): Promise<number> {
     case 'consolidate': {
       const cfg = loadConfig(vault);
       const dryRun = args.flags.has('dry-run');
+      const commit = !args.flags.has('no-commit');
       const { consolidate } = await import('../consolidation/consolidate.ts');
-      const result = await consolidate(vault, cfg, { dryRun });
+      const result = await consolidate(vault, cfg, { dryRun, commit });
+
       console.log(`consolidated: ${result.promoted} promoted, ${result.queued} queued, ${result.superseded} superseded`);
       console.log(`processed episodes: ${result.processedEpisodes.length}`);
       console.log(`pending queue: ${result.pendingPath}`);
+
+      if (dryRun && commit) {
+        // Show what would be committed
+        const { printConsolidationDiff } = await import('../vault/git.ts');
+        console.log('\n--- would-be commit diff ---');
+        printConsolidationDiff(vault);
+      }
       return 0;
     }
     case 'review': {

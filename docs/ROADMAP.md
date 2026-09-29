@@ -148,7 +148,7 @@ works in TypeScript and uses Mastra as their agent framework.
     last generated version.
 - [x] **Mark episodes** with `consolidated: YYYY-MM-DD`. This is the only permitted episode
       edit.
-- [ ] **One git commit per run**, with a message summarizing promoted, queued, and
+- [x] **One git commit per run**, with a message summarizing promoted, queued, and
       superseded counts. `--dry-run` prints the diff instead.
 - [x] **`circadia review`**: an interactive CLI over the pending queue (accept, reject,
       edit).

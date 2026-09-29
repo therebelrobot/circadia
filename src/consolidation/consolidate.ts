@@ -44,6 +44,7 @@ function selectEpisodes(vault: string, cfg: Config): ParsedNote[] {
 export interface ConsolidateOptions {
   dryRun?: boolean;
   reflectionThreshold?: number;
+  commit?: boolean;
 }
 
 export async function consolidate(
@@ -140,6 +141,23 @@ export async function consolidate(
     const result = reflect(vault, entity, facts, threshold);
     if (result?.changed) {
       console.log(`reflected: ${entity}`);
+    }
+  }
+
+  // Handle git commit
+  if (opts.commit && !opts.dryRun) {
+    try {
+      const { createConsolidationCommit } = await import('../vault/git.ts');
+      const commitResult = createConsolidationCommit(vault, {
+        promoted,
+        queued,
+        superseded,
+      });
+      if (commitResult) {
+        console.log(`committed: ${commitResult.hash.slice(0, 7)}`);
+      }
+    } catch (e) {
+      console.error(`warning: git commit failed: ${(e as Error).message}`);
     }
   }
 
