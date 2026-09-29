@@ -14,6 +14,7 @@ import type { Config } from '../config.ts';
 import type { GraphMode, QueryMode, RecallHit, RecallResult, Trust } from '../types.ts';
 import { getMeta, openIndex } from '../index/db.ts';
 import { bm25Search, ftsSearch, type KeywordHit } from './keyword.ts';
+import { findCandidateTriples, filterTriplesWithLLM, extractSeeds, HttpTripleVerifier, type TripleVerifier } from './recognition-memory.ts';
 import { MODE_ORIGINS } from './modes.ts';
 import { personalizedPageRank } from './ppr.ts';
 import { appendAccess, baseLevel, presentationsByNode, queryHash, readAccessLog, retrievalProbability } from './activation.ts';
@@ -174,7 +175,7 @@ function runRung(
   return { hits: out, margin };
 }
 
-export function recall(vaultRoot: string, cfg: Config, query: string, opts: RecallOptions = {}): RecallResult {
+export async function recall(vaultRoot: string, cfg: Config, query: string, opts: RecallOptions = {}): Promise<RecallResult> {
   const now = opts.now ?? Date.now();
   const asOf = opts.asOf ?? null;
   const topK = opts.topK ?? cfg.retrieval.topK;
@@ -208,6 +209,26 @@ export function recall(vaultRoot: string, cfg: Config, query: string, opts: Reca
         const candidates = rows.map((r) => ({ id: r.id, embedding: new Float32Array(new Uint8Array(r.embedding).buffer) }));
         const top = topKByCosine(opts.queryEmbedding, candidates, cfg.retrieval.seedLimit);
         if (top.length > 0) lists.push({ via: 'vector', ids: top.map((t) => t.id) });
+      }
+    }
+    // recognition-memory seed filter (HippoRAG 2): filter triples by embedding + LLM verification
+    if (opts.queryEmbedding && cfg.graph.hipporag.recognitionMemory.enabled) {
+      const version = Number(getMeta(db, 'schema_version') ?? 0);
+      if (version >= 2) {
+        const candidates = await findCandidateTriples(vaultRoot, db, opts.queryEmbedding, cfg);
+        if (candidates.length > 0) {
+          // Create verifier from config
+          const verifier: TripleVerifier = new HttpTripleVerifier(
+            cfg.extraction.endpoint,
+            cfg.extraction.model || 'llama3',
+            cfg.extraction.apiKeyEnv,
+          );
+          const verified = await filterTriplesWithLLM(candidates, query, verifier, cfg);
+          const { passageIds } = extractSeeds(verified);
+          if (passageIds.length > 0) {
+            lists.push({ via: 'recognition-memory', ids: passageIds });
+          }
+        }
       }
     }
     const fused = rrf(lists);

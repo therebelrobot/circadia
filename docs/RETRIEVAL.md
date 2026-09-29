@@ -85,6 +85,12 @@ the example vault.
      (`RecallOptions.queryEmbedding`; the CLI does this automatically when
      `embeddings.provider` is `http`), the passages whose stored embeddings are
      closest to the query, by brute-force cosine, up to `retrieval.seedLimit`.
+   - Recognition-memory (Phase 5): when `graph.hipporag.recognitionMemory.enabled` is true,
+     the system matches the query embedding against cached triples, then uses a cheap LLM
+     to verify triple relevance. Verified triples contribute their passage IDs as seeds.
+     The filter uses `graph.hipporag.recognitionMemory.embeddingThreshold` (default 0.6)
+     for embedding matching, and `minConfidence` (default 0.7) for LLM verification.
+     Up to `topCandidates` (default 10) triples are verified.
 2. **Seeds.** Reciprocal-rank fusion (k = 60) of the keyword list (passage ids), the
    entity list (note ids), and — when available — the vector list (passage ids).
    Vector seeds feed the **same** RRF fusion as the other two; they are not a new

@@ -48,6 +48,17 @@ export interface Config {
       synonymThreshold: number;
       /** max edges per phrase pair (deduplication window) */
       maxSynonymEdges: number;
+      /** Recognition-memory seed filter: use LLM to verify triple relevance before seeding recall */
+      recognitionMemory: {
+        /** Enable recognition-memory filtering for hipporag mode */
+        enabled: boolean;
+        /** Embedding cosine threshold for query-triple matching (0–1) */
+        embeddingThreshold: number;
+        /** Minimum confidence from LLM verification (0–1) */
+        minConfidence: number;
+        /** How many candidate triples to score with LLM */
+        topCandidates: number;
+      };
     };
     query: {
       mode: QueryMode;
@@ -130,6 +141,12 @@ export const DEFAULT_CONFIG: Config = {
     hipporag: {
       synonymThreshold: 0.7,
       maxSynonymEdges: 3,
+      recognitionMemory: {
+        enabled: false,
+        embeddingThreshold: 0.6,
+        minConfidence: 0.7,
+        topCandidates: 10,
+      },
     },
     query: {
       mode: 'auto',

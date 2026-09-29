@@ -127,7 +127,7 @@ async function handleToolsCall(
       const asOf = params.as_of ? Date.parse(params.as_of as string) : null;
       const mode = params.mode as QueryMode | undefined;
       const topK = typeof params.top_k === 'number' ? params.top_k : undefined;
-      const r = recallModule.recall(vaultRoot, cfg, query, { mode, asOf, topK, logAccess: false });
+      const r = await recallModule.recall(vaultRoot, cfg, query, { mode, asOf, topK, logAccess: false });
       return {
         jsonrpc: '2.0',
         id: null,

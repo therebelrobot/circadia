@@ -16,7 +16,7 @@ const tmp = mkdtempSync(join(tmpdir(), 'circadia-test-'));
 const dbPath = join(tmp, 'index.sqlite');
 const cfg = loadConfig(VAULT);
 const built = buildIndex(VAULT, cfg, { dbPath });
-const R = (q: string, o: Parameters<typeof recall>[3] = {}) => recall(VAULT, cfg, q, { dbPath, logAccess: false, ...o });
+const R = async (q: string, o: Parameters<typeof recall>[3] = {}) => await recall(VAULT, cfg, q, { dbPath, logAccess: false, ...o });
 
 test('example vault indexes with zero errors and warnings', () => {
   assert.deepEqual(built.problems, []);
@@ -46,39 +46,39 @@ test('scoped extraction: a wikilink-scoped note contributes no fact edges', () =
   assert.equal(r.stats.edges.fact, 1, 'only the non-person note yields a fact edge');
 });
 
-test('recall: explicit modes are honoured', () => {
+test('recall: explicit modes are honoured', async () => {
   for (const mode of ['wikilink', 'typed', 'hipporag'] as const) {
-    const r = R('orchard host', { mode });
+    const r = await R('orchard host', { mode });
     assert.equal(r.modeUsed, mode);
     assert.ok(r.hits.length > 0);
   }
 });
 
-test('recall: as-of hides notes that did not exist yet and escalates past wikilink', () => {
-  const r = R('what host does the orchard run on', { asOf: Date.UTC(2026, 6, 1), topK: 10, tokenBudget: 10_000 });
+test('recall: as-of hides notes that did not exist yet and escalates past wikilink', async () => {
+  const r = await R('what host does the orchard run on', { asOf: Date.UTC(2026, 6, 1), topK: 10, tokenBudget: 10_000 });
   assert.notEqual(r.modeUsed, 'wikilink');
   assert.ok(r.escalations.some((e) => e.reason.includes('as-of')));
   assert.ok(!r.hits.some((h) => h.noteId === 'pi-cluster'), 'pi-cluster was created in August');
   assert.ok(r.hits.some((h) => h.noteId === 'old-laptop'), 'old laptop reachable via the superseded fact');
 });
 
-test('recall: now-queries drop superseded fact edges unless includeSuperseded', () => {
+test('recall: now-queries drop superseded fact edges unless includeSuperseded', async () => {
   const q = 'where did the orchard collector run';
-  const score = (c: typeof cfg) => {
-    const r = recall(VAULT, c, q, { dbPath, logAccess: false, mode: 'typed', topK: 20, tokenBudget: 100_000 });
+  const score = async (c: typeof cfg) => {
+    const r = await recall(VAULT, c, q, { dbPath, logAccess: false, mode: 'typed', topK: 20, tokenBudget: 100_000 });
     return r.hits.find((h) => h.passageId === 'old-laptop#0')?.components.graph ?? 0;
   };
   const withHistory = { ...cfg, retrieval: { ...cfg.retrieval, includeSuperseded: true } };
-  assert.ok(score(withHistory) > score(cfg), 'the superseded runs_on edge carries activation only when included');
+  assert.ok(await score(withHistory) > await score(cfg), 'the superseded runs_on edge carries activation only when included');
 });
 
-test('recall: hipporag mode reaches passages through phrase triples', () => {
-  const r = R('electrode corrosion', { mode: 'hipporag', topK: 3 });
+test('recall: hipporag mode reaches passages through phrase triples', async () => {
+  const r = await R('electrode corrosion', { mode: 'hipporag', topK: 3 });
   assert.equal(r.hits[0].passageId, 'capacitive-sensing#1');
 });
 
-test('security: low-trust passages are fenced and cannot close the fence', () => {
-  const r = R('drip irrigation timing', { topK: 3 });
+test('security: low-trust passages are fenced and cannot close the fence', async () => {
+  const r = await R('drip irrigation timing', { topK: 3 });
   const hit = r.hits.find((h) => h.noteId === '2026-09-10-web-clipping');
   assert.ok(hit, 'web clipping is recalled');
   assert.equal(hit.trust, 'low');
@@ -86,9 +86,9 @@ test('security: low-trust passages are fenced and cannot close the fence', () =>
   assert.equal(out.match(/<\/untrusted-data>/g)?.length, 1, 'only the real closing tag survives');
 });
 
-test('security: trustFloor=medium drops low-trust passages entirely', () => {
+test('security: trustFloor=medium drops low-trust passages entirely', async () => {
   const strict = { ...cfg, retrieval: { ...cfg.retrieval, trustFloor: 'medium' as const } };
-  const r = recall(VAULT, strict, 'drip irrigation timing', { dbPath, logAccess: false, topK: 10 });
+  const r = await recall(VAULT, strict, 'drip irrigation timing', { dbPath, logAccess: false, topK: 10 });
   assert.ok(!r.hits.some((h) => h.trust === 'low'));
 });
 

@@ -43,7 +43,7 @@ test('vector seeds: a paraphrased query with no keyword overlap retrieves the ri
     // no keyword overlap with any passage: "collector/aggregates/soil/readings"
     // vs "machine/combine/moisture/data"
     const query = 'how does the machine combine moisture data';
-    const r = recall(v, cfg, query, {
+    const r = await recall(v, cfg, query, {
       dbPath,
       logAccess: false,
       mode: 'wikilink',
@@ -61,11 +61,11 @@ test('vector seeds: a paraphrased query with no keyword overlap retrieves the ri
   }
 });
 
-test('vector seeds: without a queryEmbedding the same query finds nothing', () => {
+test('vector seeds: without a queryEmbedding the same query finds nothing', async () => {
   const v = join(tmp, 'vec');
   const cfg = loadConfig(v);
   const dbPath = join(v, '.circadia', 'index.sqlite');
-  const r = recall(v, cfg, 'how does the machine combine moisture data', {
+  const r = await recall(v, cfg, 'how does the machine combine moisture data', {
     dbPath,
     logAccess: false,
     mode: 'wikilink',
