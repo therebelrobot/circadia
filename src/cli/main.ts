@@ -11,7 +11,7 @@ import { relate } from '../retrieval/relate.ts';
 import { timeline } from '../retrieval/timeline.ts';
 import { parseInstant } from '../vault/time.ts';
 import { resolveCommit, isGitRepo } from '../vault/git.ts';
-import type { GraphMode, Problem, QueryMode } from '../types.ts';
+import type { GraphMode, Problem, QueryMode, RecallHit } from '../types.ts';
 import { getMeta, openIndex } from '../index/db.ts';
 import { watchVault } from './watch.ts';
 
@@ -35,7 +35,7 @@ commands
   review                interactive review of pending consolidation candidates
   stats                 show index statistics
   history <id>          show all versions of a note across commits
-
+  access-log compact    compact access log into per-node summaries for ACT-R learning
 options
   --vault <dir>         vault root (default: current directory)
   --full                (index) force a full rebuild instead of incremental
@@ -249,7 +249,7 @@ export async function main(argv: string[]): Promise<number> {
           console.error(`warning: embedding failed, continuing text-only: ${(e as Error).message}`);
         }
       }
-      const r = recall(vault, cfg, query, {
+      const r = await recall(vault, cfg, query, {
         mode,
         asOf,
         topK: top ? Number(top) : undefined,
@@ -262,7 +262,7 @@ export async function main(argv: string[]): Promise<number> {
       else {
         console.log(`mode: ${r.modeRequested} → ${r.modeUsed}   keyword: ${r.keywordBackend}   seeds: ${r.seeds.length}`);
         for (const e of r.escalations) console.log(`  escalated ${e.from} → ${e.to}: ${e.reason}`);
-        r.hits.forEach((h, i) => {
+        r.hits.forEach((h: RecallHit, i: number) => {
           const c = h.components;
           console.log(
             `\n${i + 1}. ${h.title}${h.heading && h.heading !== h.title ? ' › ' + h.heading : ''}  [${h.path}]  trust=${h.trust}\n` +
@@ -481,6 +481,27 @@ export async function main(argv: string[]): Promise<number> {
         return 0;
       } finally {
         db.close();
+      }
+    }
+    case 'access-log': {
+      const subcmd = args.pos[0];
+      if (subcmd === 'compact') {
+        const cfg = loadConfig(vault);
+        const accessFile = join(vault, cfg.index.accessLog);
+        const { compactAccessLog, writeSummaries } = await import('../retrieval/log-compact.ts');
+        const { readAccessLog } = await import('../retrieval/activation.ts');
+
+        const events = readAccessLog(accessFile);
+        const summaries = compactAccessLog(events);
+        const summaryFile = join(vault, cfg.index.path.replace(/\.sqlite$/, '-access-summaries.jsonl'));
+        writeSummaries(summaryFile, summaries);
+
+        console.log(`compacted ${events.length} events into ${summaries.size} node summaries`);
+        console.log(`summaries written to ${summaryFile}`);
+        return 0;
+      } else {
+        console.error('unknown access-log command; supported: compact');
+        return 1;
       }
     }
     case 'mcp': {

@@ -18,6 +18,7 @@ import { findCandidateTriples, filterTriplesWithLLM, extractSeeds, HttpTripleVer
 import { MODE_ORIGINS } from './modes.ts';
 import { personalizedPageRank } from './ppr.ts';
 import { appendAccess, baseLevel, presentationsByNode, queryHash, readAccessLog, retrievalProbability } from './activation.ts';
+import { loadSummariesForActivation } from './log-compact.ts';
 import { loadGraph, TRUST_RANK, type GraphCache } from './graph-cache.ts';
 import { topKByCosine } from './embeddings.ts';
 
@@ -239,7 +240,14 @@ export async function recall(vaultRoot: string, cfg: Config, query: string, opts
     // as-of recall evaluates activation as it stood then: no future accesses, "now" = asOf
     const events = readAccessLog(accessFile).filter((e) => asOf === null || e.t <= asOf);
     const activationNow = asOf ?? now;
-    const presentations = presentationsByNode(events, new Map());
+    // Use compacted summaries if available; fall back to raw log for backward compatibility
+    const summaryFile = join(vaultRoot, cfg.index.path.replace(/\.sqlite$/, '-access-summaries.jsonl'));
+    const presentations = loadSummariesForActivation(summaryFile);
+    if (presentations.size === 0) {
+      // Fallback: build presentations from raw log events
+      const rawPresentations = presentationsByNode(events, new Map());
+      rawPresentations.forEach((ts, id) => presentations.set(id, ts));
+    }
 
     // 3–5 on the mode ladder
     const escalations: RecallResult['escalations'] = [];
