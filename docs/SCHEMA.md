@@ -1,11 +1,11 @@
 # Vault schema (v1)
 
 This is the contract between humans, agents, and the indexer. The vault is the
-source of truth; everything in `.palimpsest/index.sqlite` is derived from it
+source of truth; everything in `.circadia/index.sqlite` is derived from it
 (plus the access log). If the indexer and this document disagree, this document
 wins and the indexer has a bug.
 
-`palimpsest lint` checks a vault against this spec.
+`circadia lint` checks a vault against this spec.
 
 ---
 
@@ -18,13 +18,13 @@ wins and the indexer has a bug.
   schemas/<slug>.md                         # consolidated summaries (derived: true)
   procedures/<slug>.md                      # procedural memory — how-tos, standing rules
   _meta/                                    # human docs about this vault (not indexed)
-  .palimpsest/
+  .circadia/
     index.sqlite                            # derived; safe to delete; gitignored
     access.jsonl                            # retrieval log; NOT derivable — keep it
     triples/                                # (hipporag mode) cached LLM extractions
 ```
 
-- Only `*.md` files outside `_meta/`, `.palimpsest/`, and dot-folders are indexed.
+- Only `*.md` files outside `_meta/`, `.circadia/`, and dot-folders are indexed.
 - Folder placement is a convention; the **`type` frontmatter field is authoritative.**
   A file in `entities/` with `type: episode` is indexed as an episode (and `lint` warns).
 - Filenames are slugs: lowercase, `a-z0-9-`. The **note id is the filename without
@@ -190,7 +190,7 @@ time (`valid`) and system time (`at`/`superseded`) are recorded independently, s
 
 ## 5. Predicate vocabulary
 
-Predicates live in `palimpsest.config.json` under `predicates`:
+Predicates live in `circadia.config.json` under `predicates`:
 
 ```json
 "predicates": {
@@ -217,11 +217,11 @@ matching rule wins), overridden by a note's `graph:` frontmatter:
 |------------|---------------------------|------|
 | `wikilink` | `contains`, `link` | none — pure parse |
 | `typed`    | + `fact`, `provenance` | none — pure parse |
-| `hipporag` | + `triple`, `synonym` (LLM-extracted phrase graph) | LLM + embeddings; cached in `.palimpsest/triples/` |
+| `hipporag` | + `triple`, `synonym` (LLM-extracted phrase graph) | LLM + embeddings; cached in `.circadia/triples/` |
 
 See `docs/RETRIEVAL.md` for how modes are chosen at query time.
 
 ## 7. Versioning
 
-This is schema **v1**. `_meta/` in a vault created by `palimpsest init` records the
+This is schema **v1**. `_meta/` in a vault created by `circadia init` records the
 version. Breaking changes bump the version and ship a migration in `src/vault/migrate/`.

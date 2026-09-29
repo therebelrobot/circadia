@@ -1,4 +1,4 @@
-// `palimpsest watch` (Phase 2, item 2). Uses a temp vault and temp index path;
+// `circadia watch` (Phase 2, item 2). Uses a temp vault and temp index path;
 // never touches examples/vault/. Generous timeouts to avoid flakiness.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +10,7 @@ import { buildIndex } from '../src/index/indexer.ts';
 import { openIndex } from '../src/index/db.ts';
 import { watchVault } from '../src/cli/watch.ts';
 
-const tmp = mkdtempSync(join(tmpdir(), 'palimpsest-watch-'));
+const tmp = mkdtempSync(join(tmpdir(), 'circadia-watch-'));
 
 const CONFIG = {
   graph: { defaultExtraction: 'typed' },
@@ -20,12 +20,12 @@ const CONFIG = {
 function makeVault(dir: string): string {
   const v = join(dir, 'vault');
   mkdirSync(join(v, 'entities', 'people'), { recursive: true });
-  writeFileSync(join(v, 'palimpsest.config.json'), JSON.stringify(CONFIG));
+  writeFileSync(join(v, 'circadia.config.json'), JSON.stringify(CONFIG));
   writeFileSync(join(v, 'entities', 'people', 'ann.md'), '---\ntype: entity\nkind: person\n---\n# Ann\n\nAnn v1.\n');
   return v;
 }
 
-const dbFor = (v: string) => join(v, '.palimpsest', 'index.sqlite');
+const dbFor = (v: string) => join(v, '.circadia', 'index.sqlite');
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

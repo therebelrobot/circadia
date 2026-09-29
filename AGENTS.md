@@ -1,6 +1,6 @@
 # AGENTS.md
 
-You are picking up **Palimpsest**, a markdown-vault memory system with a derived graph
+You are picking up **Circadia**, a markdown-vault memory system with a derived graph
 index. Assume you have **no other context**. This file tells you how to work in the repo
 without breaking its invariants. Read it fully before editing anything.
 
@@ -21,12 +21,12 @@ without breaking its invariants. Read it fully before editing anything.
 npm test                  # node:test, ~2s. 62 tests at handoff.
 npm run typecheck         # tsc --noEmit, strict + erasableSyntaxOnly
 npm run example:index     # index examples/vault (incremental; --full for a full rebuild)
-node bin/palimpsest.mjs watch --vault examples/vault   # reindex on change (Ctrl-C to stop)
+node bin/circadia.mjs watch --vault examples/vault   # reindex on change (Ctrl-C to stop)
 npm run example:recall -- "query"   # --no-log is baked in so the example access log stays clean
-node bin/palimpsest.mjs relate --vault examples/vault orchard-sensors pi-cluster
-node bin/palimpsest.mjs timeline --vault examples/vault orchard-sensors
+node bin/circadia.mjs relate --vault examples/vault orchard-sensors pi-cluster
+node bin/circadia.mjs timeline --vault examples/vault orchard-sensors
 npm run benchmark         # 10k-note synthetic vault: index, incremental, recall p50/p95, RSS
-node bin/palimpsest.mjs --help
+node bin/circadia.mjs --help
 ```
 
 ## 3. Hard constraints
@@ -55,9 +55,9 @@ node bin/palimpsest.mjs --help
 
 ## 4. Invariants (tests rely on these; don't break them)
 
-- **The vault is the source of truth.** Everything in `.palimpsest/index.sqlite` must be
-  reproducible by deleting it and running `palimpsest index`. The only non-derivable state
-  is the vault itself, `.palimpsest/access.jsonl`, and `.palimpsest/triples/` (a cache of
+- **The vault is the source of truth.** Everything in `.circadia/index.sqlite` must be
+  reproducible by deleting it and running `circadia index`. The only non-derivable state
+  is the vault itself, `.circadia/access.jsonl`, and `.circadia/triples/` (a cache of
   LLM output).
 - **Episodes are append-only.** Code never edits an episode body. The one exception:
   consolidation may set the `consolidated:` frontmatter field.

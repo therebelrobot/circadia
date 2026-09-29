@@ -1,6 +1,6 @@
 # Security model
 
-Palimpsest stores personal memory and feeds it back into LLM context windows. The two
+Circadia stores personal memory and feeds it back into LLM context windows. The two
 things that can go wrong are **someone else reading or writing your memory**, and **your
 memory telling your model to do something it shouldn't**. This document covers both and
 records the defaults that address them.

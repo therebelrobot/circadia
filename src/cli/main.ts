@@ -1,4 +1,4 @@
-// `palimpsest` CLI. Zero dependencies; hand-rolled argument parsing.
+// `circadia` CLI. Zero dependencies; hand-rolled argument parsing.
 
 import { existsSync, mkdirSync, writeFileSync, readdirSync, copyFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -10,6 +10,7 @@ import { createEmbeddingsClient } from '../retrieval/embeddings.ts';
 import { relate } from '../retrieval/relate.ts';
 import { timeline } from '../retrieval/timeline.ts';
 import { parseInstant } from '../vault/time.ts';
+import { resolveCommit, isGitRepo } from '../vault/git.ts';
 import type { GraphMode, Problem, QueryMode } from '../types.ts';
 import { getMeta, openIndex } from '../index/db.ts';
 import { watchVault } from './watch.ts';
@@ -17,9 +18,9 @@ import { watchVault } from './watch.ts';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');
 
-const HELP = `palimpsest — markdown-vault memory with a derived graph index
+const HELP = `circadia — markdown-vault memory with a derived graph index
 
-usage: palimpsest <command> [options]
+usage: circadia <command> [options]
 
 commands
   init <dir>            scaffold a new vault (folders, config, templates, _meta docs)
@@ -29,7 +30,11 @@ commands
   recall <query…>       retrieve passages for a cue
   relate <a> <b>        shortest paths between two notes (default mode: typed)
   timeline <entity>     every fact about an entity, ordered by world time
+  extract               extract hipporag triples from episodes
+  consolidate           replay episodes to consolidate facts into entity notes
+  review                interactive review of pending consolidation candidates
   stats                 show index statistics
+  history <id>          show all versions of a note across commits
 
 options
   --vault <dir>         vault root (default: current directory)
@@ -37,7 +42,10 @@ options
   --poll                (watch) poll for changes every 2 s instead of fs.watch
   --mode <m>            recall mode: wikilink | typed | hipporag | auto
                         (relate) graph mode: wikilink | typed | hipporag
-  --as-of <date>        recall as of YYYY[-MM[-DD]] or ISO datetime (bi-temporal)
+                        (extract) extraction mode: hipporag
+  --as-of <date|ref>    recall as of YYYY[-MM[-DD]] (ISO datetime), or git ref (e.g., HEAD~3)
+  --stale-only          (extract) only extract triples from passages that have stale cache
+  --note <id>           (extract) extract triples from a specific note
   --top <n>             max hits (default from config)
   --budget <tokens>     token budget for returned passages
   --context             print hits rendered for an LLM context window
@@ -90,7 +98,7 @@ function printProblems(problems: Problem[], showWarnings: boolean): void {
 function cmdInit(dir: string): void {
   const root = resolve(dir);
   if (existsSync(join(root, CONFIG_FILENAME))) throw new Error(`${root} already has ${CONFIG_FILENAME}`);
-  for (const d of ['episodes', 'entities/people', 'entities/projects', 'entities/concepts', 'schemas', 'procedures', '_meta/templates', '.palimpsest']) {
+  for (const d of ['episodes', 'entities/people', 'entities/projects', 'entities/concepts', 'schemas', 'procedures', '_meta/templates', '.circadia']) {
     mkdirSync(join(root, d), { recursive: true });
   }
   const cfg = {
@@ -113,14 +121,14 @@ function cmdInit(dir: string): void {
   writeFileSync(join(root, CONFIG_FILENAME), JSON.stringify(cfg, null, 2) + '\n');
   writeFileSync(
     join(root, '.gitignore'),
-    '# derived — rebuild with `palimpsest index`\n.palimpsest/index.sqlite*\n# keep .palimpsest/access.jsonl and .palimpsest/triples/: they are not derivable\n',
+    '# derived — rebuild with `circadia index`\n.circadia/index.sqlite*\n# keep .circadia/access.jsonl and .circadia/triples/: they are not derivable\n',
   );
   const tdir = join(REPO, 'templates');
   for (const f of readdirSync(tdir)) copyFileSync(join(tdir, f), join(root, '_meta/templates', f));
   copyFileSync(join(REPO, 'docs', 'SCHEMA.md'), join(root, '_meta', 'SCHEMA.md'));
   writeFileSync(
     join(root, '_meta', 'README.md'),
-    `# This vault\n\nManaged by Palimpsest, vault schema v1. See SCHEMA.md in this folder.\n\n- Write notes by hand or from templates/ (Obsidian: set the templates folder to _meta/templates).\n- Run \`palimpsest lint\` after bulk edits; \`palimpsest index\` to rebuild the graph index.\n- Never edit episodes after writing them; add a new episode instead.\n- Change a fact by striking it through and adding [superseded:: date] — never delete it.\n`,
+    `# This vault\n\nManaged by Circadia, vault schema v1. See SCHEMA.md in this folder.\n\n- Write notes by hand or from templates/ (Obsidian: set the templates folder to _meta/templates).\n- Run \`circadia lint\` after bulk edits; \`circadia index\` to rebuild the graph index.\n- Never edit episodes after writing them; add a new episode instead.\n- Change a fact by striking it through and adding [superseded:: date] — never delete it.\n`,
   );
   console.log(`initialised vault at ${root}`);
 }
@@ -129,7 +137,7 @@ function cmdStats(vault: string): void {
   const cfg = loadConfig(vault);
   const { db } = openIndex(join(vault, cfg.index.path));
   try {
-    if (getMeta(db, 'schema_version') === null) throw new Error('no index — run `palimpsest index`');
+    if (getMeta(db, 'schema_version') === null) throw new Error('no index — run `circadia index`');
     const q = (sql: string) => db.prepare(sql).all() as Record<string, unknown>[];
     console.log('built_at:', new Date(Number(getMeta(db, 'built_at'))).toISOString(), ' keyword:', getMeta(db, 'fts'));
     console.table(q(`SELECT kind, count(*) AS n FROM nodes GROUP BY kind ORDER BY kind`));
@@ -212,8 +220,19 @@ export async function main(argv: string[]): Promise<number> {
       if (!query) throw new Error('recall needs a query');
       const cfg = loadConfig(vault);
       const asOfRaw = str(args.flags, 'as-of');
-      const asOf = asOfRaw ? parseInstant(asOfRaw) : null;
-      if (asOfRaw && asOf === null) throw new Error(`cannot parse --as-of "${asOfRaw}"`);
+      let asOf: number | null = null;
+      if (asOfRaw) {
+        // First try parsing as a date/time
+        asOf = parseInstant(asOfRaw);
+        // If that fails and we have a git repo, try resolving as a git ref
+        if (asOf === null && isGitRepo(vault)) {
+          const commit = resolveCommit(vault, asOfRaw);
+          if (commit) {
+            asOf = commit.timestamp;
+          }
+        }
+        if (asOf === null) throw new Error(`cannot parse --as-of "${asOfRaw}" (not a valid date or git ref)`);
+      }
       const mode = str(args.flags, 'mode') as QueryMode | undefined;
       const top = str(args.flags, 'top');
       const budget = str(args.flags, 'budget');
@@ -268,7 +287,7 @@ export async function main(argv: string[]): Promise<number> {
       }
       const { db } = openIndex(join(vault, cfg.index.path));
       try {
-        if (getMeta(db, 'schema_version') === null) throw new Error('no index — run `palimpsest index`');
+        if (getMeta(db, 'schema_version') === null) throw new Error('no index — run `circadia index`');
         const r = relate(db, a, b, cfg, { mode: modeRaw as GraphMode | undefined });
         if (json) {
           console.log(JSON.stringify(r, null, 2));
@@ -293,7 +312,7 @@ export async function main(argv: string[]): Promise<number> {
       const cfg = loadConfig(vault);
       const { db } = openIndex(join(vault, cfg.index.path));
       try {
-        if (getMeta(db, 'schema_version') === null) throw new Error('no index — run `palimpsest index`');
+        if (getMeta(db, 'schema_version') === null) throw new Error('no index — run `circadia index`');
         const rows = timeline(db, entity, cfg);
         if (json) {
           console.log(JSON.stringify(rows, null, 2));
@@ -313,9 +332,145 @@ export async function main(argv: string[]): Promise<number> {
         db.close();
       }
     }
+    case 'extract': {
+      const triplesModule = await import('../extract/triples.ts');
+      const { parseVault } = await import('../index/indexer.ts');
+      const { passageHash } = await import('../extract/triples.ts');
+      const cfg = loadConfig(vault);
+      const staleOnly = args.flags.has('stale-only');
+      const noteId = str(args.flags, 'note');
+
+      // Initialize extractor
+      const extractor = cfg.extraction.provider === 'http'
+        ? new triplesModule.HttpTripleExtractor(cfg.extraction.endpoint, cfg.extraction.model, cfg.extraction.apiKeyEnv)
+        : new triplesModule.NoopExtractor();
+
+      const notes = parseVault(vault, cfg);
+      const allPassages: Array<{ noteId: string; passageId: string; text: string; title: string; heading: string | null }> = [];
+
+      for (const note of notes) {
+        if (noteId && note.id !== noteId) continue;
+
+        for (const passage of note.passages) {
+          if (passage.id.endsWith('#facts')) continue;
+          allPassages.push({
+            noteId: note.id,
+            passageId: passage.id,
+            text: passage.text,
+            title: note.title,
+            heading: passage.heading,
+          });
+        }
+      }
+
+      const extractedTotal = { count: 0, bytes: 0 };
+      const skippedTotal = { count: 0 };
+
+      for (const { noteId, passageId, text, title, heading } of allPassages) {
+        const contentHash = passageHash(text);
+
+        if (staleOnly && !triplesModule.isStale(vault, noteId, passageId, contentHash, extractor.model)) {
+          skippedTotal.count++;
+          continue;
+        }
+
+        try {
+          const triples = await extractor.extract({ id: passageId, title, heading, text });
+
+          if (triples.length > 0) {
+            const cached = triples.map((t) => ({
+              passageId,
+              contentHash,
+              subject: t.subject,
+              predicate: t.predicate,
+              object: t.object,
+              conf: t.conf,
+              model: extractor.model,
+              extractedAt: new Date().toISOString(),
+            }));
+
+            // Load existing triples and remove outdated ones for this passage
+            const { triples: existing } = triplesModule.loadTriples(vault);
+            const filteredExisting = existing.filter((t) => t.passageId !== passageId);
+
+            // Combine and write
+            const allForNote = [...filteredExisting, ...cached];
+            triplesModule.writeTriples(vault, noteId, allForNote);
+            extractedTotal.count++;
+            extractedTotal.bytes += JSON.stringify(cached).length;
+          }
+        } catch (e) {
+          console.error(`error extracting from ${passageId}: ${(e as Error).message}`);
+        }
+      }
+
+      if (json) {
+        console.log(JSON.stringify({
+          extracted: extractedTotal,
+          skipped: skippedTotal,
+        }, null, 2));
+      } else {
+        console.log(`extracted: ${extractedTotal.count} passage(s) → ${extractedTotal.bytes} bytes`);
+        if (staleOnly) {
+          console.log(`skipped: ${skippedTotal.count} passage(s) with fresh cache`);
+        }
+      }
+      return 0;
+    }
+    case 'consolidate': {
+      const cfg = loadConfig(vault);
+      const dryRun = args.flags.has('dry-run');
+      const { consolidate } = await import('../consolidation/consolidate.ts');
+      const result = await consolidate(vault, cfg, { dryRun });
+      console.log(`consolidated: ${result.promoted} promoted, ${result.queued} queued, ${result.superseded} superseded`);
+      console.log(`processed episodes: ${result.processedEpisodes.length}`);
+      console.log(`pending queue: ${result.pendingPath}`);
+      return 0;
+    }
+    case 'review': {
+      const { review } = await import('./review.ts');
+      const result = await review(vault);
+      console.log(`review complete: ${result.promoted} promoted, ${result.rejected} rejected, ${result.edited} edited`);
+      return 0;
+    }
     case 'stats': {
       cmdStats(vault);
       return 0;
+    }
+    case 'history': {
+      const id = args.pos[0];
+      if (!id) throw new Error('history needs a note id or path');
+
+      const cfg = loadConfig(vault);
+      const { db } = openIndex(join(vault, cfg.index.path));
+      try {
+        if (getMeta(db, 'schema_version') === null) throw new Error('no index — run `circadia index`');
+
+        // Find the note in the index
+        const row = db.prepare('SELECT id, path FROM nodes WHERE kind = \'note\' AND (id = ? OR path = ?)').get(id, id) as { id: string; path: string } | undefined;
+        if (!row) throw new Error(`note "${id}" not found`);
+
+        // Get all commits for this note
+        const { getNoteCommits } = await import('../vault/git.ts');
+        const commits = getNoteCommits(vault, row.path);
+
+        if (commits.length === 0) {
+          console.log(`no commit history for ${row.path}`);
+          return 0;
+        }
+
+        if (json) {
+          console.log(JSON.stringify({ note: row.path, commits }, null, 2));
+        } else {
+          console.log(`history for ${row.path} (${commits.length} commits):`);
+          for (const c of commits) {
+            console.log(`  ${c.hash.slice(0, 7)} ${new Date(c.timestamp).toISOString()}  ${c.message}`);
+          }
+        }
+        return 0;
+      } finally {
+        db.close();
+      }
     }
     case 'mcp': {
       const mcpModule = await import('../mcp/server.ts');

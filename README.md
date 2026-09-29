@@ -1,12 +1,12 @@
-# Palimpsest
+# Circadia
 
 **Agent memory that lives in a markdown vault you can read, with a derived graph index that
 retrieves the way human memory does.**
 
-A *palimpsest* is a manuscript that was scraped and written over, with the older text still
-faintly visible underneath. That is how this system treats knowledge. Superseded facts are
-struck through and kept, never deleted. Recalling a memory can revise it. The history under
-the current text stays readable.
+Circadia (from *circadian rhythm*) names the system's daily consolidation cycle: memory traces
+written today become stable facts by tomorrow. Superseded facts are struck through and kept,
+never deleted. Recalling a memory can revise it. The history under the current text stays
+readable.
 
 ```
  ┌──────────────── Agent (MCP client, Phase 3) ────────────────┐
@@ -27,7 +27,7 @@ the current text stays readable.
 The design is grounded in cognitive neuroscience. Each mechanism maps to a finding (see
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)):
 
-| Brain | Palimpsest |
+| Brain | Circadia |
 |---|---|
 | Hippocampal indexing: the hippocampus stores *pointers* to cortical content | The vault holds content; the SQLite index holds only pointers, edges, and scores, and can be rebuilt from the vault |
 | Complementary learning systems: fast episodic store, slow semantic consolidation | Episodes are written immediately; facts only come from consolidation |
@@ -62,7 +62,7 @@ The design is grounded in cognitive neuroscience. Each mechanism maps to a findi
 - An example vault that exercises every feature, 62 tests, and a clean strict typecheck.
 
 **Phase 2:** incremental indexing (re-parse only changed notes, drop removed files,
-re-resolve edges when aliases change), `palimpsest watch` (recursive `fs.watch` with a
+re-resolve edges when aliases change), `circadia watch` (recursive `fs.watch` with a
 500 ms debounce, or `--poll`), embeddings (OpenAI-compatible HTTP client, vector
 storage, vector seeds for paraphrased queries), `relate` and `timeline` query commands,
 a per-mode graph cache for long-running processes, and a benchmark script
@@ -85,17 +85,17 @@ npm run benchmark           # 10k-note synthetic vault: index, incremental, reca
 Or use the CLI directly:
 
 ```bash
-node bin/palimpsest.mjs init ~/memory            # scaffold a vault
-node bin/palimpsest.mjs lint   --vault ~/memory  # check against the schema
-node bin/palimpsest.mjs index  --vault ~/memory  # index the vault (incremental)
-node bin/palimpsest.mjs index  --full --vault ~/memory  # force a full rebuild
-node bin/palimpsest.mjs watch  --vault ~/memory  # reindex on change (Ctrl-C to stop)
-node bin/palimpsest.mjs recall --vault ~/memory "what did we decide about the collector"
-node bin/palimpsest.mjs recall --vault ~/memory --as-of 2026-07 "where did it run"
-node bin/palimpsest.mjs recall --vault ~/memory --context "drip timing"   # LLM-ready output
-node bin/palimpsest.mjs relate --vault ~/memory orchard-sensors pi-cluster  # shortest paths
-node bin/palimpsest.mjs timeline --vault ~/memory orchard-sensors          # fact history
-node bin/palimpsest.mjs stats  --vault ~/memory
+node bin/circadia.mjs init ~/memory            # scaffold a vault
+node bin/circadia.mjs lint   --vault ~/memory  # check against the schema
+node bin/circadia.mjs index  --vault ~/memory  # index the vault (incremental)
+node bin/circadia.mjs index  --full --vault ~/memory  # force a full rebuild
+node bin/circadia.mjs watch  --vault ~/memory  # reindex on change (Ctrl-C to stop)
+node bin/circadia.mjs recall --vault ~/memory "what did we decide about the collector"
+node bin/circadia.mjs recall --vault ~/memory --as-of 2026-07 "where did it run"
+node bin/circadia.mjs recall --vault ~/memory --context "drip timing"   # LLM-ready output
+node bin/circadia.mjs relate --vault ~/memory orchard-sensors pi-cluster  # shortest paths
+node bin/circadia.mjs timeline --vault ~/memory orchard-sensors          # fact history
+node bin/circadia.mjs stats  --vault ~/memory
 ```
 
 Point Obsidian at the vault. Set its templates folder to `_meta/templates`. Install Dataview
@@ -116,7 +116,7 @@ TABLE runs_on, valid FROM "entities" WHERE runs_on
 ```
 
 The subject is the note the fact lives in. `valid` is **world time**: when the fact was true.
-`at` and `superseded` are **system time**: when the fact was believed. So Palimpsest can
+`at` and `superseded` are **system time**: when the fact was believed. So Circadia can
 answer both "what was true in July" and "what did we believe in July". Full grammar is in
 [`docs/SCHEMA.md` §4](docs/SCHEMA.md).
 
@@ -143,7 +143,7 @@ Details are in [`docs/RETRIEVAL.md`](docs/RETRIEVAL.md).
 ## Repository map
 
 ```
-bin/palimpsest.mjs         launcher (runs the TS CLI with Node type stripping)
+bin/circadia.mjs         launcher (runs the TS CLI with Node type stripping)
 src/
   types.ts                 shared types
   config.ts                config defaults, loading, validation

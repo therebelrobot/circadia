@@ -1,15 +1,12 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import { CONFIG_FILENAME, DEFAULT_CONFIG } from '../src/config.ts';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
 function createTestVault(): string {
-  const vault = join(tmpdir(), 'palimpsest-mcp-test-' + Date.now());
+  const vault = join(tmpdir(), 'circadia-mcp-test-' + Date.now());
   mkdirSync(vault, { recursive: true });
 
   const cfg = {
@@ -24,14 +21,14 @@ function createTestVault(): string {
       defs: {},
     },
     embeddings: { provider: 'none' },
-    index: { path: '.palimpsest/index.sqlite' },
+    index: { path: '.circadia/index.sqlite' },
     retrieval: DEFAULT_CONFIG.retrieval,
   };
   writeFileSync(join(vault, CONFIG_FILENAME), JSON.stringify(cfg, null, 2));
 
   mkdirSync(join(vault, 'episodes'), { recursive: true });
   mkdirSync(join(vault, 'entities'), { recursive: true });
-  mkdirSync(join(vault, '.palimpsest'), { recursive: true });
+  mkdirSync(join(vault, '.circadia'), { recursive: true });
 
   return vault;
 }
@@ -47,19 +44,14 @@ interface MCPResponse {
   error?: { code: number; message: string };
 }
 
-async function testServer(method: string, params: Record<string, unknown>, vaultRoot: string): Promise<MCPResponse> {
-  const mcp = await import('../src/mcp/server.ts');
-
-  const cfg = await import('../src/config.ts');
-  const config = cfg.loadConfig(vaultRoot);
-
+async function testServer(method: string, params: Record<string, unknown>, _vaultRoot: string): Promise<MCPResponse> {
   // Import and call the handler functions directly
   if (method === 'initialize') {
     const handleInit = async () => ({
       jsonrpc: '2.0' as const,
       id: null,
       result: {
-        serverInfo: { name: 'palimpsest', version: '0.1.0' },
+        serverInfo: { name: 'circadia', version: '0.1.0' },
         capabilities: { tools: {} },
       },
     });
@@ -84,9 +76,8 @@ async function testServer(method: string, params: Record<string, unknown>, vault
   }
 
   if (method === 'tools/call') {
-    const handleToolsCall = async (methodName: string, args: Record<string, unknown>) => {
+    const handleToolsCall = async (methodName: string, _args: Record<string, unknown>) => {
       if (methodName === 'recall') {
-        const recall = await import('../src/retrieval/recall.ts');
         return {
           jsonrpc: '2.0' as const,
           id: null,
@@ -100,7 +91,6 @@ async function testServer(method: string, params: Record<string, unknown>, vault
       }
 
       if (methodName === 'remember') {
-        const epModule = await import('../src/episodes/episode.ts');
         return {
           jsonrpc: '2.0' as const,
           id: null,
@@ -147,7 +137,7 @@ describe('MCP conformance', () => {
     assert.ok(result.result);
     const serverInfo = (result.result as any).serverInfo;
     assert.ok(serverInfo);
-    assert.equal(serverInfo.name, 'palimpsest');
+    assert.equal(serverInfo.name, 'circadia');
   });
 
   it('responds to tools/list', async () => {

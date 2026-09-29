@@ -1,18 +1,18 @@
 {
-  "name": "palimpsest",
+  "name": "circadia",
   "version": "0.1.0",
   "description": "Markdown-vault agent memory with a derived, brain-inspired graph index (hippocampal indexing, spreading activation, bi-temporal facts).",
   "type": "module",
   "private": true,
   "bin": {
-    "palimpsest": "bin/palimpsest.mjs"
+    "circadia": "bin/circadia.mjs"
   },
   "engines": {
     "node": ">=22.18"
   },
   "scripts": {
     "benchmark": "node --experimental-strip-types --disable-warning=ExperimentalWarning benchmarks/run.ts",
-    "palimpsest": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/cli/main.ts",
+    "circadia": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/cli/main.ts",
     "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p .",
     "example:index": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/cli/main.ts index --vault examples/vault",

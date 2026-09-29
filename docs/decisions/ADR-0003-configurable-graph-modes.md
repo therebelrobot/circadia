@@ -16,7 +16,7 @@ for advanced topics.
   when the result looks weak. Weak means too few seeds, no hits, or a flat top-score
   margin. The ladder also skips wikilink for as-of queries and starts higher for
   multi-entity cues.
-- HippoRAG triples live in `.palimpsest/triples/`, keyed by passage content hash. They are
+- HippoRAG triples live in `.circadia/triples/`, keyed by passage content hash. They are
   not stored in notes.
 
 ## Consequences

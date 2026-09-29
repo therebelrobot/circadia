@@ -42,7 +42,7 @@ async function handleInit(): Promise<JSONRPCResponse> {
     jsonrpc: '2.0',
     id: null,
     result: {
-      serverInfo: { name: 'palimpsest', version: '0.1.0' },
+      serverInfo: { name: 'circadia', version: '0.1.0' },
       capabilities: { tools: {} },
     },
   };

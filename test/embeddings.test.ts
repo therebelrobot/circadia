@@ -18,7 +18,7 @@ import {
 } from '../src/retrieval/embeddings.ts';
 import { startMockEmbeddings } from './helpers/mock-embeddings.ts';
 
-const tmp = mkdtempSync(join(tmpdir(), 'palimpsest-embeddings-'));
+const tmp = mkdtempSync(join(tmpdir(), 'circadia-embeddings-'));
 
 test('cosineSimilarity: orthogonal = 0, identical = 1, opposite = -1', () => {
   const a = Float32Array.from([1, 0, 0]);
@@ -128,18 +128,15 @@ test('NullEmbeddingsClient throws on embed()', async () => {
 test('embedPassages: embeds, records model, re-embeds only changed passages', async () => {
   const v = join(tmp, 'vault');
   mkdirSync(join(v, 'entities', 'projects'), { recursive: true });
-  writeFileSync(
-    join(v, 'palimpsest.config.json'),
-    JSON.stringify({
-      graph: { defaultExtraction: 'typed' },
-      embeddings: { provider: 'http', model: 'test-model', batchSize: 2 },
-      predicates: { strict: false, defs: {} },
-    }),
-  );
+  writeFileSync(join(v, 'circadia.config.json'), JSON.stringify({
+    graph: { defaultExtraction: 'typed' },
+    embeddings: { provider: 'http', model: 'test-model', batchSize: 2 },
+    predicates: { strict: false, defs: {} },
+  }));
   writeFileSync(join(v, 'entities', 'projects', 'alpha.md'), '---\ntype: entity\nkind: project\n---\n# Alpha\n\nThe collector aggregates soil readings.\n');
   writeFileSync(join(v, 'entities', 'projects', 'beta.md'), '---\ntype: entity\nkind: project\n---\n# Beta\n\nBeta is about something else entirely.\n');
   const cfg = loadConfig(v);
-  const dbPath = join(v, '.palimpsest', 'index.sqlite');
+  const dbPath = join(v, '.circadia', 'index.sqlite');
   buildIndex(v, cfg, { dbPath });
 
   const mock = await startMockEmbeddings((t) => (t.includes('aggregates soil readings') ? [1, 0, 0, 0] : [0, 0, 0, 1]));

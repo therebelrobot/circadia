@@ -15,6 +15,8 @@ export interface AccessEvent {
   kind: 'recall' | 'write' | 'confirm';
   /** sha256 prefix of the query; the query text itself is never logged */
   q?: string;
+  /** consolidation session id (for reconsolidation window tracking) */
+  session?: string;
 }
 
 export function readAccessLog(file: string): AccessEvent[] {

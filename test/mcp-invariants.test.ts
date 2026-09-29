@@ -1,16 +1,13 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { existsSync, mkdirSync, rmSync, writeFileSync, readdirSync, readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 
 import { CONFIG_FILENAME, DEFAULT_CONFIG } from '../src/config.ts';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
 function createTestVault(): string {
-  const vault = join(tmpdir(), 'palimpsest-mcp-invariant-test-' + Date.now());
+  const vault = join(tmpdir(), 'circadia-mcp-invariant-test-' + Date.now());
   mkdirSync(vault, { recursive: true });
 
   const cfg = {
@@ -25,7 +22,7 @@ function createTestVault(): string {
       defs: {},
     },
     embeddings: { provider: 'none' },
-    index: { path: '.palimpsest/index.sqlite' },
+    index: { path: '.circadia/index.sqlite' },
     retrieval: DEFAULT_CONFIG.retrieval,
   };
   writeFileSync(join(vault, CONFIG_FILENAME), JSON.stringify(cfg, null, 2));
@@ -34,7 +31,7 @@ function createTestVault(): string {
   mkdirSync(join(vault, 'entities'), { recursive: true });
   mkdirSync(join(vault, 'entities', 'concepts'), { recursive: true });
   mkdirSync(join(vault, 'entities', 'people'), { recursive: true });
-  mkdirSync(join(vault, '.palimpsest'), { recursive: true });
+  mkdirSync(join(vault, '.circadia'), { recursive: true });
 
   return vault;
 }

@@ -1,11 +1,11 @@
 // SQLite index: schema, open, FTS5 probe. The index is DERIVED — deleting the file
-// and running `palimpsest index` must always reproduce it (plus the access log).
+// and running `circadia index` must always reproduce it (plus the access log).
 
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const INDEX_SCHEMA_VERSION = 2;
+export const INDEX_SCHEMA_VERSION = 3;
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -43,11 +43,12 @@ CREATE TABLE IF NOT EXISTS names (
   PRIMARY KEY (name, node_id)
 );
 
--- (path, mtime, sha256) per note file; drives incremental indexing (Phase 2)
+-- (path, mtime, sha256, commit_hash) per note file; drives incremental indexing (Phase 2)
 CREATE TABLE IF NOT EXISTS files (
   path   TEXT PRIMARY KEY,
   mtime  REAL NOT NULL,
-  sha256 TEXT NOT NULL
+  sha256 TEXT NOT NULL,
+  commit_hash TEXT
 );
 
 CREATE TABLE IF NOT EXISTS edges (

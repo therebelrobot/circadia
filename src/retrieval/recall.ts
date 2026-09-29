@@ -27,6 +27,8 @@ export interface RecallOptions {
   topK?: number;
   tokenBudget?: number;
   logAccess?: boolean;
+  /** session id for reconsolidation window tracking */
+  session?: string;
   now?: number;
   /** override db path (tests) */
   dbPath?: string;
@@ -182,7 +184,7 @@ export function recall(vaultRoot: string, cfg: Config, query: string, opts: Reca
   const { db } = openIndex(opts.dbPath ?? join(vaultRoot, cfg.index.path));
   try {
     if (getMeta(db, 'schema_version') === null) {
-      throw new Error('index is empty — run `palimpsest index` first');
+      throw new Error('index is empty — run `circadia index` first');
     }
     const backend = (getMeta(db, 'fts') ?? 'bm25-js') as 'fts5' | 'bm25-js';
 
@@ -259,7 +261,7 @@ export function recall(vaultRoot: string, cfg: Config, query: string, opts: Reca
       const q = queryHash(query);
       appendAccess(
         accessFile,
-        result.hits.map((h) => ({ t: now, node: h.passageId, kind: 'recall' as const, q })),
+        result.hits.map((h) => ({ t: now, node: h.passageId, kind: 'recall' as const, q, session: opts.session })),
       );
     }
 

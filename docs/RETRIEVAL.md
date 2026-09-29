@@ -1,6 +1,6 @@
 # Retrieval
 
-How Palimpsest turns a cue into passages, and how graph modes are configured. The code is
+How Circadia turns a cue into passages, and how graph modes are configured. The code is
 in `src/retrieval/`, with `recall.ts` as the orchestrator.
 
 ## 1. Two independent decisions
@@ -39,7 +39,7 @@ value matches.
 | `typed` | + `fact` (note → object, bi-temporal), `provenance` (note → `src` episode) | parse only |
 | `hipporag` | + `triple` (passage → phrase, phrase → phrase), `synonym` (phrase → note it names) | LLM extraction, cached |
 
-`palimpsest stats` shows how many notes landed in each mode. Each note row in the index
+`circadia stats` shows how many notes landed in each mode. Each note row in the index
 records `extraction_mode` and `extraction_why`, the rule that chose it.
 
 ### 1.2 Query mode (per query)
@@ -105,7 +105,7 @@ the example vault.
 6. **Budget.** Take the top K until the token budget (characters ÷ 4) is spent. The first
    hit is always included.
 7. **Log.** Append `{t, node, kind: 'recall', q: sha256(query)[:12]}` per hit to
-   `.palimpsest/access.jsonl`, unless `--no-log` is set or `logAccess` is false.
+   `.circadia/access.jsonl`, unless `--no-log` is set or `logAccess` is false.
 
 ## 4. Scoring
 
@@ -148,9 +148,9 @@ HippoRAG builds a knowledge graph from OpenIE triples extracted from passages, l
 synonymous phrases, and runs personalized PageRank from query-matched nodes. HippoRAG 2
 keeps passages as nodes so factual recall doesn't degrade. [SOURCES S1, S2]
 
-In Palimpsest:
+In Circadia:
 
-- The **triple cache** is `.palimpsest/triples/<noteId>.jsonl`. Each line is
+- The **triple cache** is `.circadia/triples/<noteId>.jsonl`. Each line is
   `{passageId, contentHash, subject, predicate, object, conf?, model?, extractedAt?}`.
   `contentHash` is `sha256(passage.text)[:16]`. If the passage text changes, its triples
   are skipped as **stale** and reported.
@@ -176,7 +176,7 @@ list in §3.
 ## 7. Vector seeds in detail
 
 - **Storage.** Passage embeddings are `Float32Array` bytes in `nodes.embedding`, with the
-  producing model in `nodes.embedding_model`. `palimpsest index` (and `watch`,
+  producing model in `nodes.embedding_model`. `circadia index` (and `watch`,
   best-effort) fills them via `embedPassages()`, which only (re)embeds passages whose
   embedding is NULL or whose model differs from `embeddings.model` — a changed passage
   gets a fresh row with a NULL embedding, so content changes are covered.

@@ -12,7 +12,7 @@ import { relate } from '../src/retrieval/relate.ts';
 import { timeline } from '../src/retrieval/timeline.ts';
 
 const VAULT = resolve(import.meta.dirname, '..', 'examples', 'vault');
-const tmp = mkdtempSync(join(tmpdir(), 'palimpsest-relate-'));
+const tmp = mkdtempSync(join(tmpdir(), 'circadia-relate-'));
 const dbPath = join(tmp, 'index.sqlite');
 const cfg = loadConfig(VAULT);
 buildIndex(VAULT, cfg, { dbPath });
@@ -40,7 +40,7 @@ test('relate: orchard-sensors → pi-cluster finds the runs_on fact edge with pr
 test('relate: unconnected notes return found: false', () => {
   const v = join(tmp, 'isolated');
   mkdirSync(join(v, 'entities', 'people'), { recursive: true });
-  writeFileSync(join(v, 'palimpsest.config.json'), JSON.stringify({ graph: { defaultExtraction: 'typed' } }));
+  writeFileSync(join(v, 'circadia.config.json'), JSON.stringify({ graph: { defaultExtraction: 'typed' } }));
   writeFileSync(join(v, 'entities', 'people', 'one.md'), '---\ntype: entity\nkind: person\n---\n# One\n\nOne is alone.\n');
   writeFileSync(join(v, 'entities', 'people', 'two.md'), '---\ntype: entity\nkind: person\n---\n# Two\n\nTwo is alone too.\n');
   const dbPath2 = join(tmp, 'isolated.sqlite');

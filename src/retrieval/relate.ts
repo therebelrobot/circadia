@@ -1,4 +1,4 @@
-// `palimpsest relate <a> <b>`: shortest paths between two notes over the
+// `circadia relate <a> <b>`: shortest paths between two notes over the
 // edges a query mode allows, with the edge chain (type, origin, provenance,
 // fact id) so a relationship can be traced back to its source.
 //

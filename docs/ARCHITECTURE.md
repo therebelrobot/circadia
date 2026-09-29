@@ -1,6 +1,6 @@
 # Architecture
 
-Palimpsest borrows its structure from how human memory is organised. This document maps
+Circadia borrows its structure from how human memory is organised. This document maps
 each cognitive finding to the design decision it drives, so future changes can be checked
 against the same reasoning. Citations point to [`SOURCES.md`](SOURCES.md).
 
@@ -14,10 +14,10 @@ changing only the index. HippoRAG turned this into a retrieval system for LLMs. 
 
 **Decision.**
 
-| brain | Palimpsest | where |
+| brain | Circadia | where |
 |---|---|---|
 | neocortex (content) | markdown vault | `examples/vault/`, `docs/SCHEMA.md` |
-| hippocampal index (pointers) | `.palimpsest/index.sqlite`: nodes, edges, names, FTS | `src/index/` |
+| hippocampal index (pointers) | `.circadia/index.sqlite`: nodes, edges, names, FTS | `src/index/` |
 | pattern completion | recall: cues → seeds → spreading activation → passages | `src/retrieval/recall.ts` |
 
 The index is derived and rebuildable. This lets a human read and edit memory directly
@@ -100,7 +100,7 @@ memory becomes temporarily labile, and new information present at retrieval can 
 
 **Decision.**
 
-- Every recall appends to `.palimpsest/access.jsonl`. This also feeds ACT-R.
+- Every recall appends to `.circadia/access.jsonl`. This also feeds ACT-R.
 - Phase 4: if an episode written in the same session contradicts a fact that was just
   recalled, consolidation treats that fact as open to revision. It is superseded
   bi-temporally, not overwritten.

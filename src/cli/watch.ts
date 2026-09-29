@@ -1,4 +1,4 @@
-// `palimpsest watch`: watch the vault and reindex incrementally on change.
+// `circadia watch`: watch the vault and reindex incrementally on change.
 // Uses fs.watch (recursive) with a debounce; falls back to polling when recursive
 // watch is unavailable or --poll is passed. Zero dependencies.
 
@@ -101,7 +101,7 @@ export function watchVault(vaultRoot: string, config: Config, opts: WatchOptions
         if (stopped) return;
         // ignore the derived index / access log / triple cache: reindexing writes
         // to them, and we must not let that trigger another reindex (infinite loop)
-        if (filename && (filename.startsWith('.palimpsest') || filename.includes('.palimpsest'))) return;
+        if (filename && (filename.startsWith('.circadia') || filename.includes('.circadia'))) return;
         schedule();
       });
     } catch (e) {

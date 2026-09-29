@@ -15,13 +15,13 @@ import { main } from '../src/cli/main.ts';
 import { startMockEmbeddings } from './helpers/mock-embeddings.ts';
 
 const VAULT = resolve(import.meta.dirname, '..', 'examples', 'vault');
-const tmp = mkdtempSync(join(tmpdir(), 'palimpsest-vector-'));
+const tmp = mkdtempSync(join(tmpdir(), 'circadia-vector-'));
 
 test('vector seeds: a paraphrased query with no keyword overlap retrieves the right passage', async () => {
   const v = join(tmp, 'vec');
   mkdirSync(join(v, 'entities', 'projects'), { recursive: true });
   writeFileSync(
-    join(v, 'palimpsest.config.json'),
+    join(v, 'circadia.config.json'),
     JSON.stringify({
       graph: { defaultExtraction: 'typed' },
       embeddings: { provider: 'http', model: 'test-model', batchSize: 8 },
@@ -30,7 +30,7 @@ test('vector seeds: a paraphrased query with no keyword overlap retrieves the ri
   writeFileSync(join(v, 'entities', 'projects', 'alpha.md'), '---\ntype: entity\nkind: project\n---\n# Alpha\n\nThe collector aggregates soil readings.\n');
   writeFileSync(join(v, 'entities', 'projects', 'beta.md'), '---\ntype: entity\nkind: project\n---\n# Beta\n\nBeta is about something else entirely.\n');
   const cfg = loadConfig(v);
-  const dbPath = join(v, '.palimpsest', 'index.sqlite');
+  const dbPath = join(v, '.circadia', 'index.sqlite');
   buildIndex(v, cfg, { dbPath });
 
   // deterministic vectors: the target passage's text gets [1,0,0,0], everything
@@ -64,7 +64,7 @@ test('vector seeds: a paraphrased query with no keyword overlap retrieves the ri
 test('vector seeds: without a queryEmbedding the same query finds nothing', () => {
   const v = join(tmp, 'vec');
   const cfg = loadConfig(v);
-  const dbPath = join(v, '.palimpsest', 'index.sqlite');
+  const dbPath = join(v, '.circadia', 'index.sqlite');
   const r = recall(v, cfg, 'how does the machine combine moisture data', {
     dbPath,
     logAccess: false,
@@ -76,9 +76,9 @@ test('vector seeds: without a queryEmbedding the same query finds nothing', () =
 test('cli: relate and timeline smoke over a copy of the example vault', async () => {
   const v = join(tmp, 'vault-copy');
   cpSync(VAULT, v, { recursive: true });
-  rmSync(join(v, '.palimpsest', 'index.sqlite'), { force: true });
-  rmSync(join(v, '.palimpsest', 'index.sqlite-wal'), { force: true });
-  rmSync(join(v, '.palimpsest', 'index.sqlite-shm'), { force: true });
+  rmSync(join(v, '.circadia', 'index.sqlite'), { force: true });
+  rmSync(join(v, '.circadia', 'index.sqlite-wal'), { force: true });
+  rmSync(join(v, '.circadia', 'index.sqlite-shm'), { force: true });
 
   const log = console.log;
   const out: string[] = [];

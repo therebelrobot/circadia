@@ -24,7 +24,6 @@ export function segmentText(
   const by: SourceKind | undefined = opts.by ?? undefined;
   const source: SourceKind | undefined = opts.source ?? undefined;
   // embeddingThreshold reserved for future embedding-based segmentation
-  const _ = opts.embeddingThreshold;
 
   // First, try to extract a title from the first line
   const firstLine = text.split('\n')[0];

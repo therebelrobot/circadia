@@ -1,6 +1,6 @@
 # Configuration reference
 
-The config file is `palimpsest.config.json` in the **vault root**, so a vault is
+The config file is `circadia.config.json` in the **vault root**, so a vault is
 self-describing. Every key is optional. Your file is deep-merged over the defaults:
 objects merge, while arrays and scalars replace. Defaults live in `src/config.ts`
 (`DEFAULT_CONFIG`), and validation in `validateConfig()`. An invalid config fails loudly on
@@ -18,8 +18,8 @@ load.
 
 | key | default | meaning |
 |---|---|---|
-| `index.path` | `".palimpsest/index.sqlite"` | derived index; safe to delete |
-| `index.accessLog` | `".palimpsest/access.jsonl"` | retrieval log; **not derivable, back it up** |
+| `index.path` | `".circadia/index.sqlite"` | derived index; safe to delete |
+| `index.accessLog` | `".circadia/access.jsonl"` | retrieval log; **not derivable, back it up** |
 
 ## graph
 
@@ -55,7 +55,7 @@ load.
 ## embeddings
 
 Passage embeddings for vector seeds (Phase 2). With `provider: "http"`,
-`palimpsest index` embeds new/changed passages after indexing, `watch` does so
+`circadia index` embeds new/changed passages after indexing, `watch` does so
 best-effort after each reindex, and `recall` embeds the query and adds a vector
 seed list. A down server degrades to text-only recall with a warning.
 

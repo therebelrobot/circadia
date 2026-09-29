@@ -10,7 +10,7 @@ import { buildIndex, incrementalIndex } from '../src/index/indexer.ts';
 import { openIndex, getMeta, INDEX_SCHEMA_VERSION } from '../src/index/db.ts';
 import { main } from '../src/cli/main.ts';
 
-const tmp = mkdtempSync(join(tmpdir(), 'palimpsest-incremental-'));
+const tmp = mkdtempSync(join(tmpdir(), 'circadia-incremental-'));
 
 const CONFIG = {
   graph: { defaultExtraction: 'typed' },
@@ -28,14 +28,14 @@ function makeVault(dir: string): string {
   const v = join(dir, 'vault');
   mkdirSync(join(v, 'entities', 'people'), { recursive: true });
   mkdirSync(join(v, 'entities', 'projects'), { recursive: true });
-  writeFileSync(join(v, 'palimpsest.config.json'), JSON.stringify(CONFIG));
+  writeFileSync(join(v, 'circadia.config.json'), JSON.stringify(CONFIG));
   writeFileSync(join(v, 'entities', 'people', 'ann.md'), '---\ntype: entity\nkind: person\n---\n# Ann\n\nAnn works on [[proj]].\n');
   writeFileSync(join(v, 'entities', 'people', 'bo.md'), '---\ntype: entity\nkind: person\naliases: [Bo]\n---\n# Bo\n\nBo is a friend.\n');
   writeFileSync(join(v, 'entities', 'projects', 'proj.md'), '---\ntype: entity\nkind: project\n---\n# Proj\n\nA project.\n\n## Facts\n- [runs_on:: [[ann]]] [by:: user]\n');
   return v;
 }
 
-const dbFor = (v: string) => join(v, '.palimpsest', 'index.sqlite');
+const dbFor = (v: string) => join(v, '.circadia', 'index.sqlite');
 
 test('incremental: full rebuild then one changed note re-parses only that note', () => {
   const v = makeVault(join(tmp, 't1'));
@@ -120,7 +120,7 @@ test('incremental: config change triggers a full rebuild', () => {
   buildIndex(v, cfg, { dbPath });
 
   // change a config value that affects extraction of every note
-  writeFileSync(join(v, 'palimpsest.config.json'), JSON.stringify({ ...CONFIG, graph: { defaultExtraction: 'wikilink' } }));
+  writeFileSync(join(v, 'circadia.config.json'), JSON.stringify({ ...CONFIG, graph: { defaultExtraction: 'wikilink' } }));
   const cfg2 = loadConfig(v);
 
   const inc = incrementalIndex(v, cfg2, { dbPath });
@@ -139,7 +139,7 @@ test('incremental: config change triggers a full rebuild', () => {
 test('incremental: ambiguous-name tie-break matches the full rebuild', () => {
   const v = join(tmp, 't11');
   mkdirSync(join(v, 'entities', 'people'), { recursive: true });
-  writeFileSync(join(v, 'palimpsest.config.json'), JSON.stringify(CONFIG));
+  writeFileSync(join(v, 'circadia.config.json'), JSON.stringify(CONFIG));
   // two notes share the title "Dup". BINARY collation orders "Zed.md" before
   // "amy.md" (uppercase sorts first); localeCompare orders "amy.md" first.
   writeFileSync(join(v, 'entities', 'people', 'Zed.md'), '---\ntype: entity\nkind: person\n---\n# Dup\n\nZed.\n');
@@ -182,7 +182,7 @@ test('incremental: no-op run reports zero changed and does not re-parse', () => 
 test('incremental: alias change propagates to an unchanged note\'s link', () => {
   const v = join(tmp, 't4');
   mkdirSync(join(v, 'entities', 'people'), { recursive: true });
-  writeFileSync(join(v, 'palimpsest.config.json'), JSON.stringify(CONFIG));
+  writeFileSync(join(v, 'circadia.config.json'), JSON.stringify(CONFIG));
   // A links to [[x]]; B has alias x
   writeFileSync(join(v, 'entities', 'people', 'a.md'), '---\ntype: entity\nkind: person\n---\n# A\n\nA knows [[x]].\n');
   writeFileSync(join(v, 'entities', 'people', 'b.md'), '---\ntype: entity\nkind: person\naliases: [x]\n---\n# B\n\nB.\n');

@@ -30,7 +30,7 @@ export function generateVault(outDir: string, opts: GenOptions): void {
 
   mkdirSync(join(outDir, 'entities'), { recursive: true });
   writeFileSync(
-    join(outDir, 'palimpsest.config.json'),
+    join(outDir, 'circadia.config.json'),
     JSON.stringify(
       {
         graph: { defaultExtraction: 'typed' },

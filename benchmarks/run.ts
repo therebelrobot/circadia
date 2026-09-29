@@ -22,9 +22,9 @@ const NOTES = num('--notes', 10_000);
 const LINKS = num('--links', 50_000);
 const QUERIES = num('--queries', 100);
 
-const tmp = mkdtempSync(join(tmpdir(), 'palimpsest-bench-'));
+const tmp = mkdtempSync(join(tmpdir(), 'circadia-bench-'));
 const vault = join(tmp, 'vault');
-const dbPath = join(vault, '.palimpsest', 'index.sqlite');
+const dbPath = join(vault, '.circadia', 'index.sqlite');
 
 const rss = (): number => Math.round(process.memoryUsage().rss / 1024 / 1024);
 let peakRss = rss();
@@ -38,7 +38,7 @@ const percentile = (sorted: number[], p: number): number => {
   return sorted[idx];
 };
 
-console.log(`palimpsest benchmark: ${NOTES} notes, ${LINKS} links, ${QUERIES} queries/mode`);
+console.log(`circadia benchmark: ${NOTES} notes, ${LINKS} links, ${QUERIES} queries/mode`);
 console.log(`machine: ${process.platform} ${process.arch}, node ${process.version}`);
 bump();
 

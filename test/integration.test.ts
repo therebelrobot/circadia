@@ -12,7 +12,7 @@ import { main } from '../src/cli/main.ts';
 import { openIndex } from '../src/index/db.ts';
 
 const VAULT = resolve(import.meta.dirname, '..', 'examples', 'vault');
-const tmp = mkdtempSync(join(tmpdir(), 'palimpsest-test-'));
+const tmp = mkdtempSync(join(tmpdir(), 'circadia-test-'));
 const dbPath = join(tmp, 'index.sqlite');
 const cfg = loadConfig(VAULT);
 const built = buildIndex(VAULT, cfg, { dbPath });
@@ -39,7 +39,7 @@ test('scoped extraction: rule/tag decide per-note mode, recorded in the index', 
 test('scoped extraction: a wikilink-scoped note contributes no fact edges', () => {
   const v = join(tmp, 'scoped');
   mkdirSync(join(v, 'entities', 'people'), { recursive: true });
-  writeFileSync(join(v, 'palimpsest.config.json'), JSON.stringify({ graph: { scopes: [{ match: { kinds: ['person'] }, extract: 'wikilink' }] } }));
+  writeFileSync(join(v, 'circadia.config.json'), JSON.stringify({ graph: { scopes: [{ match: { kinds: ['person'] }, extract: 'wikilink' }] } }));
   writeFileSync(join(v, 'entities', 'people', 'ann.md'), '---\ntype: entity\nkind: person\n---\n# Ann\n## Facts\n- [likes:: tea] [by:: user]\n');
   writeFileSync(join(v, 'entities', 'people', 'bo.md'), '---\ntype: entity\nkind: pet\n---\n# Bo\n## Facts\n- [likes:: naps] [by:: user]\n');
   const r = buildIndex(v, loadConfig(v), { dbPath: join(tmp, 'scoped.sqlite') });

@@ -11,10 +11,10 @@ holds content, and a separate sparse index holds pointers and associations.
 
 ## Decision
 - All memory content lives in markdown files in a vault.
-- `.palimpsest/index.sqlite` is fully derived. Deleting it and running
-  `palimpsest index` must reproduce it.
-- The only non-derivable state outside the notes is `.palimpsest/access.jsonl` (usage
-  history) and `.palimpsest/triples/` (a cache of LLM output).
+- `.circadia/index.sqlite` is fully derived. Deleting it and running
+  `circadia index` must reproduce it.
+- The only non-derivable state outside the notes is `.circadia/access.jsonl` (usage
+  history) and `.circadia/triples/` (a cache of LLM output).
 
 ## Consequences
 - Humans and agents edit the same files; git gives history, review, and revert for free.

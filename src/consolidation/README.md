@@ -9,7 +9,7 @@ Nothing here is implemented yet. See `docs/ARCHITECTURE.md` §2, §3, and §6, a
 select episodes (consolidated: missing or older than mtime)
   → extract candidates  {subject, predicate, object, valid?, episode}   (local LLM, JSON-constrained)
   → resolve entities     id / alias / title → note, else propose new     (pattern separation)
-  → schema-fit gate      promote | queue(.palimpsest/pending.jsonl)       (Tse et al. 2007)
+  → schema-fit gate      promote | queue(.circadia/pending.jsonl)       (Tse et al. 2007)
   → apply                append via formatFact(); supersede conflicts bi-temporally
   → reflect              (re)write schemas/<entity>-overview.md when importance accumulates
   → mark                 set consolidated: YYYY-MM-DD on processed episodes

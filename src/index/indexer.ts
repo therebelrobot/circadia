@@ -6,6 +6,7 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { execSync } from 'node:child_process';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import type { Config } from '../config.ts';
 import type { GraphMode, ParsedNote, Problem, SourceKind, Trust, WikiLink } from '../types.ts';
@@ -371,7 +372,7 @@ function emitNoteEdges(ctx: IndexCtx, n: ParsedNote): void {
 function emitTriples(ctx: IndexCtx, vaultRoot: string, noteIds: Set<string>): void {
   const { triples, badLines } = loadTriples(vaultRoot);
   if (badLines) {
-    ctx.problems.push({ severity: 'warning', path: '.palimpsest/triples', code: 'triples.bad-lines', message: `${badLines} malformed triple lines skipped` });
+    ctx.problems.push({ severity: 'warning', path: '.circadia/triples', code: 'triples.bad-lines', message: `${badLines} malformed triple lines skipped` });
   }
   const phraseNode = (text: string): string => {
     const id = `p:${slugify(text)}`;
@@ -399,7 +400,7 @@ function emitTriples(ctx: IndexCtx, vaultRoot: string, noteIds: Set<string>): vo
     emitEdge(ctx, s, o, 'triple', t.predicate, { conf: t.conf ?? null, weight: t.conf ?? 1, sourceKind: 'agent', trust: 'medium', declaredIn: noteId });
   }
   if (ctx.staleTriples) {
-    ctx.problems.push({ severity: 'warning', path: '.palimpsest/triples', code: 'triples.stale', message: `${ctx.staleTriples} cached triples skipped: passage text changed since extraction` });
+    ctx.problems.push({ severity: 'warning', path: '.circadia/triples', code: 'triples.stale', message: `${ctx.staleTriples} cached triples skipped: passage text changed since extraction` });
   }
 }
 
@@ -431,10 +432,33 @@ export function buildIndex(vaultRoot: string, config: Config, opts: { dbPath?: s
     for (const n of notes) emitNoteEdges(ctx, n);
     emitTriples(ctx, vaultRoot, new Set(notes.map((n) => n.id)));
 
-    // record (path, mtime, sha256) so a later incremental run can diff against this
-    const insFile = db.prepare('INSERT OR REPLACE INTO files(path, mtime, sha256) VALUES (?, ?, ?)');
+    // Check if vault is a git repo for Phase 6 (git-backed as-of)
+    const isRepo = (() => {
+      try {
+        execSync('git rev-parse --git-dir', { cwd: vaultRoot, stdio: 'ignore' });
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+
+    // record (path, mtime, sha256, commit_hash) so a later incremental run can diff against this
+    const insFile = db.prepare('INSERT OR REPLACE INTO files(path, mtime, sha256, commit_hash) VALUES (?, ?, ?, ?)');
     for (const n of notes) {
-      insFile.run(n.path, n.mtime, sha256OfFile(join(vaultRoot, n.path)));
+      const abs = join(vaultRoot, n.path);
+      let commitHash: string | null = null;
+      if (isRepo) {
+        try {
+          const hash = execSync(
+            `git log -1 --format="%H" -- "${n.path}" 2>/dev/null`,
+            { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+          ).trim() || null;
+          commitHash = hash;
+        } catch {
+          commitHash = null;
+        }
+      }
+      insFile.run(n.path, n.mtime, sha256OfFile(abs), commitHash);
     }
 
     setMeta(db, 'schema_version', INDEX_SCHEMA_VERSION);
@@ -507,32 +531,70 @@ export function incrementalIndex(vaultRoot: string, config: Config, opts: { dbPa
   const files = walkVault(vaultRoot, config.vault.ignore);
   const onDisk = new Map(files.map((f) => [f.path, f]));
 
-  // load the previous (path, mtime, sha256) snapshot
-  const prev = new Map<string, { mtime: number; sha256: string }>();
-  for (const r of db.prepare('SELECT path, mtime, sha256 FROM files').all() as { path: string; mtime: number; sha256: string }[]) {
-    prev.set(r.path, { mtime: r.mtime, sha256: r.sha256 });
+  // load the previous (path, mtime, sha256, commit_hash) snapshot
+  const prev = new Map<string, { mtime: number; sha256: string; commit_hash: string | null }>();
+  for (const r of db.prepare('SELECT path, mtime, sha256, commit_hash FROM files').all() as { path: string; mtime: number; sha256: string; commit_hash: string | null }[]) {
+    prev.set(r.path, { mtime: r.mtime, sha256: r.sha256, commit_hash: r.commit_hash });
   }
+
+  // Check if vault is a git repo for Phase 6 (git-backed as-of)
+  const isRepo = (() => {
+    try {
+      execSync('git rev-parse --git-dir', { cwd: vaultRoot, stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  })();
 
   // classify: changed (content differs), removed (in index, not on disk)
   const changed: { path: string; abs: string; mtime: number }[] = [];
   const removed: string[] = [];
-  const upsertFile = db.prepare('INSERT OR REPLACE INTO files(path, mtime, sha256) VALUES (?, ?, ?)');
+  const upsertFile = db.prepare('INSERT OR REPLACE INTO files(path, mtime, sha256, commit_hash) VALUES (?, ?, ?, ?)');
   for (const f of files) {
     const p = prev.get(f.path);
     if (!p) {
+      let commitHash: string | null = null;
+      if (isRepo) {
+        try {
+          const hash = execSync(
+            `git log -1 --format="%H" -- "${f.path}" 2>/dev/null`,
+            { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+          ).trim() || null;
+          commitHash = hash;
+        } catch {
+          commitHash = null;
+        }
+      }
       changed.push(f);
-      upsertFile.run(f.path, f.mtime, sha256OfFile(f.abs));
+      upsertFile.run(f.path, f.mtime, sha256OfFile(f.abs), commitHash);
       continue;
     }
-    if (p.mtime === f.mtime) continue; // untouched
+    if (p.mtime === f.mtime) {
+      // unchanged: preserve the original commit_hash
+      upsertFile.run(f.path, f.mtime, p.sha256, p.commit_hash);
+      continue;
+    }
     const hash = sha256OfFile(f.abs);
     if (hash === p.sha256) {
-      // mtime-only change (touch): content identical, just refresh the mtime
-      upsertFile.run(f.path, f.mtime, hash);
+      // mtime-only change (touch): content identical, preserve commit_hash
+      upsertFile.run(f.path, f.mtime, hash, p.commit_hash);
       continue;
     }
+    let commitHash: string | null = null;
+    if (isRepo) {
+      try {
+        const hash = execSync(
+          `git log -1 --format="%H" -- "${f.path}" 2>/dev/null`,
+          { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+        ).trim() || null;
+        commitHash = hash;
+      } catch {
+        commitHash = null;
+      }
+    }
     changed.push(f);
-    upsertFile.run(f.path, f.mtime, hash);
+    upsertFile.run(f.path, f.mtime, hash, commitHash);
   }
   for (const path of prev.keys()) if (!onDisk.has(path)) removed.push(path);
 

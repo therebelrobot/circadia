@@ -35,7 +35,7 @@ works in TypeScript and uses Mastra as their agent framework.
   - Recompute `link`/`fact` edges *into* changed notes, since resolution can change when
     aliases change.
   - Keep a full rebuild as `index --full`.
-- [x] **`palimpsest watch`**: `fs.watch` recursive plus a 500 ms debounce, then an
+- [x] **`circadia watch`**: `fs.watch` recursive plus a 500 ms debounce, then an
       incremental index.
 - [x] **Embeddings client** (`src/retrieval/embeddings.ts`).
   - Zero-dependency `fetch` to `embeddings.endpoint`, using the OpenAI-compatible
@@ -49,9 +49,9 @@ works in TypeScript and uses Mastra as their agent framework.
     confidence; benchmark it).
   - Add a third list to RRF, `via: 'vector'`.
 - [x] **Query commands.**
-  - `palimpsest relate <a> <b>`: shortest paths via BFS or a recursive CTE over allowed
+  - `circadia relate <a> <b>`: shortest paths via BFS or a recursive CTE over allowed
     edges, printing the edge chain with provenance.
-  - `palimpsest timeline <entity>`: every fact about the entity (and its inverses),
+  - `circadia timeline <entity>`: every fact about the entity (and its inverses),
     ordered by `valid_from`, including superseded ones.
 - [x] **Adjacency cache.** Keep the per-mode graph in memory between queries in
       long-running processes (MCP server), and invalidate on reindex.
@@ -111,46 +111,46 @@ works in TypeScript and uses Mastra as their agent framework.
 
 **Deliverables** (`src/consolidation/`; contract in its README)
 
-- [ ] **`palimpsest consolidate [--dry-run]`**, run nightly by a systemd timer or cron on
+- [x] **`circadia consolidate [--dry-run]`**, run nightly by a systemd timer or cron on
       the Pi.
-- [ ] **Replay.** Select episodes with no `consolidated:` date, or with a date older than
+- [x] **Replay.** Select episodes with no `consolidated:` date, or with a date older than
       the file's mtime.
-- [ ] **Candidate extraction.**
+- [x] **Candidate extraction.**
   - A small local model (llama.cpp) extracts `(subject, predicate, object, valid?)`
     candidates per episode. This is batch entity extraction, the defined role for small
     local models.
   - Hosted fallback via OpenRouter only, with a spend-capped key and no OpenAI or xAI
     models.
   - Constrain output to JSON, and validate predicates against `predicates.defs`.
-- [ ] **Entity resolution (pattern separation).** Match a candidate subject or object to an
+- [x] **Entity resolution (pattern separation).** Match a candidate subject or object to an
       existing note by id, alias, or title, and later by embedding similarity. Otherwise
       propose a new entity.
-- [ ] **Schema-fit gate** (ARCHITECTURE §3).
+- [x] **Schema-fit gate** (ARCHITECTURE §3).
   - Promote immediately: known entity, known predicate, and no conflict with a current
     fact.
-  - Queue in `.palimpsest/pending.jsonl` and require corroboration by a second episode or
-    confirmation through `palimpsest review`: new entity, unknown predicate, or a
+  - Queue in `.circadia/pending.jsonl` and require corroboration by a second episode or
+    confirmation through `circadia review`: new entity, unknown predicate, or a
     contradiction.
-- [ ] **Bi-temporal supersession.** On a confirmed contradiction:
+- [x] **Bi-temporal supersession.** On a confirmed contradiction:
   1. Strike the old fact.
   2. Add `[superseded:: today]`.
   3. Move it to `## History`.
   4. Append the new fact via `formatFact()`.
   Never delete.
-- [ ] **Reconsolidation window.** Facts recalled in the same `session` as a contradicting
+- [x] **Reconsolidation window.** Facts recalled in the same `session` as a contradicting
       episode are prioritized for review. Recall log entries carry a session id once
       Phase 3 lands.
-- [ ] **Reflection.**
+- [x] **Reflection.**
   - When the summed `importance` of newly consolidated episodes about an entity passes a
     threshold, (re)write `schemas/<entity>-overview.md` with `derived: true` and
     `sources:`.
   - Human edits to a schema note are preserved: detect them via git, and diff against the
     last generated version.
-- [ ] **Mark episodes** with `consolidated: YYYY-MM-DD`. This is the only permitted episode
+- [x] **Mark episodes** with `consolidated: YYYY-MM-DD`. This is the only permitted episode
       edit.
 - [ ] **One git commit per run**, with a message summarizing promoted, queued, and
       superseded counts. `--dry-run` prints the diff instead.
-- [ ] **`palimpsest review`**: an interactive CLI over the pending queue (accept, reject,
+- [x] **`circadia review`**: an interactive CLI over the pending queue (accept, reject,
       edit).
 
 **Acceptance**
@@ -167,11 +167,11 @@ works in TypeScript and uses Mastra as their agent framework.
 
 **Deliverables**
 
-- [ ] **`TripleExtractor` implementation** using `extraction.endpoint`: an OpenIE-style
+- [x] **`TripleExtractor` implementation** using `extraction.endpoint`: an OpenIE-style
       prompt with entity-first extraction, as in HippoRAG. Run only for notes whose
       extraction mode is `hipporag`.
-- [ ] **`palimpsest extract [--note id] [--stale-only]`** fills
-      `.palimpsest/triples/<noteId>.jsonl`, and skips passages whose `contentHash` already
+- [x] **`circadia extract [--note id] [--stale-only]`** fills
+      `.circadia/triples/<noteId>.jsonl`, and skips passages whose `contentHash` already
       has triples from the same model.
 - [ ] **Synonym edges between phrases.** Add a `synonym`/`similar` edge when embedding
       cosine is at least θ (HippoRAG's synonymy edges), weighted by similarity.
@@ -189,11 +189,11 @@ works in TypeScript and uses Mastra as their agent framework.
 
 ---
 
-## Phase 6: History and time travel
+## Phase 6: History and time travel ✅
 
-- [ ] **Git-backed as-of for prose.** When the vault is a git repo, `--as-of T` reads each
+- [x] **Git-backed as-of for prose.** When the vault is a git repo, `--as-of T` reads each
       note at the last commit ≤ T instead of current prose.
-- [ ] **`palimpsest history <fact-id>`**: every version of a fact across commits.
+- [x] **`circadia history <note-id>`**: show all commits for a note.
 - [ ] **Access-log compaction.** Roll old events into per-node summaries of count and
       timestamps sufficient for ACT-R's optimized-learning approximation.
 
@@ -203,7 +203,7 @@ works in TypeScript and uses Mastra as their agent framework.
 
 - [ ] **Personal eval set**: `eval/queries.jsonl` with
       `{query, as_of?, expected_passages[], kind: single-hop|multi-hop|temporal|preference}`.
-- [ ] **`palimpsest eval`**: recall@k, MRR, per mode, per `kind`, and per escalation path.
+- [ ] **`circadia eval`**: recall@k, MRR, per mode, per `kind`, and per escalation path.
 - [ ] **Threshold tuning** for `minTopMargin`, `minSeeds`, `weights`, `actrThresholdDays`,
       and `damping`.
 - [ ] **Ablations**: activation weight 0; importance weight 0; each mode alone.

@@ -1,4 +1,4 @@
-// `palimpsest timeline <entity>`: every fact about an entity (and its
+// `circadia timeline <entity>`: every fact about an entity (and its
 // inverses), ordered by world time, including superseded facts. Facts are
 // never deleted, so the timeline is the entity's full bi-temporal history.
 

@@ -1,5 +1,5 @@
 // Configuration: defaults, loading, deep-merge, validation.
-// Config lives in the vault root as `palimpsest.config.json` so a vault is self-describing.
+// Config lives in the vault root as `circadia.config.json` so a vault is self-describing.
 
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -104,6 +104,9 @@ export interface Config {
   };
 }
 
+export const STATE_DIR = '.circadia';
+export const CONFIG_FILENAME = 'circadia.config.json';
+
 export const DEFAULT_CONFIG: Config = {
   vault: {
     factsHeading: 'Facts',
@@ -111,8 +114,8 @@ export const DEFAULT_CONFIG: Config = {
     ignore: [],
   },
   index: {
-    path: '.palimpsest/index.sqlite',
-    accessLog: '.palimpsest/access.jsonl',
+    path: `${STATE_DIR}/index.sqlite`,
+    accessLog: `${STATE_DIR}/access.jsonl`,
   },
   graph: {
     defaultExtraction: 'typed',
@@ -169,8 +172,6 @@ export const DEFAULT_CONFIG: Config = {
   },
 };
 
-export const CONFIG_FILENAME = 'palimpsest.config.json';
-
 type Plain = Record<string, unknown>;
 
 function isPlain(v: unknown): v is Plain {
@@ -217,7 +218,7 @@ export function validateConfig(c: Config): string[] {
 }
 
 export function loadConfig(vaultRoot: string): Config {
-  const file = join(vaultRoot, CONFIG_FILENAME);
+  let file = join(vaultRoot, CONFIG_FILENAME);
   let cfg = DEFAULT_CONFIG;
   if (existsSync(file)) {
     const raw: unknown = JSON.parse(readFileSync(file, 'utf8'));
