@@ -16,7 +16,7 @@ import { walkVault } from '../vault/walk.ts';
 import { normKey, slugify } from '../vault/util.ts';
 import { extractionModeFor, MODE_RANK } from '../extract/scope.ts';
 import { loadTriples, passageHash } from '../extract/triples.ts';
-import { createEmbeddingsClient, NullEmbeddingsClient, type EmbeddingsClient } from '../retrieval/embeddings.ts';
+import { createEmbeddingsClient, NullEmbeddingsClient, type EmbeddingsClient, cosineSimilarity } from '../retrieval/embeddings.ts';
 import { INDEX_SCHEMA_VERSION, openIndex, setMeta, getMeta } from './db.ts';
 
 export interface IndexStats {
@@ -404,6 +404,65 @@ function emitTriples(ctx: IndexCtx, vaultRoot: string, noteIds: Set<string>): vo
   }
 }
 
+/**
+ * Emit synonym edges between phrases based on embedding similarity (Phase 5, HippoRAG).
+ * Requires passage embeddings to be already loaded in the database.
+ */
+async function emitSynonymEdges(dbPath: string, config: Config): Promise<void> {
+  const { db } = openIndex(dbPath);
+  try {
+    const threshold = config.graph.hipporag.synonymThreshold;
+    const maxEdges = config.graph.hipporag.maxSynonymEdges;
+
+    // Get all phrase nodes with embeddings
+    const phrases = db
+      .prepare(
+        `SELECT id, text FROM nodes
+         WHERE kind = 'phrase' AND embedding IS NOT NULL
+         ORDER BY id`,
+      )
+      .all() as { id: string; text: string; embedding: Uint8Array }[];
+
+    if (phrases.length < 2) return;
+
+    // Convert embeddings to Float32Array and compute similarities
+    const phraseEmbeddings = phrases.map((p) => ({
+      id: p.id,
+      text: p.text,
+      embedding: new Float32Array(Buffer.from(p.embedding.buffer, p.embedding.byteOffset, p.embedding.byteLength)),
+    }));
+
+    // Track edge pairs to avoid duplicates
+    const edgePairs = new Set<string>();
+    const emitEdge = db.prepare(
+      `INSERT OR REPLACE INTO edges (src, dst, origin, type, weight, recorded_at, trust, declared_in)
+       VALUES (?, ?, 'synonym', 'similar', ?, ?, 'medium', NULL)`,
+    );
+
+    // Compare all pairs (brute-force is fine for typical phrase counts < 1k)
+    const now = Date.now();
+    for (let i = 0; i < phraseEmbeddings.length; i++) {
+      for (let j = i + 1; j < phraseEmbeddings.length; j++) {
+        const a = phraseEmbeddings[i];
+        const b = phraseEmbeddings[j];
+        const sim = cosineSimilarity(a.embedding, b.embedding);
+        if (sim >= threshold) {
+          // Normalize pair key for deduplication
+          const pairKey = [a.id, b.id].sort().join('\0');
+          if (!edgePairs.has(pairKey)) {
+            edgePairs.add(pairKey);
+            emitEdge.run(a.id, b.id, sim, now);
+            if (edgePairs.size >= maxEdges) break;
+          }
+        }
+      }
+      if (edgePairs.size >= maxEdges) break;
+    }
+  } finally {
+    db.close();
+  }
+}
+
 /** Delete every row owned by the given note ids (note, passages, names, edges, fts). */
 function deleteNoteRows(ctx: IndexCtx, noteIds: string[]): void {
   if (noteIds.length === 0) return;
@@ -776,6 +835,8 @@ export async function embedPassages(
       db.exec('ROLLBACK');
       throw e;
     }
+    // Emit synonym edges after embeddings are added (Phase 5, HippoRAG)
+    await emitSynonymEdges(dbPath, config);
     return { embedded: results.length, total };
   } finally {
     db.close();

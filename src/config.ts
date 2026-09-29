@@ -42,6 +42,13 @@ export interface Config {
     defaultExtraction: GraphMode;
     /** first matching rule wins; a note's `graph:` frontmatter overrides all rules */
     scopes: ScopeRule[];
+    /** Phase 5: hipporag-specific configuration */
+    hipporag: {
+      /** embedding cosine threshold for synonym edges between phrases (0–1) */
+      synonymThreshold: number;
+      /** max edges per phrase pair (deduplication window) */
+      maxSynonymEdges: number;
+    };
     query: {
       mode: QueryMode;
       auto: {
@@ -120,6 +127,10 @@ export const DEFAULT_CONFIG: Config = {
   graph: {
     defaultExtraction: 'typed',
     scopes: [],
+    hipporag: {
+      synonymThreshold: 0.7,
+      maxSynonymEdges: 3,
+    },
     query: {
       mode: 'auto',
       auto: {
@@ -194,6 +205,12 @@ export function validateConfig(c: Config): string[] {
   const errs: string[] = [];
   if (!MODES.includes(c.graph.defaultExtraction)) {
     errs.push(`graph.defaultExtraction must be one of ${MODES.join(', ')}`);
+  }
+  if (c.graph.hipporag.synonymThreshold < 0 || c.graph.hipporag.synonymThreshold > 1) {
+    errs.push('graph.hipporag.synonymThreshold must be in [0, 1]');
+  }
+  if (c.graph.hipporag.maxSynonymEdges < 1) {
+    errs.push('graph.hipporag.maxSynonymEdges must be at least 1');
   }
   if (![...MODES, 'auto'].includes(c.graph.query.mode)) {
     errs.push(`graph.query.mode must be one of ${MODES.join(', ')}, auto`);
