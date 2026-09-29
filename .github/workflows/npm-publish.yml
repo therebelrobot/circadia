@@ -103,7 +103,7 @@ jobs:
       #
       # (a) Direct: version goes live immediately.
       - name: Publish
-        run: npm publish dist-pack/*.tgz --ignore-scripts
+        run: npm publish ./dist-pack/*.tgz --ignore-scripts
 
       # (b) Staged: version waits until a maintainer approves it with 2FA
       #     (`npm stage list` then `npm stage approve <id>`, or the Staged
@@ -111,4 +111,4 @@ jobs:
       #     stage publish, and npm >= 11.15.0 (raise the version check above).
       #     Uncomment and delete (a) to use it.
       # - name: Stage for approval
-      #   run: npm stage publish dist-pack/*.tgz --ignore-scripts
+      #   run: npm stage publish ./dist-pack/*.tgz --ignore-scripts
