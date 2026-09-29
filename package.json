@@ -15,11 +15,19 @@
     "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p .",
     "example:index": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/cli/main.ts index --vault examples/vault",
-    "example:recall": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/cli/main.ts recall --vault examples/vault --no-log"
+    "example:recall": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/cli/main.ts recall --vault examples/vault --no-log",
+    "release:patch": "npm version patch -m \"chore: release v%s\" && git push && git push --tags",
+    "release:minor": "npm version minor -m \"chore: release v%s\" && git push && git push --tags",
+    "release:major": "npm version major -m \"chore: release v%s\" && git push && git push --tags",
+    "release:tags": "git tag --sort=-v:refname | grep '^v'"
   },
-  "license": "UNLICENSED",
+  "license": "Unlicense",
   "devDependencies": {
-    "typescript": "^5.9.0",
-    "@types/node": "^22.18.0"
+    "@types/node": "^22.18.0",
+    "typescript": "^5.9.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/therebelrobot/circadia.git"
   }
 }
