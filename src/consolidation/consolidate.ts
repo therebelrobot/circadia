@@ -11,6 +11,7 @@ import { parseFrontmatter } from '../vault/frontmatter.ts';
 import { extractCandidates, type Candidate } from './candidate.ts';
 import { resolveEntity } from './entity.ts';
 import { evaluateGate } from './schema.ts';
+import { promoteTriplesToCandidates } from './promote.ts';
 import type { Fact } from '../types.ts';
 
 export interface ConsolidationResult {
@@ -63,7 +64,7 @@ export async function consolidate(
   let superseded = 0;
   const processedEpisodes: string[] = [];
 
-  // Collect all candidates
+  // Collect all candidates from episodes
   const allCandidates: Candidate[] = [];
   for (const ep of episodes) {
     if (cfg.extraction.provider === 'none') {
@@ -73,6 +74,11 @@ export async function consolidate(
     const candidates = await extractCandidates(ep, cfg);
     allCandidates.push(...candidates);
   }
+
+  // Collect high-confidence triples from HippoRAG triple cache (Phase 5: promotion path)
+  // These triples are proposed as consolidation candidates but still go through the gate
+  const tripleCandidates = promoteTriplesToCandidates(vault, cfg);
+  allCandidates.push(...tripleCandidates);
 
   // Apply schema-fit gate
   const pendingPath = join(vault, '.circadia', 'pending.jsonl');

@@ -173,12 +173,12 @@ works in TypeScript and uses Mastra as their agent framework.
 - [x] **`circadia extract [--note id] [--stale-only]`** fills
       `.circadia/triples/<noteId>.jsonl`, and skips passages whose `contentHash` already
       has triples from the same model.
-- [ ] **Synonym edges between phrases.** Add a `synonym`/`similar` edge when embedding
+- [x] **Synonym edges between phrases.** Add a `synonym`/`similar` edge when embedding
       cosine is at least θ (HippoRAG's synonymy edges), weighted by similarity.
 - [ ] **Recognition-memory seed filter** (HippoRAG 2). Match the query against triples by
       embedding, filter with a cheap LLM check, and seed from the surviving triples'
       phrases and passages.
-- [ ] **Promotion path.** High-confidence triples about entities can be proposed to
+- [x] **Promotion path.** High-confidence triples about entities can be proposed to
       consolidation as candidate facts; they still go through the gate.
 
 **Acceptance**
