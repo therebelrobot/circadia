@@ -4,11 +4,15 @@ import { existsSync, mkdirSync, writeFileSync, readdirSync, copyFileSync } from 
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CONFIG_FILENAME, DEFAULT_CONFIG, loadConfig } from '../config.ts';
-import { buildIndex, parseVault, buildResolver } from '../index/indexer.ts';
+import { buildIndex, incrementalIndex, parseVault, buildResolver, embedPassages } from '../index/indexer.ts';
 import { recall, renderForContext } from '../retrieval/recall.ts';
+import { createEmbeddingsClient } from '../retrieval/embeddings.ts';
+import { relate } from '../retrieval/relate.ts';
+import { timeline } from '../retrieval/timeline.ts';
 import { parseInstant } from '../vault/time.ts';
-import type { Problem, QueryMode } from '../types.ts';
+import type { GraphMode, Problem, QueryMode } from '../types.ts';
 import { getMeta, openIndex } from '../index/db.ts';
+import { watchVault } from './watch.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');
@@ -19,14 +23,20 @@ usage: palimpsest <command> [options]
 
 commands
   init <dir>            scaffold a new vault (folders, config, templates, _meta docs)
-  index                 rebuild the derived index from the vault
+  index                 index the vault (incremental; --full for a full rebuild)
+  watch                 watch the vault and reindex on change (Ctrl-C to stop)
   lint                  check the vault against docs/SCHEMA.md (exit 1 on errors)
   recall <query…>       retrieve passages for a cue
+  relate <a> <b>        shortest paths between two notes (default mode: typed)
+  timeline <entity>     every fact about an entity, ordered by world time
   stats                 show index statistics
 
 options
   --vault <dir>         vault root (default: current directory)
+  --full                (index) force a full rebuild instead of incremental
+  --poll                (watch) poll for changes every 2 s instead of fs.watch
   --mode <m>            recall mode: wikilink | typed | hipporag | auto
+                        (relate) graph mode: wikilink | typed | hipporag
   --as-of <date>        recall as of YYYY[-MM[-DD]] or ISO datetime (bi-temporal)
   --top <n>             max hits (default from config)
   --budget <tokens>     token budget for returned passages
@@ -130,7 +140,7 @@ function cmdStats(vault: string): void {
   }
 }
 
-export function main(argv: string[]): number {
+export async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
   if (!args.cmd || args.flags.has('help')) {
     console.log(HELP);
@@ -147,20 +157,42 @@ export function main(argv: string[]): number {
     }
     case 'index': {
       const cfg = loadConfig(vault);
-      const r = buildIndex(vault, cfg);
-      if (json) console.log(JSON.stringify({ stats: r.stats, problems: r.problems }, null, 2));
+      const r = args.flags.has('full') ? buildIndex(vault, cfg) : incrementalIndex(vault, cfg);
+      // best-effort embeddings: a down server must not fail the index
+      let embedded: number | null = null;
+      if (cfg.embeddings.provider === 'http') {
+        try {
+          const res = await embedPassages(join(vault, cfg.index.path), cfg);
+          embedded = res.embedded;
+        } catch (e) {
+          console.error(`warning: embedding failed, continuing text-only: ${(e as Error).message}`);
+        }
+      }
+      if (json) console.log(JSON.stringify({ stats: r.stats, problems: r.problems, embedded }, null, 2));
       else {
         const s = r.stats;
         console.log(
-          `indexed ${s.notes} notes, ${s.passages} passages in ${s.ms} ms (keyword: ${s.fts ? 'fts5' : 'bm25-js'})\n` +
-            `extraction: ${Object.entries(s.byExtraction).map(([k, v]) => `${k}=${v}`).join(' ')}\n` +
-            `edges: ${Object.entries(s.edges).map(([k, v]) => `${k}=${v}`).join(' ')}` +
-            (s.placeholders ? `\nunresolved link targets: ${s.placeholders}` : '') +
-            (s.phrases ? `\nphrase nodes: ${s.phrases}` : ''),
+          `indexed ${s.notes} notes, ${s.passages} passages in ${s.ms} ms (keyword: ${s.fts ? 'fts5' : 'bm25-js'})` +
+          (embedded !== null ? `, embedded ${embedded} passage(s)` : '') + '\n' +
+          `extraction: ${Object.entries(s.byExtraction).map(([k, v]) => `${k}=${v}`).join(' ')}\n` +
+          `edges: ${Object.entries(s.edges).map(([k, v]) => `${k}=${v}`).join(' ')}` +
+          (s.placeholders ? `\nunresolved link targets: ${s.placeholders}` : '') +
+          (s.phrases ? `\nphrase nodes: ${s.phrases}` : ''),
         );
         const errs = r.problems.filter((p) => p.severity === 'error');
         if (errs.length || warnings) printProblems(r.problems, warnings);
       }
+      return 0;
+    }
+    case 'watch': {
+      const cfg = loadConfig(vault);
+      console.log(`watching ${vault} (Ctrl-C to stop)`);
+      const handle = watchVault(vault, cfg, { poll: args.flags.has('poll') });
+      process.on('SIGINT', () => {
+        console.log('\nwatch: stopping');
+        handle.abort();
+        process.exit(0);
+      });
       return 0;
     }
     case 'lint': {
@@ -185,12 +217,24 @@ export function main(argv: string[]): number {
       const mode = str(args.flags, 'mode') as QueryMode | undefined;
       const top = str(args.flags, 'top');
       const budget = str(args.flags, 'budget');
+      // best-effort query embedding: a down server must not fail the recall
+      let queryEmbedding: Float32Array | undefined;
+      if (cfg.embeddings.provider === 'http') {
+        try {
+          const client = createEmbeddingsClient(cfg.embeddings);
+          const [v] = await client.embed([{ id: 'query', text: query }]);
+          queryEmbedding = v.embedding;
+        } catch (e) {
+          console.error(`warning: embedding failed, continuing text-only: ${(e as Error).message}`);
+        }
+      }
       const r = recall(vault, cfg, query, {
         mode,
         asOf,
         topK: top ? Number(top) : undefined,
         tokenBudget: budget ? Number(budget) : undefined,
         logAccess: !args.flags.has('no-log'),
+        queryEmbedding,
       });
       if (json) console.log(JSON.stringify(r, null, 2));
       else if (args.flags.has('context')) console.log(renderForContext(r));
@@ -201,20 +245,82 @@ export function main(argv: string[]): number {
           const c = h.components;
           console.log(
             `\n${i + 1}. ${h.title}${h.heading && h.heading !== h.title ? ' › ' + h.heading : ''}  [${h.path}]  trust=${h.trust}\n` +
-              `   score ${h.score.toFixed(3)} (graph ${c.graph.toFixed(2)} · activation ${c.activation.toFixed(2)} · importance ${c.importance.toFixed(2)})\n` +
-              h.text
-                .split('\n')
-                .slice(0, 4)
-                .map((l) => `   │ ${l}`)
-                .join('\n'),
+            `   score ${h.score.toFixed(3)} (graph ${c.graph.toFixed(2)} · activation ${c.activation.toFixed(2)} · importance ${c.importance.toFixed(2)})\n` +
+            h.text
+              .split('\n')
+              .slice(0, 4)
+              .map((l) => `   │ ${l}`)
+              .join('\n'),
           );
         });
         if (r.hits.length === 0) console.log('\n(no hits)');
       }
       return 0;
     }
+    case 'relate': {
+      const a = args.pos[0];
+      const b = args.pos[1];
+      if (!a || !b) throw new Error('relate needs two note names');
+      const cfg = loadConfig(vault);
+      const modeRaw = str(args.flags, 'mode');
+      if (modeRaw && !['wikilink', 'typed', 'hipporag'].includes(modeRaw)) {
+        throw new Error(`--mode must be wikilink, typed, or hipporag (got "${modeRaw}")`);
+      }
+      const { db } = openIndex(join(vault, cfg.index.path));
+      try {
+        if (getMeta(db, 'schema_version') === null) throw new Error('no index — run `palimpsest index`');
+        const r = relate(db, a, b, cfg, { mode: modeRaw as GraphMode | undefined });
+        if (json) {
+          console.log(JSON.stringify(r, null, 2));
+        } else if (!r.found) {
+          console.log(`no path from ${r.from} to ${r.to} within the depth limit`);
+        } else {
+          for (const p of r.paths) {
+            console.log(p.nodes.join(' → '));
+            for (const e of p.edges) {
+              console.log(`   ${e.src} —[${e.origin}:${e.type}]→ ${e.dst}${e.provenance ? `  src: ${e.provenance}` : ''}${e.fact_id ? `  ^${e.fact_id}` : ''}`);
+            }
+          }
+        }
+        return 0;
+      } finally {
+        db.close();
+      }
+    }
+    case 'timeline': {
+      const entity = args.pos[0];
+      if (!entity) throw new Error('timeline needs an entity name');
+      const cfg = loadConfig(vault);
+      const { db } = openIndex(join(vault, cfg.index.path));
+      try {
+        if (getMeta(db, 'schema_version') === null) throw new Error('no index — run `palimpsest index`');
+        const rows = timeline(db, entity, cfg);
+        if (json) {
+          console.log(JSON.stringify(rows, null, 2));
+        } else if (rows.length === 0) {
+          console.log(`no facts about ${entity}`);
+        } else {
+          for (const t of rows) {
+            const when = t.valid_from !== null ? new Date(t.valid_from).toISOString().slice(0, 10) : '…';
+            const end = t.valid_to !== null ? `..${new Date(t.valid_to).toISOString().slice(0, 10)}` : '..';
+            const mark = t.status === 'superseded' ? ' ~~' : t.status === 'historical' ? ' (ended)' : '';
+            console.log(`${when} ${end}  ${t.predicate} ${t.object}${mark}  [${t.status}]`);
+            console.log(`   in ${t.noteTitle ?? t.subject}${t.inverse ? ' (inverse)' : ''}${t.provenance ? `  src: ${t.provenance}` : ''}${t.fact_id ? `  ^${t.fact_id}` : ''}`);
+          }
+        }
+        return 0;
+      } finally {
+        db.close();
+      }
+    }
     case 'stats': {
       cmdStats(vault);
+      return 0;
+    }
+    case 'mcp': {
+      const mcpModule = await import('../mcp/server.ts');
+      console.log(`starting MCP server for vault at ${vault}`);
+      await mcpModule.runServer(vault);
       return 0;
     }
     default:
@@ -225,11 +331,12 @@ export function main(argv: string[]): number {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try {
-    process.exitCode = main(process.argv.slice(2));
-  } catch (e) {
-    console.error(`error: ${(e as Error).message}`);
-    process.exitCode = 2;
-  }
+  main(process.argv.slice(2))
+    .then((code) => {
+      process.exitCode = code;
+    })
+    .catch((e) => {
+      console.error(`error: ${(e as Error).message}`);
+      process.exitCode = 2;
+    });
 }
-

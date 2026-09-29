@@ -138,7 +138,7 @@ vault/*.md ──walk──▶ parseNote ──▶ ParsedNote{passages, links, f
                                           │
                      extractionModeFor ───┤  (frontmatter > scopes > default)
                                           ▼
-                                   buildIndex (full rebuild)
+                                   buildIndex (full) / incrementalIndex (diff)
                      nodes: note | passage | placeholder | phrase
                      edges: contains | link | fact | provenance | triple | synonym
                      names: id / alias / title → note

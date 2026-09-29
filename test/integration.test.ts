@@ -92,16 +92,16 @@ test('security: trustFloor=medium drops low-trust passages entirely', () => {
   assert.ok(!r.hits.some((h) => h.trust === 'low'));
 });
 
-test('cli: init creates a lint-clean vault; lint fails on a broken note', () => {
+test('cli: init creates a lint-clean vault; lint fails on a broken note', async () => {
   const v = join(tmp, 'fresh');
   const log = console.log;
-  console.log = () => {};
+  console.log = () => { };
   try {
-    assert.equal(main(['init', v]), 0);
-    assert.equal(main(['lint', '--vault', v]), 0);
+    assert.equal(await main(['init', v]), 0);
+    assert.equal(await main(['lint', '--vault', v]), 0);
     mkdirSync(join(v, 'entities', 'people'), { recursive: true });
     writeFileSync(join(v, 'entities', 'people', 'bad.md'), '---\ntype: entity\n---\n## Facts\n- [status:: active] [by:: web]\n');
-    assert.equal(main(['lint', '--vault', v]), 1);
+    assert.equal(await main(['lint', '--vault', v]), 1);
   } finally {
     console.log = log;
   }

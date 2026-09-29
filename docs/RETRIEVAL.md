@@ -81,8 +81,17 @@ the example vault.
      Without FTS5, an in-process BM25 (k1 = 1.2, b = 0.75) is used instead.
    - Entity names: whole-word matches of note ids, aliases, and titles (at least 3
      characters) against the query, for `type: entity` notes.
-2. **Seeds.** Reciprocal-rank fusion (k = 60) of the keyword list (passage ids) and the
-   entity list (note ids).
+   - Vector (optional): when the caller supplies a query embedding
+     (`RecallOptions.queryEmbedding`; the CLI does this automatically when
+     `embeddings.provider` is `http`), the passages whose stored embeddings are
+     closest to the query, by brute-force cosine, up to `retrieval.seedLimit`.
+2. **Seeds.** Reciprocal-rank fusion (k = 60) of the keyword list (passage ids), the
+   entity list (note ids), and — when available — the vector list (passage ids).
+   Vector seeds feed the **same** RRF fusion as the other two; they are not a new
+   ranking signal, so no new score component or weight is added. Every hit still
+   carries exactly `components: { graph, activation, importance, seed }` (§4), and a
+   hit seeded only by vector similarity is explainable as "the query embedding was
+   close to this passage's embedding".
 3. **Graph.** Edges come from the mode's origins, weighted
    `originWeights[origin] × edge.weight`. For facts, `edge.weight` is `conf`. The graph is
    undirected. An edge is dropped if:
@@ -160,5 +169,22 @@ In Palimpsest:
   and pay the LLM only there.
 
 Not yet implemented, tracked in the roadmap: embedding-based synonym edges between phrases
-(HippoRAG's synonymy edges), query-to-triple matching for seed selection (HippoRAG 2's
-"recognition memory" filter), and embedding seeds.
+(HippoRAG's synonymy edges), and query-to-triple matching for seed selection (HippoRAG 2's
+"recognition memory" filter). Embedding seeds are implemented (Phase 2) as the third RRF
+list in §3.
+
+## 7. Vector seeds in detail
+
+- **Storage.** Passage embeddings are `Float32Array` bytes in `nodes.embedding`, with the
+  producing model in `nodes.embedding_model`. `palimpsest index` (and `watch`,
+  best-effort) fills them via `embedPassages()`, which only (re)embeds passages whose
+  embedding is NULL or whose model differs from `embeddings.model` — a changed passage
+  gets a fresh row with a NULL embedding, so content changes are covered.
+- **Client.** `HttpEmbeddingsClient` speaks the OpenAI-compatible `/v1/embeddings` wire
+  format (what llama.cpp's `llama-server --embedding` serves), batches by
+  `embeddings.batchSize`, sends a bearer token from `process.env[embeddings.apiKeyEnv]`
+  when set, and retries once on 429/5xx. The default endpoint is a local llama.cpp
+  server; hosted models go through OpenRouter with a non-OpenAI, non-xAI model.
+- **Scale.** Cosine is brute force over all stored passage embeddings: fine to about
+  10⁵ passages (a few hundred ms in JS on a Pi-class machine). Beyond that an ANN index
+  would be needed, which means a dependency and an ADR. See `docs/PERFORMANCE.md`.

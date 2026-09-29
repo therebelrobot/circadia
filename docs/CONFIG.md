@@ -52,13 +52,18 @@ load.
 | `retrieval.includeSuperseded` | `false` | traverse superseded fact edges |
 | `retrieval.logAccess` | `true` | append returned hits to the access log |
 
-## embeddings (Phase 2; keys reserved, not yet used)
+## embeddings
+
+Passage embeddings for vector seeds (Phase 2). With `provider: "http"`,
+`palimpsest index` embeds new/changed passages after indexing, `watch` does so
+best-effort after each reindex, and `recall` embeds the query and adds a vector
+seed list. A down server degrades to text-only recall with a warning.
 
 | key | default | meaning |
 |---|---|---|
 | `embeddings.provider` | `"none"` | `none` \| `http` |
 | `embeddings.endpoint` | `"http://127.0.0.1:8080/v1/embeddings"` | an OpenAI-compatible **wire format** endpoint, e.g. llama.cpp `llama-server --embedding` |
-| `embeddings.model` | `"nomic-embed-text"` | model name sent to the endpoint |
+| `embeddings.model` | `"nomic-embed-text"` | model name sent to the endpoint; changing it re-embeds every passage |
 | `embeddings.apiKeyEnv` | `null` | name of an env var holding a bearer token; the token itself never goes in config |
 | `embeddings.batchSize` | `32` | texts per request |
 

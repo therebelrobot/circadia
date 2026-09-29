@@ -18,19 +18,24 @@ without breaking its invariants. Read it fully before editing anything.
 ## 2. Commands
 
 ```bash
-npm test                  # node:test, ~1s. 34 tests at handoff.
+npm test                  # node:test, ~2s. 62 tests at handoff.
 npm run typecheck         # tsc --noEmit, strict + erasableSyntaxOnly
-npm run example:index     # index examples/vault (writes examples/vault/.palimpsest/index.sqlite, gitignored)
+npm run example:index     # index examples/vault (incremental; --full for a full rebuild)
+node bin/palimpsest.mjs watch --vault examples/vault   # reindex on change (Ctrl-C to stop)
 npm run example:recall -- "query"   # --no-log is baked in so the example access log stays clean
+node bin/palimpsest.mjs relate --vault examples/vault orchard-sensors pi-cluster
+node bin/palimpsest.mjs timeline --vault examples/vault orchard-sensors
+npm run benchmark         # 10k-note synthetic vault: index, incremental, recall p50/p95, RSS
 node bin/palimpsest.mjs --help
 ```
 
 ## 3. Hard constraints
 
 1. **Zero runtime dependencies.** Use Node built-ins only: `node:sqlite`, `node:crypto`,
-   `node:fs`, `node:test`, and global `fetch`. Dev dependencies stay limited to `typescript`
-   and `@types/node`. If you believe a dependency is truly needed, write an ADR in
-   `docs/decisions/` arguing for it and stop for human review.
+   `node:fs`, `node:test`, `node:http` (test mocks only), and global `fetch`. Dev
+   dependencies stay limited to `typescript` and `@types/node`. If you believe a
+   dependency is truly needed, write an ADR in `docs/decisions/` arguing for it and stop
+   for human review.
 2. **TypeScript that Node can run with type stripping.** No build step. That means:
    - Import with `.ts` extensions (`import { x } from './y.ts'`).
    - Use `import type` for type-only imports; `verbatimModuleSyntax` is on.
@@ -85,9 +90,11 @@ node bin/palimpsest.mjs --help
 | `src/extract/scope.ts` | per-note extraction mode | precedence: frontmatter > first scope rule > default |
 | `src/extract/triples.ts` | hipporag triple cache + `TripleExtractor` contract | Phase 5 implements an extractor |
 | `src/index/db.ts` | SQLite schema, FTS5 probe | bump `INDEX_SCHEMA_VERSION` on schema changes |
-| `src/index/indexer.ts` | full rebuild | incremental indexing is Phase 2 |
-| `src/retrieval/*` | keyword, PPR, ACT-R, modes, recall | `recall.ts` is the orchestrator |
-| `src/cli/main.ts` | CLI | `main(argv)` returns an exit code, so it's testable |
+| `src/index/indexer.ts` | full rebuild + incremental update + `embedPassages` | `buildIndex` (full) and `incrementalIndex` (diffs the `files` table) stay synchronous; `embedPassages` is the async follow-up |
+| `src/retrieval/*` | keyword, PPR, ACT-R, modes, recall, embeddings, relate, timeline, graph cache | `recall.ts` is the orchestrator; `graph-cache.ts` owns edge loading/filtering (`loadGraph`) shared by recall and the cache |
+| `src/cli/main.ts` | CLI | `main(argv)` is async and returns an exit code, so it's testable (`await main(...)`) |
+| `src/cli/watch.ts` | `watch` command | reindexes on change; embeds best-effort after each reindex |
+| `benchmarks/` | synthetic vault generator + benchmark runner | `npm run benchmark`; results in `docs/PERFORMANCE.md` |
 | `src/mcp/`, `src/consolidation/` | contracts only | read their READMEs |
 
 ## 6. How to make a change
@@ -104,6 +111,9 @@ node bin/palimpsest.mjs --help
    format (Context / Decision / Consequences / Status).
 5. **Sources**: if a paper, doc, or issue informed the change, add it to `docs/SOURCES.md`.
 6. Update the checkboxes in `docs/ROADMAP.md`.
+7. **Keep this file current.** When a change alters behavior, commands, the repo map, or a
+   known limitation, update the matching section of `AGENTS.md` in the same change — it is
+   the first thing the next agent reads, and a stale AGENTS.md is worse than none.
 
 ## 7. Testing expectations
 
@@ -127,13 +137,17 @@ node bin/palimpsest.mjs --help
 
 ## 9. Known limitations at handoff (all tracked in ROADMAP)
 
-- Full rebuild on every `index`. Fine to ~10⁴ notes; incremental indexing is Phase 2.
-- No embeddings yet. Seeds are keyword plus entity names only. Config keys exist; the
-  client is Phase 2.
+- `index` is incremental by default (re-parses only changed notes); `index --full` forces a
+  full rebuild. Incremental re-resolution is O(affected notes), so it stays fast well past
+  10⁴ notes (measured: 134 ms for one note on a 10k-note vault; `docs/PERFORMANCE.md`).
+- Embeddings are implemented (Phase 2) but **off by default** (`embeddings.provider:
+  "none"`). Vector seeds are brute-force cosine over stored passage embeddings — fine to
+  about 10⁵ passages; beyond that an ANN index would need an ADR for a dependency.
 - `--as-of` is exact for facts but approximate for prose: note creation stands in for
   system time, because prose edits aren't versioned in the index. Git-backed as-of is
   Phase 6.
 - The hipporag triple extractor is not implemented. The example vault ships a
   hand-written triple cache to exercise the path.
-- Recall re-reads edges from SQLite per query. Fine at the target scale; cache the
-  adjacency if profiling says so.
+- One-shot recall re-reads edges from SQLite per query. Long-running processes should
+  pass a `graphCache` (`createGraphCache(db)`) to `recall()`; it caches per
+  (mode, asOf) and self-invalidates when the index's `built_at` meta changes.

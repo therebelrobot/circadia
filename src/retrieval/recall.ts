@@ -11,12 +11,14 @@
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { Config } from '../config.ts';
-import type { EdgeOrigin, GraphMode, QueryMode, RecallHit, RecallResult, Trust } from '../types.ts';
+import type { GraphMode, QueryMode, RecallHit, RecallResult, Trust } from '../types.ts';
 import { getMeta, openIndex } from '../index/db.ts';
 import { bm25Search, ftsSearch, type KeywordHit } from './keyword.ts';
 import { MODE_ORIGINS } from './modes.ts';
-import { addEdge, makeGraph, personalizedPageRank } from './ppr.ts';
+import { personalizedPageRank } from './ppr.ts';
 import { appendAccess, baseLevel, presentationsByNode, queryHash, readAccessLog, retrievalProbability } from './activation.ts';
+import { loadGraph, TRUST_RANK, type GraphCache } from './graph-cache.ts';
+import { topKByCosine } from './embeddings.ts';
 
 export interface RecallOptions {
   mode?: QueryMode;
@@ -28,24 +30,21 @@ export interface RecallOptions {
   now?: number;
   /** override db path (tests) */
   dbPath?: string;
+  /**
+   * Embedding of the query. When provided (and the index has the embedding
+   * columns, schema v2+), a third RRF seed list is added: the passages whose
+   * stored embeddings are closest to the query. This is how a paraphrased
+   * query with no keyword overlap still finds its passage.
+   */
+  queryEmbedding?: Float32Array;
+  /**
+   * Per-mode graph cache for long-running processes (MCP server). The one-shot
+   * CLI recall does not use one.
+   */
+  graphCache?: GraphCache;
 }
 
-const TRUST_RANK: Record<Trust, number> = { low: 0, medium: 1, high: 2 };
 const RRF_K = 60;
-
-interface EdgeRow {
-  src: string;
-  dst: string;
-  origin: EdgeOrigin;
-  weight: number;
-  valid_from: number | null;
-  valid_to: number | null;
-  recorded_at: number | null;
-  expired_at: number | null;
-  trust: string | null;
-  /** creation time of the note that declares the edge */
-  declared_created: number | null;
-}
 
 interface PassageRow {
   id: string;
@@ -90,24 +89,6 @@ function rrf(lists: { via: string; ids: string[] }[]): Map<string, { score: numb
   return out;
 }
 
-function edgeAllowed(e: EdgeRow, asOf: number | null, cfg: Config): boolean {
-  if (e.trust && TRUST_RANK[e.trust as Trust] < TRUST_RANK[cfg.retrieval.trustFloor]) return false;
-  if (asOf === null) {
-    // "now": drop superseded beliefs unless asked for; keep ended-but-true history
-    return cfg.retrieval.includeSuperseded || e.expired_at === null;
-  }
-  // system time: what was recorded and not yet superseded at asOf.
-  // Edges declared by notes that didn't exist yet are invisible (prose links carry no
-  // time of their own, so note creation is the best available system time for them).
-  if (e.declared_created !== null && e.declared_created > asOf) return false;
-  if (e.recorded_at !== null && e.recorded_at > asOf) return false;
-  if (e.expired_at !== null && e.expired_at <= asOf && !cfg.retrieval.includeSuperseded) return false;
-  // world time: what was true at asOf
-  if (e.valid_from !== null && e.valid_from > asOf) return false;
-  if (e.valid_to !== null && e.valid_to <= asOf) return false;
-  return true;
-}
-
 interface RungResult {
   hits: RecallHit[];
   margin: number;
@@ -123,23 +104,9 @@ function runRung(
   presentations: Map<string, number[]>,
   topK: number,
   tokenBudget: number,
+  graphCache?: GraphCache,
 ): RungResult {
-  const origins = MODE_ORIGINS[mode];
-  const placeholders = origins.map(() => '?').join(',');
-  const edges = db
-    .prepare(
-      `SELECT e.src, e.dst, e.origin, e.weight, e.valid_from, e.valid_to, e.recorded_at, e.expired_at, e.trust,
-              n.created AS declared_created
-       FROM edges e LEFT JOIN nodes n ON n.id = e.declared_in
-       WHERE e.dst IS NOT NULL AND e.origin IN (${placeholders})`,
-    )
-    .all(...origins) as unknown as EdgeRow[];
-
-  const g = makeGraph();
-  for (const e of edges) {
-    if (!edgeAllowed(e, asOf, cfg)) continue;
-    addEdge(g, e.src, e.dst, (cfg.graph.originWeights[e.origin] ?? 1) * e.weight);
-  }
+  const g = graphCache?.getGraph(mode, asOf, cfg) ?? loadGraph(db, mode, asOf, cfg);
 
   const ppr = personalizedPageRank(g, seeds, {
     damping: cfg.graph.damping,
@@ -223,10 +190,25 @@ export function recall(vaultRoot: string, cfg: Config, query: string, opts: Reca
     const kw: KeywordHit[] =
       backend === 'fts5' ? ftsSearch(db, query, cfg.retrieval.seedLimit) : bm25Search(db, query, cfg.retrieval.seedLimit);
     const entities = cueEntities(db, query);
-    const fused = rrf([
+    const lists: { via: string; ids: string[] }[] = [
       { via: 'keyword', ids: kw.map((k) => k.passageId) },
       { via: 'entity', ids: entities },
-    ]);
+    ];
+    // vector seeds: brute-force cosine over stored passage embeddings. They feed
+    // the same RRF fusion as keyword/entity seeds, so no new score component is
+    // needed — the existing { graph, activation, importance, seed } stays complete.
+    if (opts.queryEmbedding) {
+      const version = Number(getMeta(db, 'schema_version') ?? 0);
+      if (version >= 2) {
+        const rows = db
+          .prepare(`SELECT id, embedding FROM nodes WHERE kind = 'passage' AND embedding IS NOT NULL`)
+          .all() as { id: string; embedding: Uint8Array }[];
+        const candidates = rows.map((r) => ({ id: r.id, embedding: new Float32Array(new Uint8Array(r.embedding).buffer) }));
+        const top = topKByCosine(opts.queryEmbedding, candidates, cfg.retrieval.seedLimit);
+        if (top.length > 0) lists.push({ via: 'vector', ids: top.map((t) => t.id) });
+      }
+    }
+    const fused = rrf(lists);
     const seeds = new Map([...fused.entries()].map(([id, v]) => [id, v.score]));
 
     // ACT-R presentations: encoding time + logged accesses
@@ -262,7 +244,7 @@ export function recall(vaultRoot: string, cfg: Config, query: string, opts: Reca
     let result: RungResult = { hits: [], margin: 0 };
     for (let i = 0; i < ladder.length; i++) {
       modeUsed = ladder[i];
-      result = runRung(db, cfg, modeUsed, seeds, asOf, activationNow, presentations, topK, tokenBudget);
+      result = runRung(db, cfg, modeUsed, seeds, asOf, activationNow, presentations, topK, tokenBudget, opts.graphCache);
       if (modeRequested !== 'auto' || i === ladder.length - 1) break;
       const a = cfg.graph.query.auto;
       const reasons: string[] = [];

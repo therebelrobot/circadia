@@ -40,7 +40,7 @@ The design is grounded in cognitive neuroscience. Each mechanism maps to a findi
 
 ## Status
 
-**Phase 1 (this scaffold) is done and tested.** It includes:
+**Phases 1 and 2 are done and tested.** Phase 1 includes:
 
 - Vault schema v1: [`docs/SCHEMA.md`](docs/SCHEMA.md)
   - inline typed facts in entity notes
@@ -59,10 +59,16 @@ The design is grounded in cognitive neuroscience. Each mechanism maps to a findi
   5. token budget
   6. `--as-of` time travel
 - Untrusted-content fencing for low-trust recall.
-- An example vault that exercises every feature, 34 tests, and a clean strict typecheck.
+- An example vault that exercises every feature, 62 tests, and a clean strict typecheck.
 
-**Next:** Phase 2 adds incremental indexing and embeddings. Phase 3 adds the MCP server and
-episode writing. Phase 4 adds consolidation. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+**Phase 2:** incremental indexing (re-parse only changed notes, drop removed files,
+re-resolve edges when aliases change), `palimpsest watch` (recursive `fs.watch` with a
+500 ms debounce, or `--poll`), embeddings (OpenAI-compatible HTTP client, vector
+storage, vector seeds for paraphrased queries), `relate` and `timeline` query commands,
+a per-mode graph cache for long-running processes, and a benchmark script
+([`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)). `index` is incremental by default;
+`index --full` forces a full rebuild. Phase 3 adds the MCP server and episode writing.
+Phase 4 adds consolidation. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Quick start
 
@@ -70,9 +76,10 @@ Requires **Node ≥ 22.18**. `node:sqlite` is built in and TypeScript runs nativ
 
 ```bash
 npm install                 # dev-only: typescript + @types/node for `npm run typecheck`
-npm test                    # 34 tests
+npm test                    # 62 tests
 npm run example:index       # build the example vault's index
 npm run example:recall -- "where does the orchard collector run"
+npm run benchmark           # 10k-note synthetic vault: index, incremental, recall latency
 ```
 
 Or use the CLI directly:
@@ -80,10 +87,14 @@ Or use the CLI directly:
 ```bash
 node bin/palimpsest.mjs init ~/memory            # scaffold a vault
 node bin/palimpsest.mjs lint   --vault ~/memory  # check against the schema
-node bin/palimpsest.mjs index  --vault ~/memory  # rebuild the derived index
+node bin/palimpsest.mjs index  --vault ~/memory  # index the vault (incremental)
+node bin/palimpsest.mjs index  --full --vault ~/memory  # force a full rebuild
+node bin/palimpsest.mjs watch  --vault ~/memory  # reindex on change (Ctrl-C to stop)
 node bin/palimpsest.mjs recall --vault ~/memory "what did we decide about the collector"
 node bin/palimpsest.mjs recall --vault ~/memory --as-of 2026-07 "where did it run"
 node bin/palimpsest.mjs recall --vault ~/memory --context "drip timing"   # LLM-ready output
+node bin/palimpsest.mjs relate --vault ~/memory orchard-sensors pi-cluster  # shortest paths
+node bin/palimpsest.mjs timeline --vault ~/memory orchard-sensors          # fact history
 node bin/palimpsest.mjs stats  --vault ~/memory
 ```
 
@@ -137,7 +148,7 @@ src/
   types.ts                 shared types
   config.ts                config defaults, loading, validation
   vault/                   frontmatter subset, time, wikilinks, fact grammar, note parser, walker
-  index/                   SQLite schema + full-rebuild indexer
+  index/                   SQLite schema + full-rebuild and incremental indexer
   extract/                 extraction-scope selection, hipporag triple cache + extractor contract
   retrieval/               keyword (FTS5/BM25), PPR, ACT-R, mode ladder, recall, context rendering
   cli/main.ts              CLI

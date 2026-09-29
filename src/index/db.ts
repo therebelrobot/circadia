@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const INDEX_SCHEMA_VERSION = 1;
+export const INDEX_SCHEMA_VERSION = 2;
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS nodes (
   extraction_why  TEXT,
   tags            TEXT,            -- JSON array
   content_hash    TEXT,            -- passages: sha of text, for triple-cache staleness
-  trust           TEXT             -- high|medium|low: source-monitoring label used at recall
+  trust           TEXT,            -- high|medium|low: source-monitoring label used at recall
+  embedding       BLOB,            -- Phase 2: Float32Array bytes (passages only)
+  embedding_model TEXT             -- Phase 2: model that produced the embedding
 );
 CREATE INDEX IF NOT EXISTS nodes_note ON nodes(note_id);
 CREATE INDEX IF NOT EXISTS nodes_kind ON nodes(kind);
@@ -39,6 +41,13 @@ CREATE TABLE IF NOT EXISTS names (
   node_id TEXT NOT NULL,
   tier    INTEGER NOT NULL,        -- 0 id, 1 alias, 2 title
   PRIMARY KEY (name, node_id)
+);
+
+-- (path, mtime, sha256) per note file; drives incremental indexing (Phase 2)
+CREATE TABLE IF NOT EXISTS files (
+  path   TEXT PRIMARY KEY,
+  mtime  REAL NOT NULL,
+  sha256 TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS edges (
@@ -89,7 +98,8 @@ export function openIndex(file: string, opts: { fresh?: boolean } = {}): IndexDb
     db.exec(`
       DROP TABLE IF EXISTS passages_fts;
       DROP TABLE IF EXISTS edges; DROP TABLE IF EXISTS names;
-      DROP TABLE IF EXISTS nodes; DROP TABLE IF EXISTS meta;`);
+      DROP TABLE IF EXISTS nodes; DROP TABLE IF EXISTS files;
+      DROP TABLE IF EXISTS meta;`);
   }
   db.exec(SCHEMA_SQL);
   const fts = probeFts5(db);

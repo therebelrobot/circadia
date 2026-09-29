@@ -25,37 +25,37 @@ works in TypeScript and uses Mastra as their agent framework.
 
 ---
 
-## Phase 2: Index maturity and embeddings
+## Phase 2: Index maturity and embeddings ✅
 
 **Deliverables**
 
-- [ ] **Incremental indexing.**
+- [x] **Incremental indexing.**
   - Store `(path, mtime, sha256)` per note in a `files` table.
   - Re-parse only changed notes; delete rows for removed files.
   - Recompute `link`/`fact` edges *into* changed notes, since resolution can change when
     aliases change.
   - Keep a full rebuild as `index --full`.
-- [ ] **`palimpsest watch`**: `fs.watch` recursive plus a 500 ms debounce, then an
+- [x] **`palimpsest watch`**: `fs.watch` recursive plus a 500 ms debounce, then an
       incremental index.
-- [ ] **Embeddings client** (`src/retrieval/embeddings.ts`).
+- [x] **Embeddings client** (`src/retrieval/embeddings.ts`).
   - Zero-dependency `fetch` to `embeddings.endpoint`, using the OpenAI-compatible
     `/v1/embeddings` wire format that llama.cpp's `llama-server --embedding` serves.
   - Batch by `embeddings.batchSize`; bearer token from `process.env[apiKeyEnv]`.
-- [ ] **Vector storage.** Add an `embedding BLOB` column (Float32Array bytes) and an
+- [x] **Vector storage.** Add an `embedding BLOB` column (Float32Array bytes) and an
       `embedding_model` column on passage nodes. Re-embed when `content_hash` or the model
       changes.
-- [ ] **Vector seeds.**
+- [x] **Vector seeds.**
   - Brute-force cosine over passages; fine to about 10⁵ passages on a Pi (~medium
     confidence; benchmark it).
   - Add a third list to RRF, `via: 'vector'`.
-- [ ] **Query commands.**
+- [x] **Query commands.**
   - `palimpsest relate <a> <b>`: shortest paths via BFS or a recursive CTE over allowed
     edges, printing the edge chain with provenance.
   - `palimpsest timeline <entity>`: every fact about the entity (and its inverses),
     ordered by `valid_from`, including superseded ones.
-- [ ] **Adjacency cache.** Keep the per-mode graph in memory between queries in
+- [x] **Adjacency cache.** Keep the per-mode graph in memory between queries in
       long-running processes (MCP server), and invalidate on reindex.
-- [ ] **Benchmark script.**
+- [x] **Benchmark script.**
   - Generate a synthetic vault of 10k notes and 50k links.
   - Report index time, recall p50/p95 per mode, and memory use.
   - Record the results in `docs/PERFORMANCE.md`.
@@ -69,40 +69,40 @@ works in TypeScript and uses Mastra as their agent framework.
 
 ---
 
-## Phase 3: MCP server and episode writing
+## Phase 3: MCP server and episode writing ✅
 
 **Deliverables**
 
-- [ ] **MCP server over stdio** (`src/mcp/`). Implement JSON-RPC 2.0 framing with no
+- [x] **MCP server over stdio** (`src/mcp/`). Implement JSON-RPC 2.0 framing with no
       dependencies; the protocol surface for tools-only servers is small. If you want
       `@modelcontextprotocol/sdk`, write an ADR first (AGENTS.md §3).
-- [ ] **Tools** (contract in `src/mcp/README.md`):
+- [x] **Tools** (contract in `src/mcp/README.md`):
   - `recall(query, mode?, as_of?, top_k?, scope?)`: returns hits rendered with
     `renderForContext()`, plus structured metadata.
   - `remember(text, session?, by?, source?)`: writes **one episode** file. It never writes
     facts.
   - `timeline(entity)` and `relate(a, b)`, from Phase 2.
   - `get_note(id)`: read-only.
-- [ ] **Event segmentation for `remember`** (`src/episodes/segment.ts`).
+- [x] **Event segmentation for `remember`** (`src/episodes/segment.ts`).
   - When `text` is a long transcript, split at topic shifts: an embedding-distance jump
     between consecutive windows above a threshold. That jump is the prediction-error
     proxy from event segmentation theory.
   - Fall back to heading or turn boundaries when there are no embeddings.
   - Each resulting episode records `boundary:`.
-- [ ] **Episode file naming.** `episodes/YYYY/MM/YYYY-MM-DD-<slug>.md`, with a
+- [x] **Episode file naming.** `episodes/YYYY/MM/YYYY-MM-DD-<slug>.md`, with a
       collision-safe suffix. Paths are always derived with `slugify()` and never taken from
       the caller.
-- [ ] **Optional `scope` on recall** (a path prefix or tag) to keep projects apart.
-- [ ] **Mastra integration example**: a Mastra agent using the MCP server through
+- [x] **Optional `scope` on recall** (a path prefix or tag) to keep projects apart.
+- [x] **Mastra integration example**: a Mastra agent using the MCP server through
       Mastra's MCP client support.
 
 **Acceptance**
 
-- The stdio server passes an MCP conformance smoke test (initialize, tools/list,
+- [x] The stdio server passes an MCP conformance smoke test (initialize, tools/list,
   tools/call).
-- `remember` with 3 topics in one transcript produces 3 episodes in a test fixture.
-- A test proves `remember` can't create or modify anything under `entities/`.
-- There is no network listener. If HTTP is added later, it must meet every item under T2 in
+- [x] `remember` with 3 topics in one transcript produces 3 episodes in a test fixture.
+- [x] A test proves `remember` can't create or modify anything under `entities/`.
+- [x] There is no network listener. If HTTP is added later, it must meet every item under T2 in
   `docs/SECURITY.md`, and have tests.
 
 ---
