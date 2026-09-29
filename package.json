@@ -1,6 +1,6 @@
 {
   "name": "circadia",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Markdown-vault agent memory with a derived, brain-inspired graph index (hippocampal indexing, spreading activation, bi-temporal facts).",
   "type": "module",
   "bin": {
