@@ -3,6 +3,9 @@
 **Agent memory that lives in a markdown vault you can read, with a derived graph index that
 retrieves the way human memory does.**
 
+> [!WARNING]
+> This repo is under active development, and should not be used in production environments until v1 is released.
+
 Circadia (from *circadian rhythm*) names the system's daily consolidation cycle: memory traces
 written today become stable facts by tomorrow. Superseded facts are struck through and kept,
 never deleted. Recalling a memory can revise it. The history under the current text stays
