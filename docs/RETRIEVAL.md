@@ -174,10 +174,32 @@ In Circadia:
   That is what "hipporag for advanced topics" means operationally: scope it by tag or path,
   and pay the LLM only there.
 
-Not yet implemented, tracked in the roadmap: embedding-based synonym edges between phrases
-(HippoRAG's synonymy edges), and query-to-triple matching for seed selection (HippoRAG 2's
-"recognition memory" filter). Embedding seeds are implemented (Phase 2) as the third RRF
-list in §3.
+## 8. Synonym edges and recognition memory
+
+Embedding-based synonym edges between phrases are now implemented in Phase 5. When two phrases
+have embedding cosine similarity at least θ (configurable), a `synonym` edge is created between
+them. This is HippoRAG's synonymy edge feature, enabling semantic similarity beyond exact text
+matches.
+
+The recognition-memory seed filter (Phase 5) matches query embeddings against cached triples,
+then uses a cheap LLM to verify triple relevance. Verified triples contribute their passage IDs
+as seeds for recall. Configuration lives under `graph.hipporag.recognitionMemory`.
+
+---
+
+## 9. Triple promotion path
+
+High-confidence triples from consolidation can be proposed as candidate facts. They go through
+the schema-fit gate before becoming facts. This is the triple promotion path.
+
+---
+
+## 10. Access-log compaction
+
+The access log (`.circadia/access.jsonl`) is compacted into per-node summaries that preserve
+access counts, encoding times, and recent access timestamps. This supports ACT-R's base-level
+activation calculation without unbounded log growth. Compaction is idempotent and can be
+triggered manually or during consolidation runs.
 
 ## 7. Vector seeds in detail
 

@@ -40,7 +40,7 @@ The design is grounded in cognitive neuroscience. Each mechanism maps to a findi
 
 ## Status
 
-**Phases 1 and 2 are done and tested.** Phase 1 includes:
+**Phases 1 through 6 are done and tested.** Phase 1 includes:
 
 - Vault schema v1: [`docs/SCHEMA.md`](docs/SCHEMA.md)
   - inline typed facts in entity notes
@@ -61,14 +61,24 @@ The design is grounded in cognitive neuroscience. Each mechanism maps to a findi
 - Untrusted-content fencing for low-trust recall.
 - An example vault that exercises every feature, 62 tests, and a clean strict typecheck.
 
-**Phase 2:** incremental indexing (re-parse only changed notes, drop removed files,
-re-resolve edges when aliases change), `circadia watch` (recursive `fs.watch` with a
-500 ms debounce, or `--poll`), embeddings (OpenAI-compatible HTTP client, vector
-storage, vector seeds for paraphrased queries), `relate` and `timeline` query commands,
-a per-mode graph cache for long-running processes, and a benchmark script
-([`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)). `index` is incremental by default;
-`index --full` forces a full rebuild. Phase 3 adds the MCP server and episode writing.
-Phase 4 adds consolidation. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+**Phase 2:** incremental indexing, `circadia watch`, embeddings, `relate` and `timeline`
+commands, per-mode graph cache, and benchmark script.
+
+**Phase 3:** MCP server with `recall`, `remember`, `timeline`, and `relate` tools;
+event segmentation for transcripts; and Mastra integration example.
+
+**Phase 4:** Consolidation ("sleep") job that replays episodes to promote facts,
+enforces the schema-fit gate, tracks superseded facts bi-temporally, and commits
+changes with a single git commit per run. Also includes `circadia review` for
+interactive handling of queued candidates.
+
+**Phase 5:** HippoRAG triple extraction, synonym edges between phrases, recognition-memory
+seed filter, and triple promotion path to consolidation.
+
+**Phase 6:** Git-backed as-of for prose, `circadia history` for note history, and
+access-log compaction for ACT-R activation.
+
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for details.
 
 ## Quick start
 

@@ -175,7 +175,7 @@ works in TypeScript and uses Mastra as their agent framework.
       has triples from the same model.
 - [x] **Synonym edges between phrases.** Add a `synonym`/`similar` edge when embedding
       cosine is at least θ (HippoRAG's synonymy edges), weighted by similarity.
-- [ ] **Recognition-memory seed filter** (HippoRAG 2). Match the query against triples by
+- [x] **Recognition-memory seed filter** (HippoRAG 2). Match the query against triples by
       embedding, filter with a cheap LLM check, and seed from the surviving triples'
       phrases and passages.
 - [x] **Promotion path.** High-confidence triples about entities can be proposed to
@@ -194,7 +194,7 @@ works in TypeScript and uses Mastra as their agent framework.
 - [x] **Git-backed as-of for prose.** When the vault is a git repo, `--as-of T` reads each
       note at the last commit ≤ T instead of current prose.
 - [x] **`circadia history <note-id>`**: show all commits for a note.
-- [ ] **Access-log compaction.** Roll old events into per-node summaries of count and
+- [x] **Access-log compaction.** Roll old events into per-node summaries of count and
       timestamps sufficient for ACT-R's optimized-learning approximation.
 
 ---
