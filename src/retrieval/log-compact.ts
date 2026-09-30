@@ -34,10 +34,16 @@ export interface NodeAccessSummary {
   accesses: number[];  // recent access timestamps (up to 10), for observability
 }
 
-/** A summaries file: the watermark plus per-node summaries. */
+/** A summaries file: the watermark, the raw-log byte offset, and per-node summaries. */
 export interface AccessSummaries {
   /** epoch ms: the summary accounts for every event with t <= watermark */
   watermark: number;
+  /**
+   * Byte offset in the raw log at the watermark. Events before it are accounted for by the
+   * summary, so recall reads only the tail from here (unless an as-of query predates the
+   * watermark). This is what makes compaction bound the per-query cost.
+   */
+  offset: number;
   nodes: Map<string, NodeAccessSummary>;
 }
 
@@ -49,10 +55,13 @@ export interface NodePresentations {
   recent: number[];
 }
 
-const SUMMARY_VERSION = 2;
+const SUMMARY_VERSION = 3;
 
-/** Compact the access log into per-node summaries. */
-export function compactAccessLog(events: AccessEvent[]): AccessSummaries {
+/**
+ * Compact the access log into per-node summaries. `offset` is the raw log's byte length at
+ * the time the events were read; it is recorded so recall can read only the tail.
+ */
+export function compactAccessLog(events: AccessEvent[], offset = 0): AccessSummaries {
   const nodes = new Map<string, NodeAccessSummary>();
   let watermark = 0;
 
@@ -85,12 +94,12 @@ export function compactAccessLog(events: AccessEvent[]): AccessSummaries {
     }
   }
 
-  return { watermark, nodes };
+  return { watermark, offset, nodes };
 }
 
-/** Load a summaries file. Returns an empty summary (watermark 0) if the file is missing. */
+/** Load a summaries file. Returns an empty summary (watermark 0, offset 0) if missing. */
 export function loadAccessSummaries(file: string): AccessSummaries {
-  const out: AccessSummaries = { watermark: 0, nodes: new Map() };
+  const out: AccessSummaries = { watermark: 0, offset: 0, nodes: new Map() };
   if (!existsSync(file)) return out;
 
   for (const line of readFileSync(file, 'utf8').split('\n')) {
@@ -99,6 +108,7 @@ export function loadAccessSummaries(file: string): AccessSummaries {
       const rec = JSON.parse(line) as Record<string, unknown>;
       if (rec.kind === 'meta' && typeof rec.watermark === 'number') {
         out.watermark = rec.watermark;
+        if (typeof rec.offset === 'number') out.offset = rec.offset;
       } else if (typeof rec.node === 'string' && typeof rec.count === 'number') {
         out.nodes.set(rec.node, rec as unknown as NodeAccessSummary);
       }
@@ -113,7 +123,7 @@ export function loadAccessSummaries(file: string): AccessSummaries {
 /** Write a summaries file. Overwrites the file entirely. */
 export function writeAccessSummaries(file: string, summaries: AccessSummaries): void {
   mkdirSync(dirname(file), { recursive: true });
-  const lines = [JSON.stringify({ kind: 'meta', version: SUMMARY_VERSION, watermark: summaries.watermark })];
+  const lines = [JSON.stringify({ kind: 'meta', version: SUMMARY_VERSION, watermark: summaries.watermark, offset: summaries.offset })];
   for (const s of summaries.nodes.values()) lines.push(JSON.stringify(s));
   writeFileSync(file, lines.join('\n') + '\n');
 }

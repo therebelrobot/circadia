@@ -205,8 +205,9 @@ the schema-fit gate before becoming facts. This is the triple promotion path.
 
 `circadia access-log compact` rolls `.circadia/access.jsonl` into per-node summaries
 (`.circadia/index-access-summaries.jsonl`). Each summary records `count`, the first
-presentation, the most recent accesses (for observability), and the file records a
-**watermark**: the timestamp up to which the summary accounts for events.
+presentation, and the most recent accesses (for observability). The file's meta line records
+a **watermark** (the timestamp up to which the summary accounts for events) and an
+**offset** (the raw log's byte length at that point).
 
 Recall does not use the summaries *instead of* the log. For each node it combines:
 
@@ -217,7 +218,9 @@ Recall does not use the summaries *instead of* the log. For each node it combine
 
 Both are filtered to `≤ asOf`. So learning continues after compaction, and `--as-of` never
 sees a future access. When `asOf` is *before* the watermark the summary is ignored entirely
-and the raw log is used, because a summary cannot un-aggregate.
+and the whole raw log is read, because a summary cannot un-aggregate. Otherwise recall reads
+only the tail from `offset` (`readAccessLogFrom`), so the per-query cost is proportional to
+the events logged since the last compaction, not to the whole log.
 
 Compaction is idempotent. It **does not rotate or truncate the raw log** — the log is the
 only non-derivable usage record and as-of queries before the watermark need it. See

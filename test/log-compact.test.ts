@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { appendAccess, baseLevel, baseLevelFromParts, optimizedLearningSum, type AccessEvent } from '../src/retrieval/activation.ts';
+import { appendAccess, baseLevel, baseLevelFromParts, optimizedLearningSum, readAccessLog, readAccessLogFrom, type AccessEvent } from '../src/retrieval/activation.ts';
 import {
   compactAccessLog,
   loadAccessSummaries,
@@ -61,6 +61,7 @@ test('C14 learning continues: post-watermark accesses flip the ranking', () => {
   // the same combination, through the summary + raw-event merge
   const summaries: AccessSummaries = {
     watermark: NOW - 10 * DAY,
+    offset: 0,
     nodes: new Map([['b', { node: 'b', count: 1, first, last: NOW - 10 * DAY, accesses: [] }]]),
   };
   const events = [ev(NOW - 5 * DAY, 'b'), ev(NOW - 1 * DAY, 'b')];
@@ -73,6 +74,7 @@ test('C14 as-of: a query before the watermark ignores later accesses', () => {
   const first = NOW - 50 * DAY;
   const summaries: AccessSummaries = {
     watermark: NOW - 10 * DAY,
+    offset: 0,
     nodes: new Map([['n', { node: 'n', count: 5, first, last: NOW - 10 * DAY, accesses: [] }]]),
   };
   const events = [ev(NOW - 30 * DAY, 'n'), ev(NOW - 5 * DAY, 'n'), ev(NOW - 1 * DAY, 'n')];
@@ -98,22 +100,50 @@ test('C14 watermark: summaries record it and presentations include only post-wat
   try {
     const file = join(dir, 'index-access-summaries.jsonl');
     const events = [ev(NOW - 15 * DAY, 'n'), ev(NOW - 5 * DAY, 'n'), ev(NOW - 1 * DAY, 'n')];
-    const summaries = compactAccessLog(events);
+    const summaries = compactAccessLog(events, 4096);
     assert.equal(summaries.watermark, NOW - 1 * DAY);
+    assert.equal(summaries.offset, 4096);
     writeAccessSummaries(file, summaries);
 
     const loaded = loadAccessSummaries(file);
     assert.equal(loaded.watermark, NOW - 1 * DAY, 'watermark survives the round-trip');
+    assert.equal(loaded.offset, 4096, 'byte offset survives the round-trip');
     assert.equal(loaded.nodes.get('n')!.count, 3);
 
     // A summary whose watermark is NOW-10d: only events after it are "recent".
     const partial: AccessSummaries = {
       watermark: NOW - 10 * DAY,
+      offset: 0,
       nodes: new Map([['n', { node: 'n', count: 1, first: NOW - 15 * DAY, last: NOW - 15 * DAY, accesses: [] }]]),
     };
     const p = presentationsForActivation(partial, events, null).get('n')!;
     assert.deepEqual(p.compacted, { count: 1, first: NOW - 15 * DAY });
     assert.deepEqual(p.recent, [NOW - 5 * DAY, NOW - 1 * DAY]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('C14 tail read: recall parses only the events appended after the offset', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'circadia-c14-tail-'));
+  try {
+    const file = join(dir, 'access.jsonl');
+    const old = [ev(NOW - 15 * DAY, 'n'), ev(NOW - 5 * DAY, 'n')];
+    const oldText = old.map((e) => JSON.stringify(e)).join('\n') + '\n';
+    writeFileSync(file, oldText);
+    const offset = Buffer.byteLength(oldText, 'utf8');
+    const summaries = compactAccessLog(old, offset);
+    assert.equal(summaries.offset, offset);
+
+    // two events appended after compaction
+    appendAccess(file, [ev(NOW - 1 * DAY, 'n'), ev(NOW - 1000, 'n')]);
+
+    const tail = readAccessLogFrom(file, summaries.offset);
+    assert.equal(tail.length, 2, 'only the appended events are parsed');
+    assert.deepEqual(tail.map((e) => e.t), [NOW - 1 * DAY, NOW - 1000]);
+
+    // nothing was deleted: the full log still has all four events
+    assert.equal(readAccessLog(file).length, 4);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -132,7 +162,7 @@ test('C14 frequency: the compacted part uses count', () => {
 
 test('C14 backward compat: with no summaries, raw events are used exactly', () => {
   const events = [ev(NOW - 3 * DAY, 'n'), ev(NOW - 1 * DAY, 'n')];
-  const p = presentationsForActivation({ watermark: 0, nodes: new Map() }, events, null).get('n')!;
+  const p = presentationsForActivation({ watermark: 0, offset: 0, nodes: new Map() }, events, null).get('n')!;
   assert.equal(p.compacted, null);
   assert.deepEqual(p.recent, [NOW - 3 * DAY, NOW - 1 * DAY]);
   const B = baseLevelFromParts(p.compacted, p.recent, NOW, D);
@@ -157,8 +187,10 @@ test('C14 end-to-end: recall learns from accesses logged after compaction', asyn
     const probe = await recall(vault, cfg, 'orchard sensors', opts);
     const target = probe.hits[0].passageId;
     const old = [NOW - 100 * DAY, NOW - 90 * DAY, NOW - 80 * DAY].map((t) => ev(t, target));
-    writeFileSync(accessFile, old.map((e) => JSON.stringify(e)).join('\n') + '\n');
-    writeAccessSummaries(summaryFile, compactAccessLog(old));
+    const oldText = old.map((e) => JSON.stringify(e)).join('\n') + '\n';
+    writeFileSync(accessFile, oldText);
+    // record the real byte offset so recall reads only the tail (the appended events)
+    writeAccessSummaries(summaryFile, compactAccessLog(old, Buffer.byteLength(oldText, 'utf8')));
 
     const before = await recall(vault, cfg, 'orchard sensors', opts);
     const a0 = before.hits.find((h) => h.passageId === target)?.components.activation;

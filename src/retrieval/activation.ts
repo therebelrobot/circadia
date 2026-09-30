@@ -19,10 +19,9 @@ export interface AccessEvent {
   session?: string;
 }
 
-export function readAccessLog(file: string): AccessEvent[] {
-  if (!existsSync(file)) return [];
+function parseAccessLines(text: string): AccessEvent[] {
   const out: AccessEvent[] = [];
-  for (const line of readFileSync(file, 'utf8').split('\n')) {
+  for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
       const e = JSON.parse(line) as AccessEvent;
@@ -32,6 +31,41 @@ export function readAccessLog(file: string): AccessEvent[] {
     }
   }
   return out;
+}
+
+export function readAccessLog(file: string): AccessEvent[] {
+  return readAccessLogWithOffset(file).events;
+}
+
+/**
+ * Read the whole access log plus the byte offset at its end. Compaction records that
+ * offset in the summaries file so recall can read only the tail (the events appended
+ * after compaction) instead of re-parsing the entire log on every query.
+ */
+export function readAccessLogWithOffset(file: string): { events: AccessEvent[]; offset: number } {
+  if (!existsSync(file)) return { events: [], offset: 0 };
+  const buf = readFileSync(file);
+  return { events: parseAccessLines(buf.toString('utf8')), offset: buf.length };
+}
+
+/**
+ * Read only the events appended after `offset` bytes. `offset` is the file size recorded
+ * at compaction, which is always a line boundary (appendAccess always terminates a line
+ * with `\n`), so no partial line is parsed. A defensive check skips a partial line if the
+ * offset ever lands mid-line.
+ */
+export function readAccessLogFrom(file: string, offset: number): AccessEvent[] {
+  if (!existsSync(file)) return [];
+  if (offset <= 0) return readAccessLog(file);
+  const buf = readFileSync(file);
+  if (offset >= buf.length) return [];
+  let start = offset;
+  if (buf[start - 1] !== 0x0a) {
+    const nl = buf.indexOf(0x0a, start);
+    if (nl === -1) return [];
+    start = nl + 1;
+  }
+  return parseAccessLines(buf.subarray(start).toString('utf8'));
 }
 
 export function appendAccess(file: string, events: AccessEvent[]): void {

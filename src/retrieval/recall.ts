@@ -17,7 +17,7 @@ import { bm25Search, ftsSearch, type KeywordHit } from './keyword.ts';
 import { findCandidateTriples, filterTriplesWithLLM, extractSeeds, HttpTripleVerifier, type TripleVerifier } from './recognition-memory.ts';
 import { MODE_ORIGINS } from './modes.ts';
 import { personalizedPageRank } from './ppr.ts';
-import { appendAccess, baseLevelFromParts, queryHash, readAccessLog, retrievalProbability } from './activation.ts';
+import { appendAccess, baseLevelFromParts, queryHash, readAccessLog, readAccessLogFrom, retrievalProbability } from './activation.ts';
 import { loadAccessSummaries, presentationsForActivation, type NodePresentations } from './log-compact.ts';
 import { loadGraph, TRUST_RANK, type GraphCache } from './graph-cache.ts';
 import { topKByCosine } from './embeddings.ts';
@@ -243,10 +243,13 @@ export async function recall(vaultRoot: string, cfg: Config, query: string, opts
     // dated before the watermark falls back to it. as-of recall evaluates activation as it
     // stood then: no future accesses, "now" = asOf.
     const accessFile = join(vaultRoot, cfg.index.accessLog);
-    const events = readAccessLog(accessFile);
     const activationNow = asOf ?? now;
     const summaryFile = join(vaultRoot, cfg.index.path.replace(/\.sqlite$/, '-access-summaries.jsonl'));
     const summaries = loadAccessSummaries(summaryFile);
+    // Only an as-of query dated before the watermark needs the whole log; otherwise read
+    // the tail from the summary's byte offset, so compaction bounds the per-query cost.
+    const useSummary = asOf === null || asOf >= summaries.watermark;
+    const events = useSummary ? readAccessLogFrom(accessFile, summaries.offset) : readAccessLog(accessFile);
     const presentations = presentationsForActivation(summaries, events, asOf);
 
     // 3–5 on the mode ladder

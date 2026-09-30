@@ -504,15 +504,15 @@ export async function main(argv: string[]): Promise<number> {
         const cfg = loadConfig(vault);
         const accessFile = join(vault, cfg.index.accessLog);
         const { compactAccessLog, writeAccessSummaries } = await import('../retrieval/log-compact.ts');
-        const { readAccessLog } = await import('../retrieval/activation.ts');
+        const { readAccessLogWithOffset } = await import('../retrieval/activation.ts');
 
-        const events = readAccessLog(accessFile);
-        const summaries = compactAccessLog(events);
+        const { events, offset } = readAccessLogWithOffset(accessFile);
+        const summaries = compactAccessLog(events, offset);
         const summaryFile = join(vault, cfg.index.path.replace(/\.sqlite$/, '-access-summaries.jsonl'));
         writeAccessSummaries(summaryFile, summaries);
 
         console.log(`compacted ${events.length} events into ${summaries.nodes.size} node summaries`);
-        console.log(`watermark ${new Date(summaries.watermark).toISOString()} (raw log retained; see ADR-0009)`);
+        console.log(`watermark ${new Date(summaries.watermark).toISOString()}, offset ${summaries.offset} bytes (raw log retained; see ADR-0009)`);
         console.log(`summaries written to ${summaryFile}`);
         return 0;
       } else {
