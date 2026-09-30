@@ -108,13 +108,19 @@ export async function consolidate(
 
   // --- Candidate collection ------------------------------------------------------
   const allCandidates: Candidate[] = [];
+  let droppedCandidates = 0;
   for (const ep of episodes) {
     if (cfg.extraction.provider === 'none') {
       // Without extraction, skip candidate generation
       continue;
     }
-    const candidates = await extractCandidates(ep, cfg);
+    const { candidates, dropped } = await extractCandidates(ep, cfg);
+    droppedCandidates += dropped;
     allCandidates.push(...candidates);
+  }
+  if (droppedCandidates > 0) {
+    // Surface invalid model output instead of silently discarding it (C11).
+    console.warn(`warning: candidate.invalid-items dropped ${droppedCandidates} invalid candidate(s)`);
   }
 
   // Triple-cache candidates (Phase 5). Only passages whose contentHash changed since the
