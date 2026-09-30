@@ -47,6 +47,12 @@ export interface DreamLog {
   night: string;
   /** the seeded LCG seed, derived from the night's local date only */
   seed: number;
+  /**
+   * Epoch ms the pass first ran for this night. A re-run reuses it for the recent-side
+   * scoring window, so the same pairs are sampled even hours later (RFC-0001
+   * "Determinism and idempotence").
+   */
+  ranAt: number;
   model: string;
   report: SleepReport;
   fragments: DreamFragment[];

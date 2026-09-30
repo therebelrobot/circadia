@@ -91,7 +91,9 @@ under `.circadia/dreams/`.
   `consolidate --dream` runs the pass only when `dreaming.enabled` is true, so the timer
   can stay installed while the feature is toggled in config.
 - With `extraction.provider: none`, the pass is skipped with a clear message. The sleep
-  report records it, and `wake` reports that no dreaming happened.
+  report records it, and `wake` reports that no dreaming happened. `--sample-only` is the
+  exception: it still samples and prints with no model, because its whole purpose is a
+  free preview of the sampler.
 - With no index, the pass errors the same way `recall` does.
 
 1. **Recent side.** The notes with the highest ACT-R activation over the last
@@ -118,7 +120,9 @@ under `.circadia/dreams/`.
    `null` is the normal, expected answer. The prompt never asks for facts or predicates.
 4. **Ground.** `quote_a` and `quote_b` must each appear verbatim (after whitespace
    normalization) in the passage they cite, be at least 12 characters, and differ from
-   each other. Anything else is pruned.
+   each other. The model's free-text `gist` is capped at 200 characters. Anything else is
+   pruned. The cap matters because a trusted note that itself contains injection text can
+   have its quote pass the grounding check while the model's summary is kept.
 5. **Score.** `salience = hopsNorm × confidence × activationNorm`, so a surprising link
    about something current rises to the top. Each factor is in [0, 1]:
    - `hopsNorm = min(hops, 6) / 6`, where unreachable counts as 6;
@@ -136,10 +140,17 @@ something that changes on reindex, such as the index's `built_at`, would draw ne
 a re-run. Candidate ids are `d-<night>-<hash(a, b)>`, and a re-run skips any id already
 present, so re-running a night appends nothing new. The seed is recorded in the log.
 
+The recent side is scored at a point in time, so a manual re-run hours later would
+otherwise pick different notes and add new pairs (ids stop duplicates, not new pairs). The
+log therefore records `ranAt`, the epoch ms the pass first ran for that night, and a
+re-run that finds the night's log reuses it for the recent-side scoring window. The real
+clock still governs TTL deletion.
+
 **Dry run.** `--dry-run` builds the same log and candidate lines in memory, prints them,
 and writes nothing, following consolidation's staged change set (C7). It does call the
 model; "dry" means no writes, not no calls. `--sample-only` prints the sampled pairs and
-makes no model calls, for tuning the sampler for free. A re-run of a night samples the
+makes no model calls, for tuning the sampler for free; it works even with
+`extraction.provider: none`, since it never needs a model. A re-run of a night samples the
 same pairs, but the model may answer differently. Candidate ids make that harmless, and
 the log records the model id and seed.
 
@@ -371,7 +382,10 @@ long-term memory as if they were true. Each control maps to a threat in
 - **No laundering (T1).** Notes below `dreaming.trustFloor` are never sampled, so a web
   clipping can't be paired with a trusted note and ride its credibility. Passage text is
   fenced with the escaping fix from the remediation, so a passage can't close its fence.
-- **Grounding.** A proposal is kept only if its quotes exist in the cited passages.
+- **Grounding.** A proposal is kept only if its quotes exist in the cited passages, and
+  the model's `gist` is at most 200 characters. The cap stops a trusted note that itself
+  contains injection text from having its quote pass grounding while the model's summary
+  is kept.
 - **Fenced output.** `wake` output is `<untrusted-data>`; dream edges are `trust: low`.
 - **No false familiarity.** The pass never logs access.
 - **Forgetting is real.** Dream state is never committed; the log is deleted on read.
@@ -467,6 +481,15 @@ Dreaming becomes **Phase 8** on the roadmap. Each stage is one PR with its gate.
    are what the eval measures, so hops come first.
 4. **Hub warnings.** Should the pass flag notes that win PageRank for unrelated queries
    (a Crick–Mitchison style report, D7)? Advisory only.
+5. **Remote side: "low mass" or "reachable but distant"?** The current rule weights
+   partners toward *low* personalized-PageRank mass. In a vault this size almost every
+   note has near-zero mass, so the weighting is close to uniform and "remote" is barely
+   different from the noise sample. A **"reachable but distant"** rule is the alternative:
+   partners between `minHops` and about 4 hops away, weighted toward *higher* mass, with
+   `noiseShare` kept for truly random partners. Nothing in the fixture can measure which
+   rule is better — the fixture plants its own candidates — so this is to be decided
+   during Stage 5, on a real vault, by the acceptance rate. The sampler is unchanged in
+   this round.
 
 ## Sources
 

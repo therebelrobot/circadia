@@ -40,6 +40,7 @@ import {
 } from './candidates.ts';
 import {
   deleteExpiredLogs,
+  readLog,
   writeLog,
   type ConsolidationReport,
   type DreamFragment,
@@ -89,6 +90,13 @@ interface Association {
   quote_b: string;
   confidence: number;
 }
+
+/**
+ * The model's free-text `gist` is capped (RFC-0001 "Ground"). A trusted note that itself
+ * contains injection text can have its quote pass the grounding check while the model's
+ * summary is kept, so the summary is bounded too.
+ */
+const MAX_GIST_CHARS = 200;
 
 interface RecentNote {
   id: string;
@@ -373,6 +381,7 @@ ${fenceData(textB, 'passage-data')}`;
 function buildLog(
   night: string,
   seed: number,
+  ranAt: number,
   cfg: Config,
   consolidation: ConsolidationReport | undefined,
   rem: RemReport,
@@ -381,6 +390,7 @@ function buildLog(
   return {
     night,
     seed,
+    ranAt,
     model: cfg.extraction.model,
     report: {
       consolidation: consolidation ?? { ran: false, episodes: 0, promoted: 0, queued: 0 },
@@ -399,6 +409,12 @@ export async function runRem(vault: string, cfg: Config, opts: RemOptions = {}):
   const night = localDateString(new Date(now));
   const seed = seedFromNight(night);
   const writes = !opts.dryRun && !opts.sampleOnly;
+
+  // A re-run of a night reuses the first run's `ranAt` for the recent-side scoring
+  // window, so the same pairs are sampled even hours later (RFC-0001 "Determinism and
+  // idempotence"). The real clock still governs TTL deletion.
+  const priorLog = readLog(vault, night);
+  const ranAt = priorLog?.ranAt ?? now;
 
   const base: RemResult = {
     ran: false,
@@ -419,11 +435,12 @@ export async function runRem(vault: string, cfg: Config, opts: RemOptions = {}):
   const check = checkDreamsIgnored(vault);
   if (!check.ok) throw new Error(`dream pass refused: ${check.reason}`);
 
-  // With no extraction model the pass is skipped; the sleep report records it.
-  if (cfg.extraction.provider === 'none') {
+  // With no extraction model the pass is skipped; the sleep report records it. But
+  // `--sample-only` is a free preview of the sampler, so it still runs with no model.
+  if (cfg.extraction.provider === 'none' && !opts.sampleOnly) {
     const skipped = 'extraction.provider is none';
     const rem: RemReport = { ran: false, samples: 0, kept: 0, pruned: 0, errors: {}, skipped };
-    const log = buildLog(night, seed, cfg, opts.consolidation, rem, []);
+    const log = buildLog(night, seed, ranAt, cfg, opts.consolidation, rem, []);
     if (writes) writeLog(vault, log);
     return { ...base, skipped, log, wrote: writes };
   }
@@ -441,7 +458,7 @@ export async function runRem(vault: string, cfg: Config, opts: RemOptions = {}):
       .filter((r) => TRUST_RANK[(r.trust ?? 'low') as Trust] >= TRUST_RANK[cfg.dreaming.trustFloor])
       .map((r) => r.id);
 
-    const recent = recentNotes(db, cfg, vault, now);
+    const recent = recentNotes(db, cfg, vault, ranAt);
     const recentSet = new Set(recent.map((r) => r.id));
     const activationById = new Map(recent.map((r) => [r.id, r.activation]));
     const acts = recent.map((r) => r.activation);
@@ -523,14 +540,19 @@ export async function runRem(vault: string, cfg: Config, opts: RemOptions = {}):
         continue;
       }
 
-      // Ground: both quotes must appear verbatim, be >= 12 chars, and differ.
+      // Ground: both quotes must appear verbatim, be >= 12 chars, and differ. A gist
+      // over MAX_GIST_CHARS is pruned too, and its text is dropped from the fragment: a
+      // trusted note that itself contains injection text can have its quote pass the
+      // grounding check while the model's summary is kept (RFC-0001 "Ground").
+      const gistTooLong = association.gist.length > MAX_GIST_CHARS;
       if (
+        gistTooLong ||
         !grounded(association.quote_a, pa.text) ||
         !grounded(association.quote_b, pb.text) ||
         normalizeWs(association.quote_a) === normalizeWs(association.quote_b)
       ) {
         pruned++;
-        fragments.push({ a, b, gist: association.gist, status: 'pruned', salience: 0 });
+        fragments.push({ a, b, gist: gistTooLong ? null : association.gist, status: 'pruned', salience: 0 });
         continue;
       }
 
@@ -564,7 +586,7 @@ export async function runRem(vault: string, cfg: Config, opts: RemOptions = {}):
     }
 
     const rem: RemReport = { ran: true, samples: pairs.length, kept, pruned, errors };
-    const log = buildLog(night, seed, cfg, opts.consolidation, rem, fragments);
+    const log = buildLog(night, seed, ranAt, cfg, opts.consolidation, rem, fragments);
 
     if (writes) {
       writeLog(vault, log);
