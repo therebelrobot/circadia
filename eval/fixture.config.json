@@ -1,0 +1,38 @@
+{
+  "graph": {
+    "defaultExtraction": "typed",
+    "scopes": [
+      {
+        "match": {
+          "tags": [
+            "deep"
+          ]
+        },
+        "extract": "hipporag"
+      }
+    ]
+  },
+  "predicates": {
+    "strict": false,
+    "defs": {
+      "runs_on": {
+        "object": "entity"
+      },
+      "maintained_by": {
+        "object": "entity"
+      },
+      "prefers": {
+        "object": "entity"
+      },
+      "status": {
+        "object": "literal"
+      },
+      "related_to": {
+        "object": "entity"
+      }
+    }
+  },
+  "retrieval": {
+    "trustFloor": "low"
+  }
+}

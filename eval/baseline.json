@@ -1,0 +1,1311 @@
+{
+  "fixtureHash": "0c50e051ad61621ff778f309078ff00adbf00103bebcf982e7aef2cb568579c3",
+  "config": {
+    "vault": {
+      "factsHeading": "Facts",
+      "historyHeading": "History",
+      "ignore": []
+    },
+    "index": {
+      "path": ".circadia/index.sqlite",
+      "accessLog": ".circadia/access.jsonl"
+    },
+    "graph": {
+      "defaultExtraction": "typed",
+      "scopes": [
+        {
+          "match": {
+            "tags": [
+              "deep"
+            ]
+          },
+          "extract": "hipporag"
+        }
+      ],
+      "hipporag": {
+        "synonymThreshold": 0.7,
+        "maxSynonymEdges": 3,
+        "recognitionMemory": {
+          "enabled": false,
+          "embeddingThreshold": 0.6,
+          "minConfidence": 0.7,
+          "topCandidates": 10
+        }
+      },
+      "query": {
+        "mode": "auto",
+        "auto": {
+          "ladder": [
+            "wikilink",
+            "typed",
+            "hipporag"
+          ],
+          "minTopMargin": 0.05,
+          "minSeeds": 2,
+          "multiEntityThreshold": 2
+        }
+      },
+      "originWeights": {
+        "contains": 1,
+        "link": 1,
+        "fact": 1.5,
+        "provenance": 0.5,
+        "triple": 1,
+        "synonym": 0.5
+      },
+      "damping": 0.5,
+      "maxIterations": 100,
+      "tolerance": 1e-8
+    },
+    "retrieval": {
+      "topK": 8,
+      "tokenBudget": 2000,
+      "seedLimit": 20,
+      "weights": {
+        "graph": 1,
+        "activation": 0.3,
+        "importance": 0.2
+      },
+      "actrDecay": 0.5,
+      "actrThresholdDays": 30,
+      "actrNoise": 1,
+      "trustFloor": "low",
+      "includeSuperseded": false,
+      "logAccess": true
+    },
+    "mcp": {
+      "logAccess": true
+    },
+    "embeddings": {
+      "provider": "none",
+      "endpoint": "http://127.0.0.1:8080/v1/embeddings",
+      "model": "nomic-embed-text",
+      "apiKeyEnv": null,
+      "batchSize": 32
+    },
+    "extraction": {
+      "provider": "none",
+      "endpoint": "http://127.0.0.1:8080/v1/chat/completions",
+      "model": "",
+      "apiKeyEnv": null
+    },
+    "predicates": {
+      "strict": false,
+      "defs": {
+        "runs_on": {
+          "object": "entity"
+        },
+        "maintained_by": {
+          "object": "entity"
+        },
+        "prefers": {
+          "object": "entity"
+        },
+        "status": {
+          "object": "literal"
+        },
+        "related_to": {
+          "object": "entity"
+        }
+      }
+    }
+  },
+  "queries": [
+    {
+      "id": "q-single-hop-pi",
+      "kind": "single-hop",
+      "split": "dev",
+      "modeUsed": "wikilink",
+      "hits": [
+        {
+          "passageId": "pi-cluster#0",
+          "rank": 1,
+          "score": 1.312421608342642,
+          "trust": "high"
+        },
+        {
+          "passageId": "pi-cluster#facts",
+          "rank": 2,
+          "score": 1.1651512370329145,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#facts",
+          "rank": 3,
+          "score": 0.8536138136818374,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#0",
+          "rank": 4,
+          "score": 0.3707333622951242,
+          "trust": "high"
+        }
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 1,
+          "3": 1,
+          "5": 1,
+          "10": 1
+        },
+        "precisionAtK": {
+          "1": 1,
+          "3": 0.3333333333333333,
+          "5": 0.2,
+          "10": 0.1
+        },
+        "mrr": 1
+      }
+    },
+    {
+      "id": "q-single-hop-soil",
+      "kind": "single-hop",
+      "split": "dev",
+      "modeUsed": "wikilink",
+      "hits": [
+        {
+          "passageId": "soil-moisture#0",
+          "rank": 1,
+          "score": 1.274844362319032,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#0",
+          "rank": 2,
+          "score": 0.8476762762772253,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-topic#0",
+          "rank": 3,
+          "score": 0.8156684153132806,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-024#0",
+          "rank": 4,
+          "score": 0.7488505130023896,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-beta-044#0",
+          "rank": 5,
+          "score": 0.7443757155213745,
+          "trust": "high"
+        },
+        {
+          "passageId": "shared-hub#0",
+          "rank": 6,
+          "score": 0.728026896876213,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-033#0",
+          "rank": 7,
+          "score": 0.7162361093586699,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-014#0",
+          "rank": 8,
+          "score": 0.7144137741565314,
+          "trust": "high"
+        }
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 1,
+          "3": 1,
+          "5": 1,
+          "10": 1
+        },
+        "precisionAtK": {
+          "1": 1,
+          "3": 0.3333333333333333,
+          "5": 0.2,
+          "10": 0.1
+        },
+        "mrr": 1
+      }
+    },
+    {
+      "id": "q-single-hop-hipporag",
+      "kind": "single-hop",
+      "split": "dev",
+      "modeUsed": "wikilink",
+      "hits": [
+        {
+          "passageId": "soil-moisture#0",
+          "rank": 1,
+          "score": 1.274844362319032,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#0",
+          "rank": 2,
+          "score": 1.107735918817812,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-topic#0",
+          "rank": 3,
+          "score": 1.0672581135146149,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-beta-052#0",
+          "rank": 4,
+          "score": 1.061142131125825,
+          "trust": "high"
+        },
+        {
+          "passageId": "pi-cluster#0",
+          "rank": 5,
+          "score": 1.0435859913206145,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-057#0",
+          "rank": 6,
+          "score": 1.0231186419911293,
+          "trust": "high"
+        },
+        {
+          "passageId": "sam#0",
+          "rank": 7,
+          "score": 1.022066511904846,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-beta-088#0",
+          "rank": 8,
+          "score": 0.9745944983125391,
+          "trust": "high"
+        }
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 1,
+          "3": 1,
+          "5": 1,
+          "10": 1
+        },
+        "precisionAtK": {
+          "1": 1,
+          "3": 0.3333333333333333,
+          "5": 0.2,
+          "10": 0.1
+        },
+        "mrr": 1
+      }
+    },
+    {
+      "id": "q-multi-hop-pref",
+      "kind": "multi-hop",
+      "split": "dev",
+      "modeUsed": "wikilink",
+      "hits": [
+        {
+          "passageId": "alpha-overview#0",
+          "rank": 1,
+          "score": 1.2640584911788857,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#facts",
+          "rank": 2,
+          "score": 1.1747410803300524,
+          "trust": "high"
+        },
+        {
+          "passageId": "sam#facts",
+          "rank": 3,
+          "score": 0.9449088847597634,
+          "trust": "high"
+        },
+        {
+          "passageId": "beta-overview#0",
+          "rank": 4,
+          "score": 0.939019847118747,
+          "trust": "high"
+        },
+        {
+          "passageId": "gamma-overview#0",
+          "rank": 5,
+          "score": 0.9337770551343607,
+          "trust": "high"
+        },
+        {
+          "passageId": "beta-overview#facts",
+          "rank": 6,
+          "score": 0.9216623056422858,
+          "trust": "high"
+        },
+        {
+          "passageId": "sam#0",
+          "rank": 7,
+          "score": 0.9101691286846288,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-011#0",
+          "rank": 8,
+          "score": 0.7978153207246306,
+          "trust": "high"
+        }
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-multi-hop-tool",
+      "kind": "multi-hop",
+      "split": "dev",
+      "modeUsed": "hipporag",
+      "hits": [
+        {
+          "passageId": "beta-overview#facts",
+          "rank": 1,
+          "score": 1.1781809443328606,
+          "trust": "high"
+        },
+        {
+          "passageId": "beta-overview#0",
+          "rank": 2,
+          "score": 1.166269880281713,
+          "trust": "high"
+        },
+        {
+          "passageId": "gamma-overview#0",
+          "rank": 3,
+          "score": 1.1058491917247137,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#0",
+          "rank": 4,
+          "score": 1.0422032993170498,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-beta-019#0",
+          "rank": 5,
+          "score": 1.013086562216622,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-gamma-026#0",
+          "rank": 6,
+          "score": 0.984495199641812,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#facts",
+          "rank": 7,
+          "score": 0.9543653659773893,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-beta-031#0",
+          "rank": 8,
+          "score": 0.9453048215099421,
+          "trust": "high"
+        }
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-temporal-world-early",
+      "kind": "temporal",
+      "split": "dev",
+      "modeUsed": "typed",
+      "hits": [
+        {
+          "passageId": "beta-overview#0",
+          "rank": 1,
+          "score": 1.303072613457089,
+          "trust": "high"
+        },
+        {
+          "passageId": "gamma-overview#0",
+          "rank": 2,
+          "score": 1.234185124853141,
+          "trust": "high"
+        },
+        {
+          "passageId": "beta-overview#facts",
+          "rank": 3,
+          "score": 1.228801792279397,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-027#0",
+          "rank": 4,
+          "score": 1.223523015235351,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-beta-072#0",
+          "rank": 5,
+          "score": 1.2041888400874656,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#facts",
+          "rank": 6,
+          "score": 1.14417150404518,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#0",
+          "rank": 7,
+          "score": 1.1323897205630449,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-090#0",
+          "rank": 8,
+          "score": 1.1231748656906713,
+          "trust": "high"
+        }
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-temporal-world-late",
+      "kind": "temporal",
+      "split": "dev",
+      "modeUsed": "hipporag",
+      "hits": [
+        {
+          "passageId": "beta-overview#facts",
+          "rank": 1,
+          "score": 1.186798411339925,
+          "trust": "high"
+        },
+        {
+          "passageId": "beta-overview#0",
+          "rank": 2,
+          "score": 1.1514349536443154,
+          "trust": "high"
+        },
+        {
+          "passageId": "gamma-overview#0",
+          "rank": 3,
+          "score": 1.1377871715311632,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-038#0",
+          "rank": 4,
+          "score": 1.1100565790447607,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#facts",
+          "rank": 5,
+          "score": 1.102574128262111,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#0",
+          "rank": 6,
+          "score": 1.0907923447799759,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-049#0",
+          "rank": 7,
+          "score": 1.0018889563325508,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-027#0",
+          "rank": 8,
+          "score": 0.9897609022776742,
+          "trust": "high"
+        }
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-temporal-system-early",
+      "kind": "temporal",
+      "split": "dev",
+      "modeUsed": "hipporag",
+      "hits": [
+        {
+          "passageId": "beta-overview#facts",
+          "rank": 1,
+          "score": 1.2101968274460437,
+          "trust": "high"
+        },
+        {
+          "passageId": "beta-overview#0",
+          "rank": 2,
+          "score": 1.1920239683698015,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-beta-019#0",
+          "rank": 3,
+          "score": 1.1132291532292313,
+          "trust": "high"
+        },
+        {
+          "passageId": "gamma-overview#0",
+          "rank": 4,
+          "score": 1.001982105980899,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-beta-009#0",
+          "rank": 5,
+          "score": 0.9416393688437465,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-038#0",
+          "rank": 6,
+          "score": 0.9090900835834591,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-090#0",
+          "rank": 7,
+          "score": 0.865887866560651,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#facts",
+          "rank": 8,
+          "score": 0.8509488786619994,
+          "trust": "high"
+        }
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 1,
+          "5": 1,
+          "10": 1
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0.3333333333333333,
+          "5": 0.2,
+          "10": 0.1
+        },
+        "mrr": 0.5
+      }
+    },
+    {
+      "id": "q-temporal-system-late",
+      "kind": "temporal",
+      "split": "dev",
+      "modeUsed": "hipporag",
+      "hits": [
+        {
+          "passageId": "beta-overview#facts",
+          "rank": 1,
+          "score": 1.1801134011239118,
+          "trust": "high"
+        },
+        {
+          "passageId": "beta-overview#0",
+          "rank": 2,
+          "score": 1.168202337072764,
+          "trust": "high"
+        },
+        {
+          "passageId": "gamma-overview#0",
+          "rank": 3,
+          "score": 1.1151034408030505,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#0",
+          "rank": 4,
+          "score": 1.086088232975664,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-beta-019#0",
+          "rank": 5,
+          "score": 1.0152609858626316,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#facts",
+          "rank": 6,
+          "score": 0.9762985048557781,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-beta-031#0",
+          "rank": 7,
+          "score": 0.9606162957418183,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-038#0",
+          "rank": 8,
+          "score": 0.9584588449101356,
+          "trust": "high"
+        }
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-preference-tea",
+      "kind": "preference",
+      "split": "dev",
+      "modeUsed": "hipporag",
+      "hits": [
+        {
+          "passageId": "sam#facts",
+          "rank": 1,
+          "score": 1.1748442903589416,
+          "trust": "high"
+        },
+        {
+          "passageId": "sam#0",
+          "rank": 2,
+          "score": 1.1619179975129212,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#facts",
+          "rank": 3,
+          "score": 1.0116933410184192,
+          "trust": "high"
+        },
+        {
+          "passageId": "tea#0",
+          "rank": 4,
+          "score": 0.33898450134257957,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-overview#0",
+          "rank": 5,
+          "score": 0.3347158759076643,
+          "trust": "high"
+        },
+        {
+          "passageId": "pi-cluster#0",
+          "rank": 6,
+          "score": 0.32766269079117943,
+          "trust": "high"
+        },
+        {
+          "passageId": "old-laptop#0",
+          "rank": 7,
+          "score": 0.19008537280747884,
+          "trust": "high"
+        },
+        {
+          "passageId": "old-laptop#facts",
+          "rank": 8,
+          "score": 0.19008537280747884,
+          "trust": "high"
+        }
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 1,
+          "10": 1
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0.2,
+          "10": 0.1
+        },
+        "mrr": 0.25
+      }
+    },
+    {
+      "id": "q-remote-2hop",
+      "kind": "remote-association-2hop",
+      "split": "dev",
+      "modeUsed": "wikilink",
+      "hits": [
+        {
+          "passageId": "alpha-topic#0",
+          "rank": 1,
+          "score": 1.17505214369602,
+          "trust": "high"
+        },
+        {
+          "passageId": "beta-topic#0",
+          "rank": 2,
+          "score": 0.8514259625527808,
+          "trust": "high"
+        },
+        {
+          "passageId": "hop-two#0",
+          "rank": 3,
+          "score": 0.8453379330632066,
+          "trust": "high"
+        },
+        {
+          "passageId": "delta-topic#0",
+          "rank": 4,
+          "score": 0.821821009467764,
+          "trust": "high"
+        },
+        {
+          "passageId": "gamma-topic#0",
+          "rank": 5,
+          "score": 0.8070143489956574,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-011#0",
+          "rank": 6,
+          "score": 0.7449747555850315,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-039#0",
+          "rank": 7,
+          "score": 0.735484140050747,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-060#0",
+          "rank": 8,
+          "score": 0.7342792139719146,
+          "trust": "high"
+        }
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 1,
+          "5": 1,
+          "10": 1
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0.3333333333333333,
+          "5": 0.2,
+          "10": 0.1
+        },
+        "mrr": 0.5
+      }
+    },
+    {
+      "id": "q-remote-3hop",
+      "kind": "remote-association-3hop",
+      "split": "dev",
+      "modeUsed": "wikilink",
+      "hits": [
+        {
+          "passageId": "gamma-topic#0",
+          "rank": 1,
+          "score": 1.1751567947294461,
+          "trust": "high"
+        },
+        {
+          "passageId": "hop-two#0",
+          "rank": 2,
+          "score": 0.8524308609082406,
+          "trust": "high"
+        },
+        {
+          "passageId": "beta-topic#0",
+          "rank": 3,
+          "score": 0.8372402850677364,
+          "trust": "high"
+        },
+        {
+          "passageId": "alpha-topic#0",
+          "rank": 4,
+          "score": 0.8279610442708284,
+          "trust": "high"
+        },
+        {
+          "passageId": "delta-topic#0",
+          "rank": 5,
+          "score": 0.8269834962329978,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-gamma-080#0",
+          "rank": 6,
+          "score": 0.804726787570889,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-gamma-014#0",
+          "rank": 7,
+          "score": 0.7817831467523002,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-gamma-015#0",
+          "rank": 8,
+          "score": 0.7711720092754262,
+          "trust": "high"
+        }
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 1,
+          "10": 1
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0.2,
+          "10": 0.1
+        },
+        "mrr": 0.2
+      }
+    },
+    {
+      "id": "q-trust-medium",
+      "kind": "trust",
+      "split": "dev",
+      "modeUsed": "wikilink",
+      "hits": [
+        {
+          "passageId": "filler-beta-027#0",
+          "rank": 1,
+          "score": 1.2315690665996397,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-012#0",
+          "rank": 2,
+          "score": 1.0593898055401645,
+          "trust": "high"
+        },
+        {
+          "passageId": "beta-overview#0",
+          "rank": 3,
+          "score": 1.048996544048733,
+          "trust": "high"
+        },
+        {
+          "passageId": "greenhouse-controller#0",
+          "rank": 4,
+          "score": 1.025403165878765,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-017#0",
+          "rank": 5,
+          "score": 1.0122673211399538,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-gamma-072#0",
+          "rank": 6,
+          "score": 1.0109421245115644,
+          "trust": "high"
+        },
+        {
+          "passageId": "beta-topic#0",
+          "rank": 7,
+          "score": 0.9767444644025834,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-061#0",
+          "rank": 8,
+          "score": 0.9658933155947816,
+          "trust": "high"
+        }
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-trust-low",
+      "kind": "trust",
+      "split": "holdout",
+      "modeUsed": "wikilink",
+      "hits": [
+        {
+          "passageId": "2026-09-10-web-clipping#0",
+          "rank": 1,
+          "score": 1.2649217797282666,
+          "trust": "low"
+        },
+        {
+          "passageId": "filler-beta-027#0",
+          "rank": 2,
+          "score": 1.085656710708894,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-012#0",
+          "rank": 3,
+          "score": 1.0646650725164106,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-017#0",
+          "rank": 4,
+          "score": 1.0593212726761705,
+          "trust": "high"
+        },
+        {
+          "passageId": "beta-overview#0",
+          "rank": 5,
+          "score": 1.0390680404198283,
+          "trust": "high"
+        },
+        {
+          "passageId": "greenhouse-controller#0",
+          "rank": 6,
+          "score": 1.025403165878765,
+          "trust": "high"
+        },
+        {
+          "passageId": "filler-alpha-061#0",
+          "rank": 7,
+          "score": 0.9822140194509484,
+          "trust": "high"
+        },
+        {
+          "passageId": "beta-topic#0",
+          "rank": 8,
+          "score": 0.9767444644025834,
+          "trust": "high"
+        }
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 1,
+          "3": 1,
+          "5": 1,
+          "10": 1
+        },
+        "precisionAtK": {
+          "1": 1,
+          "3": 0.3333333333333333,
+          "5": 0.2,
+          "10": 0.1
+        },
+        "mrr": 1
+      }
+    }
+  ],
+  "aggregates": [
+    {
+      "group": "hipporag",
+      "count": 5,
+      "recallAtK": {
+        "1": 0,
+        "3": 0.2,
+        "5": 0.4,
+        "10": 0.4
+      },
+      "precisionAtK": {
+        "1": 0,
+        "3": 0.06666666666666667,
+        "5": 0.08,
+        "10": 0.04
+      },
+      "mrr": 0.15
+    },
+    {
+      "group": "typed",
+      "count": 1,
+      "recallAtK": {
+        "1": 0,
+        "3": 0,
+        "5": 0,
+        "10": 0
+      },
+      "precisionAtK": {
+        "1": 0,
+        "3": 0,
+        "5": 0,
+        "10": 0
+      },
+      "mrr": 0
+    },
+    {
+      "group": "wikilink",
+      "count": 6,
+      "recallAtK": {
+        "1": 0.5,
+        "3": 0.6666666666666666,
+        "5": 0.8333333333333334,
+        "10": 0.8333333333333334
+      },
+      "precisionAtK": {
+        "1": 0.5,
+        "3": 0.2222222222222222,
+        "5": 0.16666666666666666,
+        "10": 0.08333333333333333
+      },
+      "mrr": 0.6166666666666667
+    },
+    {
+      "group": "multi-hop",
+      "count": 2,
+      "recallAtK": {
+        "1": 0,
+        "3": 0,
+        "5": 0,
+        "10": 0
+      },
+      "precisionAtK": {
+        "1": 0,
+        "3": 0,
+        "5": 0,
+        "10": 0
+      },
+      "mrr": 0
+    },
+    {
+      "group": "preference",
+      "count": 1,
+      "recallAtK": {
+        "1": 0,
+        "3": 0,
+        "5": 1,
+        "10": 1
+      },
+      "precisionAtK": {
+        "1": 0,
+        "3": 0,
+        "5": 0.2,
+        "10": 0.1
+      },
+      "mrr": 0.25
+    },
+    {
+      "group": "remote-association-2hop",
+      "count": 1,
+      "recallAtK": {
+        "1": 0,
+        "3": 1,
+        "5": 1,
+        "10": 1
+      },
+      "precisionAtK": {
+        "1": 0,
+        "3": 0.3333333333333333,
+        "5": 0.2,
+        "10": 0.1
+      },
+      "mrr": 0.5
+    },
+    {
+      "group": "remote-association-3hop",
+      "count": 1,
+      "recallAtK": {
+        "1": 0,
+        "3": 0,
+        "5": 1,
+        "10": 1
+      },
+      "precisionAtK": {
+        "1": 0,
+        "3": 0,
+        "5": 0.2,
+        "10": 0.1
+      },
+      "mrr": 0.2
+    },
+    {
+      "group": "single-hop",
+      "count": 3,
+      "recallAtK": {
+        "1": 1,
+        "3": 1,
+        "5": 1,
+        "10": 1
+      },
+      "precisionAtK": {
+        "1": 1,
+        "3": 0.3333333333333333,
+        "5": 0.20000000000000004,
+        "10": 0.10000000000000002
+      },
+      "mrr": 1
+    },
+    {
+      "group": "temporal",
+      "count": 4,
+      "recallAtK": {
+        "1": 0,
+        "3": 0.25,
+        "5": 0.25,
+        "10": 0.25
+      },
+      "precisionAtK": {
+        "1": 0,
+        "3": 0.08333333333333333,
+        "5": 0.05,
+        "10": 0.025
+      },
+      "mrr": 0.125
+    },
+    {
+      "group": "none",
+      "count": 6,
+      "recallAtK": {
+        "1": 0.5,
+        "3": 0.6666666666666666,
+        "5": 0.8333333333333334,
+        "10": 0.8333333333333334
+      },
+      "precisionAtK": {
+        "1": 0.5,
+        "3": 0.2222222222222222,
+        "5": 0.16666666666666666,
+        "10": 0.08333333333333333
+      },
+      "mrr": 0.6166666666666667
+    },
+    {
+      "group": "wikilink->typed",
+      "count": 1,
+      "recallAtK": {
+        "1": 0,
+        "3": 0,
+        "5": 0,
+        "10": 0
+      },
+      "precisionAtK": {
+        "1": 0,
+        "3": 0,
+        "5": 0,
+        "10": 0
+      },
+      "mrr": 0
+    },
+    {
+      "group": "wikilink->typed,typed->hipporag",
+      "count": 5,
+      "recallAtK": {
+        "1": 0,
+        "3": 0.2,
+        "5": 0.4,
+        "10": 0.4
+      },
+      "precisionAtK": {
+        "1": 0,
+        "3": 0.06666666666666667,
+        "5": 0.08,
+        "10": 0.04
+      },
+      "mrr": 0.15
+    },
+    {
+      "group": "dev",
+      "count": 12,
+      "recallAtK": {
+        "1": 0.25,
+        "3": 0.4166666666666667,
+        "5": 0.5833333333333334,
+        "10": 0.5833333333333334
+      },
+      "precisionAtK": {
+        "1": 0.25,
+        "3": 0.13888888888888887,
+        "5": 0.11666666666666665,
+        "10": 0.05833333333333333
+      },
+      "mrr": 0.37083333333333335
+    }
+  ],
+  "trustViolations": 0,
+  "absentViolations": 0,
+  "failed": false
+}

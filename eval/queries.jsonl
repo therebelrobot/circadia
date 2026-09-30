@@ -1,0 +1,14 @@
+{"id":"q-single-hop-pi","query":"pi cluster local compute","kind":"single-hop","expected_passages":["pi-cluster#0"],"split":"dev"}
+{"id":"q-single-hop-soil","query":"soil moisture sensing","kind":"single-hop","expected_passages":["soil-moisture#0"],"split":"dev"}
+{"id":"q-single-hop-hipporag","query":"capacitive sensor","kind":"single-hop","expected_passages":["soil-moisture#0"],"split":"dev"}
+{"id":"q-multi-hop-pref","query":"what does the maintainer of the alpha project prefer","kind":"multi-hop","expected_passages":["tea#0"],"split":"dev"}
+{"id":"q-multi-hop-tool","query":"which tool does the beta project run on","kind":"multi-hop","expected_passages":["greenhouse-controller#0"],"split":"dev"}
+{"id":"q-temporal-world-early","query":"what does the alpha project run on","kind":"temporal","temporal_axis":"world","as_of":"2026-03-01","expected_passages":["pi-cluster#0"],"expect_absent":["old-laptop#0"],"split":"dev"}
+{"id":"q-temporal-world-late","query":"what does the alpha project run on","kind":"temporal","temporal_axis":"world","as_of":"2026-08-01","expected_passages":["old-laptop#0"],"expect_absent":["pi-cluster#0"],"split":"dev"}
+{"id":"q-temporal-system-early","query":"what does the beta project run on","kind":"temporal","temporal_axis":"system","as_of":"2026-05-01","expected_passages":["beta-overview#0"],"expect_absent":["greenhouse-controller#0"],"split":"dev"}
+{"id":"q-temporal-system-late","query":"what does the beta project run on","kind":"temporal","temporal_axis":"system","as_of":"2026-09-15","expected_passages":["greenhouse-controller#0"],"split":"dev"}
+{"id":"q-preference-tea","query":"what does sam prefer","kind":"preference","expected_passages":["tea#0"],"expect_absent":["coffee#0"],"split":"dev"}
+{"id":"q-remote-2hop","query":"alpha topic","kind":"remote-association-2hop","expected_passages":["beta-topic#0"],"split":"dev"}
+{"id":"q-remote-3hop","query":"gamma topic","kind":"remote-association-3hop","expected_passages":["delta-topic#0"],"split":"dev"}
+{"id":"q-trust-medium","query":"drip irrigation timing","kind":"trust","expected_passages":[],"expect_absent":["2026-09-10-web-clipping#0"],"config_overrides":{"retrieval.trustFloor":"medium"},"split":"dev"}
+{"id":"q-trust-low","query":"drip irrigation timing","kind":"trust","expected_passages":["2026-09-10-web-clipping#0"],"split":"holdout"}
