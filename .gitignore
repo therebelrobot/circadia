@@ -1,4 +1,6 @@
 node_modules/
 *.log
+# OS cruft (C28)
+.DS_Store
 # derived indexes in any vault, including the example
 **/.circadia/index.sqlite*

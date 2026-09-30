@@ -53,8 +53,10 @@ works in TypeScript and uses Mastra as their agent framework.
     edges, printing the edge chain with provenance.
   - `circadia timeline <entity>`: every fact about the entity (and its inverses),
     ordered by `valid_from`, including superseded ones.
-- [x] **Adjacency cache.** Keep the per-mode graph in memory between queries in
-      long-running processes (MCP server), and invalidate on reindex.
+- [x] **Adjacency cache.** `createGraphCache(db)` keeps the per-mode graph in memory
+      between queries and self-invalidates when the index's `built_at` changes. `recall()`
+      accepts it via `graphCache`; the MCP server does not pass one yet, so it still
+      re-reads edges per query.
 - [x] **Benchmark script.**
   - Generate a synthetic vault of 10k notes and 50k links.
   - Report index time, recall p50/p95 per mode, and memory use.
@@ -145,8 +147,9 @@ works in TypeScript and uses Mastra as their agent framework.
   queues with reason `older than the current fact`, and supersession refuses to write an
   interval that ends before it starts.
 - [x] **Reconsolidation window.** Facts recalled in the same `session` as a contradicting
-      episode are prioritized for review. Recall log entries carry a session id once
-      Phase 3 lands.
+      episode are prioritized for review: the queued record is marked
+      `priority: "reconsolidation"` and `circadia review` sorts it first. Recall log
+      entries carry a session id (Phase 3 landed).
 - [x] **Reflection.**
   - When the summed `importance` of newly consolidated episodes about an entity passes a
     threshold, (re)write `schemas/<entity>-overview.md` with `derived: true` and
@@ -161,6 +164,14 @@ works in TypeScript and uses Mastra as their agent framework.
       superseded counts. `--dry-run` prints the diff instead.
 - [x] **`circadia review`**: an interactive CLI over the pending queue (accept, reject,
       edit).
+
+**Notes**
+
+- `predicates.defs` defaults to `{}`: with no predicates declared, every candidate is an
+  unknown predicate and queues — nothing auto-promotes until predicates are defined.
+- `cardinality` defaults to `many`: an unconfigured predicate accumulates objects rather
+  than treating a second object as a contradiction. Set `cardinality: "single"` only where
+  replacement makes sense (e.g. `runs_on`, `status`).
 
 **Acceptance**
 
@@ -192,9 +203,10 @@ works in TypeScript and uses Mastra as their agent framework.
 
 **Acceptance**
 
-- On an eval set of multi-hop questions (Phase 7), `hipporag` beats `typed` on
-  recall@5 for the scoped notes, and doesn't regress single-hop questions. This is HippoRAG
-  2's "no factual-recall regression" bar.
+- **Implemented; acceptance pending Phase 7.** On an eval set of multi-hop questions
+  (Phase 7), `hipporag` beats `typed` on recall@5 for the scoped notes, and doesn't regress
+  single-hop questions. This is HippoRAG 2's "no factual-recall regression" bar. The eval
+  set does not exist yet, so this criterion cannot be judged.
 
 ---
 
