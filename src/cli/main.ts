@@ -44,6 +44,7 @@ options
                         (relate) graph mode: wikilink | typed | hipporag
                         (extract) extraction mode: hipporag
   --as-of <date|ref>    recall as of YYYY[-MM[-DD]] (ISO datetime), or git ref (e.g., HEAD~3)
+  --scope <prefix|tag:name>  recall only within a path prefix or a tag (docs/RETRIEVAL.md §11)
   --stale-only          (extract) only extract triples from passages that have stale cache
   --note <id>           (extract) extract triples from a specific note
   --top <n>             max hits (default from config)
@@ -66,7 +67,7 @@ interface Args {
 export function parseArgs(argv: string[]): Args {
   const flags = new Map<string, string | true>();
   const pos: string[] = [];
-  const valued = new Set(['vault', 'mode', 'as-of', 'top', 'budget']);
+  const valued = new Set(['vault', 'mode', 'as-of', 'top', 'budget', 'scope']);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '-h') flags.set('help', true);
@@ -270,6 +271,7 @@ export async function main(argv: string[]): Promise<number> {
         topK: top ? Number(top) : undefined,
         tokenBudget: budget ? Number(budget) : undefined,
         logAccess: !args.flags.has('no-log'),
+        scope: str(args.flags, 'scope'),
         queryEmbedding,
       });
       if (json) console.log(JSON.stringify(r, null, 2));
