@@ -2,7 +2,9 @@
 //
 // It copies examples/vault to a temp dir, indexes the copy, then drives `circadia mcp`
 // through Mastra's MCPClient: list tools, call `recall`, call `remember`, and check the
-// episode landed on disk. It never touches the tracked examples/vault.
+// episode landed on disk. It then runs the Mastra Agent path against a mock
+// OpenAI-compatible chat server on 127.0.0.1, so the model wiring is exercised without a
+// live model. It never touches the tracked examples/vault.
 //
 // Run:  npm run smoke   (from examples/mastra)
 //
@@ -14,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
 import assert from 'node:assert/strict';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -40,6 +43,34 @@ const index = spawnSync(
   { encoding: 'utf8' },
 );
 assert.equal(index.status, 0, `index failed: ${index.stderr}`);
+
+// A mock OpenAI-compatible chat server. It answers /v1/chat/completions with a canned
+// assistant message, so the Agent path runs end to end with no live model.
+const mock = createServer((req, res) => {
+  let body = '';
+  req.on('data', (c) => (body += c));
+  req.on('end', () => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        id: 'chatcmpl-mock',
+        object: 'chat.completion',
+        created: Math.floor(Date.now() / 1000),
+        model: 'qwen2.5-7b-instruct',
+        choices: [
+          {
+            index: 0,
+            message: { role: 'assistant', content: 'The orchard sensors run on the pi cluster.' },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }),
+    );
+  });
+});
+await new Promise((r) => mock.listen(0, '127.0.0.1', r));
+const mockUrl = `http://127.0.0.1:${mock.address().port}/v1`;
 
 const mcp = new MCPClient({
   id: 'circadia-mastra-smoke',
@@ -72,9 +103,26 @@ try {
   assert.ok(after > before, `remember writes an episode (${before} -> ${after})`);
   assert.ok(textOf(remembered).includes('episode'), 'remember reports the episode it wrote');
 
+  // --- Agent path, against the mock model -------------------------------------------
+  const { Agent } = await import('@mastra/core/agent');
+  const agent = new Agent({
+    id: 'circadia-smoke-agent',
+    name: 'Circadia smoke agent',
+    instructions: 'Answer from memory using the recall tool.',
+    model: { id: 'custom/qwen2.5-7b-instruct', url: mockUrl },
+    tools,
+  });
+  const res = await agent.generate('What do I know about the orchard sensors?');
+  assert.ok(
+    res.text.includes('orchard sensors run on the pi cluster'),
+    `agent returned the mock model's text, got: ${JSON.stringify(res.text)}`,
+  );
+
   console.log(`smoke ok: recall returned ${recallText.length} chars; episodes ${before} -> ${after}`);
+  console.log(`smoke ok: agent (mock model) → ${res.text}`);
 } finally {
   await mcp.disconnect();
+  mock.close();
   rmSync(tmp, { recursive: true, force: true });
 }
 
