@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { CONFIG_FILENAME, DEFAULT_CONFIG, loadConfig } from '../src/config.ts';
 import { handleToolsCall } from '../src/mcp/server.ts';
 import { buildIndex } from '../src/index/indexer.ts';
+import { openIndex } from '../src/index/db.ts';
+import { createGraphCache, type GraphCache } from '../src/retrieval/graph-cache.ts';
 
 function createTestVault(): string {
   const vault = join(tmpdir(), 'circadia-mcp-test-' + Date.now());
@@ -257,5 +259,42 @@ describe('MCP recall (C16)', () => {
     const text = (res.result as { content: { text: string }[] }).content[0].text;
     assert.ok(text.includes('projects/alpha/alpha-note.md'), 'the in-scope hit must be present');
     assert.ok(!text.includes('projects/beta/beta-note.md'), 'the out-of-scope hit must be absent');
+  });
+});
+
+// Phase 2 adjacency cache: the MCP server must pass a graph cache to recall so the
+// per-mode graph is reused across calls in a long-running process.
+describe('MCP recall graph cache (Phase 2)', () => {
+  let vault: string;
+
+  beforeEach(() => {
+    vault = createRecallVault();
+  });
+
+  afterEach(() => {
+    cleanupVault(vault);
+  });
+
+  it('passes the graph cache through to recall', async () => {
+    const cfg = loadConfig(vault);
+    buildIndex(vault, cfg);
+    const { db } = openIndex(join(vault, cfg.index.path));
+    try {
+      const real = createGraphCache(db);
+      let calls = 0;
+      const spy: GraphCache = {
+        getGraph: (mode, asOf, c) => {
+          calls++;
+          return real.getGraph(mode, asOf, c);
+        },
+        invalidate: () => real.invalidate(),
+      };
+
+      const res = await handleToolsCall(vault, cfg, 'recall', { query: 'widget calibration' }, 1, spy);
+      assert.ok(res.result, 'recall must succeed');
+      assert.ok(calls > 0, 'the graph cache must be consulted');
+    } finally {
+      db.close();
+    }
   });
 });

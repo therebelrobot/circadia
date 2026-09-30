@@ -1,13 +1,14 @@
 # Circadia: remediation status
 
-Last updated 2026-09-29, at commit `79d37e9`. The original audit was taken at `c67157e`.
+Last updated 2026-09-30, at commit `591eedd`. The original audit was taken at `c67157e`.
 
 Every P0 and P1 issue from the audit is fixed, and each fix has been verified end to end:
 through the real CLI against a mock model, through the official MCP SDK client, and with
 regression tests that fail on the old code. Several further issues found during remediation
-are fixed too (§2). Five small items remain (§3). None of them affects correctness or safety.
+are fixed too (§2). The five items that remained after the first pass are now closed too
+(§3). None of them affected correctness or safety.
 
-At `79d37e9`: 175 tests pass, the typecheck is clean, the example vault lints clean, runtime
+At `591eedd`: 204 tests pass, the typecheck is clean, the example vault lints clean, runtime
 dependencies are zero, and `git grep "execSync(" src` is empty.
 
 ---
@@ -33,18 +34,18 @@ dependencies are zero, and `git grep "execSync(" src` is empty.
 | C15 | `resolveCommit` returned HEAD's timestamp | Fixed | `0a5fbc7` |
 | C16 | MCP `recall` didn't log access or pass scope/session | Fixed: `mcp.logAccess` (default on) | `6e15443` |
 | C17 | Git-backed as-of for prose not wired | Fixed: falls back to current text and says so | `e288c30` |
-| C18 | Reconsolidation window unimplemented | **Open**: see §3 | none |
+| C18 | Reconsolidation window unimplemented | Fixed: queued contradictions prioritized by session | `5c18ca3`, `95fdb0e` |
 | C19 | Recall `scope` not implemented | Fixed: path prefix or `tag:name`, CLI and MCP | `6e15443`, `b343a94` |
-| C20 | Mastra example missing | **Open**: see §3 | none |
+| C20 | Mastra example missing | Fixed: `examples/mastra/` | `5c18ca3`, `95fdb0e` |
 | C21 | Reflection missed committed human edits | Fixed: `generated_hash`, no git needed | `e288c30` |
 | C22 | Episode re-selection policy | Fixed: body-hash state; world-time supersession guard | `e288c30`, `79d37e9` |
 | C23 | Fact-id collisions, broken wikilink regex | Fixed | `3a776b5`, `6dcc2cd` |
 | C24 | `.circadia` hardcoded in 5 places | Fixed: `STATE_DIR` | `24d973b` |
 | C25 | Tests wrote stale `palimpsest` fixtures | Fixed | `24d973b` |
-| C26 | Test coverage gaps | **Mostly closed**: see §3 | many |
+| C26 | Test coverage gaps | Fixed: coverage sweep + mock-model e2e | `591eedd` |
 | C27 | Paths interpolated into shell strings | Fixed | `0a5fbc7` |
-| C28 | `src/.DS_Store` committed | **Open**: see §3 | none |
-| C29 | Roadmap overstates completion | **Open**: see §3 | none |
+| C28 | `src/.DS_Store` committed | Fixed: removed from the index; `.gitignore` | `591eedd` |
+| C29 | Roadmap overstates completion | Fixed: roadmap matches the code | `591eedd` |
 
 ## 2. Issues found during remediation (all fixed)
 
@@ -58,50 +59,44 @@ dependencies are zero, and `git grep "execSync(" src` is empty.
 | mtime-based re-selection reverted facts (from the first C22 attempt) | A vault copy re-selected old episodes; an old claim superseded a newer fact and wrote a backwards interval. Replaced with body hashes plus a world-time guard | `79d37e9` |
 | UTC dates stamped in consolidation, review and episode filenames | Evening runs west of UTC stamped tomorrow's date | `0a5fbc7`, `5b0b61d`, `8e5c00c` |
 
-## 3. Open items
+## 3. Items closed after the first pass
 
-### C18: reconsolidation window
+All five items below are now fixed. Each names the commit and the test that proves it.
 
-The roadmap (Phase 4) says facts recalled in the same `session` as a contradicting episode
-are prioritized for review. Session ids are now logged on every recall (C16), but nothing in
-`src/consolidation/` reads them.
+### C18: reconsolidation window — fixed (`5c18ca3`, `95fdb0e`)
 
-- **Implement:** when a queued contradiction's subject fact was recalled in the same
-  session as the contradicting episode, mark the pending record `priority: "reconsolidation"`
-  and sort those records first in `circadia review`. Test: a recall with `session: s1` plus
-  an episode with `session: s1` contradicting that fact produces a prioritized record; the
-  same scenario with different sessions doesn't.
-- **Or uncheck** the roadmap item and say why.
+A queued contradiction whose subject fact was recalled in the same `session` as the
+contradicting episode is marked `priority: "reconsolidation"` and sorted first by
+`circadia review`. Test: `test/reconsolidation.test.ts` (same-session prioritizes,
+different-session does not, stable sort).
 
-### C20: Mastra integration example
+### C20: Mastra integration example — fixed (`5c18ca3`, `95fdb0e`)
 
-It's checked on the roadmap, but `examples/` contains only `vault/`.
+`examples/mastra/` holds a minimal agent that connects to `circadia mcp` over stdio through
+Mastra's MCP client, calls `recall` and `remember`, and a README. Its dependencies live in
+`examples/mastra/package.json`, never in the root package.
 
-- **Implement:** `examples/mastra/` with a minimal agent that connects to `circadia mcp`
-  over stdio through Mastra's MCP client, calls `recall` and `remember`, and a README.
-  Keep its dependencies inside `examples/mastra/package.json`, never in the root package.
-- **Or uncheck** it.
+### C26: test coverage sweep — fixed (`591eedd`)
 
-### C26: test coverage sweep
+Every module under `src/` now has a direct test or a recorded indirect path. New direct
+tests: `test/segment.test.ts`, `test/graph-cache.test.ts`, `test/recognition-memory.test.ts`,
+`test/git-commit.test.ts`, `test/diff.test.ts`, `test/walk.test.ts`. The mock-model
+end-to-end scenario (§5) is now a permanent test: `test/mock-model-e2e.test.ts`.
 
-Most gaps closed as each fix added tests. Do one sweep:
-- list every module in `src/`, and for each one without a direct test, add one, or record
-  in the report why it's covered indirectly;
-- add the **mock-model end-to-end scenario** (§5) as a permanent test, if it isn't one
-  already. It has caught more real bugs than any unit test.
+### C28: `src/.DS_Store` — fixed (`591eedd`)
 
-### C28: `src/.DS_Store`
+`git rm --cached src/.DS_Store`; `.DS_Store` added to `.gitignore`. `git ls-files
+src/.DS_Store` is empty.
 
-`git rm --cached src/.DS_Store`, and add `.DS_Store` to `.gitignore`.
+### C29: roadmap accuracy — fixed (`591eedd`)
 
-### C29: roadmap accuracy
-
-Do a final pass over `docs/ROADMAP.md` so every checkbox matches the code:
-- C18 and C20 are currently checked but not done;
-- Phase 5's acceptance criterion depends on the Phase 7 eval set, which doesn't exist yet.
-  Mark it "implemented; acceptance pending Phase 7";
-- note that `predicates.defs` defaults to `{}`, so nothing auto-promotes until predicates
-  are defined, and that `cardinality` defaults to `many`.
+`docs/ROADMAP.md` checkboxes match the code. C18 and C20 stay checked with wording that
+matches what was built; Phase 5's acceptance criterion is marked "implemented; acceptance
+pending Phase 7"; the `predicates.defs` (`{}`) and `cardinality` (`many`) defaults are
+noted. One mismatch was found and annotated: the Phase 2 adjacency cache existed and
+`recall()` accepted it, but the MCP server did not pass one. That gap is now closed —
+`src/mcp/server.ts` opens the index once and passes a `createGraphCache(db)` to recall
+(test: `test/mcp.test.ts`).
 
 ## 4. Working rules for the next agent
 

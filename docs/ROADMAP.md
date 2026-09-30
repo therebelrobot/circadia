@@ -55,8 +55,7 @@ works in TypeScript and uses Mastra as their agent framework.
     ordered by `valid_from`, including superseded ones.
 - [x] **Adjacency cache.** `createGraphCache(db)` keeps the per-mode graph in memory
       between queries and self-invalidates when the index's `built_at` changes. `recall()`
-      accepts it via `graphCache`; the MCP server does not pass one yet, so it still
-      re-reads edges per query.
+      accepts it via `graphCache`; the MCP server opens the index once and passes one.
 - [x] **Benchmark script.**
   - Generate a synthetic vault of 10k notes and 50k links.
   - Report index time, recall p50/p95 per mode, and memory use.

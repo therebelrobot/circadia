@@ -11,7 +11,10 @@
 //     id; a `null` id makes them hang.
 //   - A message without an `id` is a notification: process it, send nothing back.
 
+import { join } from 'node:path';
 import { loadConfig } from '../config.ts';
+import { openIndex } from '../index/db.ts';
+import { createGraphCache, type GraphCache } from '../retrieval/graph-cache.ts';
 import type { QueryMode, SourceKind } from '../types.ts';
 
 /**
@@ -158,6 +161,7 @@ export async function handleToolsCall(
   method: string,
   params?: Record<string, unknown>,
   id: string | number | null = null,
+  graphCache?: GraphCache,
 ): Promise<JSONRPCResponse> {
   try {
     if (method === 'recall' && params && 'query' in params && typeof params.query === 'string') {
@@ -189,6 +193,9 @@ export async function handleToolsCall(
         scope,
         session,
         logAccess: cfg.mcp.logAccess,
+        // Phase 2 adjacency cache: reuse the per-mode graph across calls in this
+        // long-running process. Undefined for one-shot callers (tests, CLI).
+        graphCache,
       });
       return {
         jsonrpc: '2.0',
@@ -302,6 +309,7 @@ async function dispatch(
   req: JSONRPCRequest,
   vaultRoot: string,
   cfg: Awaited<ReturnType<typeof loadConfig>>,
+  graphCache?: GraphCache,
 ): Promise<JSONRPCResponse> {
   const id = req.id ?? null;
   const { method, params } = req;
@@ -312,26 +320,35 @@ async function dispatch(
     return handleToolsList(vaultRoot, cfg, id);
   }
   if (method === 'tools/call') {
-    return handleToolsCall(vaultRoot, cfg, params?.name as string, params?.arguments as Record<string, unknown>, id);
+    return handleToolsCall(vaultRoot, cfg, params?.name as string, params?.arguments as Record<string, unknown>, id, graphCache);
   }
   return { jsonrpc: '2.0', id, error: { code: -32601, message: 'Method not found: ' + method } };
 }
 
 export async function runServer(vaultRoot: string): Promise<void> {
   const cfg = loadConfig(vaultRoot);
-  for await (const line of readLines()) {
-    if (line.trim().length === 0) continue;
-    let req: JSONRPCRequest;
-    try {
-      req = JSON.parse(line);
-    } catch {
-      // A parse error has no request id to echo; JSON-RPC 2.0 mandates `id: null`.
-      writeStdout({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
-      continue;
+  // Phase 2 adjacency cache: open the index once and keep the per-mode graph in memory
+  // across recall calls. The cache self-invalidates when the index's `built_at` changes,
+  // so a reindex is picked up without restarting the server.
+  const { db } = openIndex(join(vaultRoot, cfg.index.path));
+  const graphCache = createGraphCache(db);
+  try {
+    for await (const line of readLines()) {
+      if (line.trim().length === 0) continue;
+      let req: JSONRPCRequest;
+      try {
+        req = JSON.parse(line);
+      } catch {
+        // A parse error has no request id to echo; JSON-RPC 2.0 mandates `id: null`.
+        writeStdout({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
+        continue;
+      }
+      // A message with no `id` member is a notification: process it, reply to nothing.
+      const isNotification = !Object.prototype.hasOwnProperty.call(req, 'id');
+      const res = await dispatch(req, vaultRoot, cfg, graphCache);
+      if (!isNotification) writeStdout(res);
     }
-    // A message with no `id` member is a notification: process it, reply to nothing.
-    const isNotification = !Object.prototype.hasOwnProperty.call(req, 'id');
-    const res = await dispatch(req, vaultRoot, cfg);
-    if (!isNotification) writeStdout(res);
+  } finally {
+    db.close();
   }
 }
