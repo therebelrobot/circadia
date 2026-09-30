@@ -5,6 +5,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { slugify } from '../vault/util.ts';
+import { localDateString } from '../vault/time.ts';
 import type { Config } from '../config.ts';
 import type { SourceKind } from '../types.ts';
 import type { Segment } from './segment.ts';
@@ -32,10 +33,12 @@ export async function writeEpisodes(
   // default for a programmatic writer. Human-authored episodes set `by` explicitly.
   const { by = 'agent', source = 'chat', session } = opts;
   const now = new Date();
-  const year = String(now.getUTCFullYear());
-  const month = String(now.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(now.getUTCDate()).padStart(2, '0');
-  const dateStr = `${year}-${month}-${day}`;
+  // Folder and filename use the LOCAL calendar date: an episode remembered at 9pm in a
+  // negative-offset timezone must land in today's folder, not tomorrow's. The `now`
+  // instant itself is unchanged (it is the real wall-clock moment).
+  const year = String(now.getFullYear());
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const dateStr = localDateString(now);
   const episodesDir = join(vaultRoot, 'episodes', year, month);
 
   // Ensure directory exists

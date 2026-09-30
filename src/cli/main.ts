@@ -506,7 +506,9 @@ export async function main(argv: string[]): Promise<number> {
     }
     case 'mcp': {
       const mcpModule = await import('../mcp/server.ts');
-      console.log(`starting MCP server for vault at ${vault}`);
+      // stdout is the JSON-RPC channel for the MCP transport; a banner there is a
+      // malformed first message to the client. Log to stderr instead.
+      console.error(`starting MCP server for vault at ${vault}`);
       await mcpModule.runServer(vault);
       return 0;
     }
