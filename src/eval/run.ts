@@ -177,6 +177,23 @@ export async function runEval(
   const baseCfg = opts.config ?? loadConfig(fixtureDir);
   const ks = opts.k ?? DEFAULT_KS;
   const selected = opts.split ? queries.filter((q) => q.split === opts.split) : queries;
+  const byId = new Map(queries.map((q) => [q.id, q]));
+
+  // A paired_with id must exist in the query file, even when it is outside the split.
+  for (const q of selected) {
+    if (q.paired_with && !byId.has(q.paired_with)) {
+      throw new Error(`query ${q.id}: paired_with "${q.paired_with}" is not in the query set`);
+    }
+  }
+
+  // Run the selected queries plus any paired partners (which may be in the other
+  // split). Partners are used only for the vacuity check and are not returned, so
+  // a dev-only run still sees a cross-split absence check.
+  const toRun = new Map<string, EvalQuery>();
+  for (const q of selected) {
+    toRun.set(q.id, q);
+    if (q.paired_with) toRun.set(q.paired_with, byId.get(q.paired_with) as EvalQuery);
+  }
 
   const tmpDir = opts.dbPath ? null : mkdtempSync(join(tmpdir(), 'circadia-eval-'));
   const dbPath = opts.dbPath ?? join(tmpDir as string, 'index.sqlite');
@@ -187,21 +204,19 @@ export async function runEval(
         await embedPassages(dbPath, baseCfg, new TrigramEmbeddingsClient());
       }
     }
-    const results: EvalQueryResult[] = [];
-    for (const q of selected) results.push(await runQuery(fixtureDir, baseCfg, q, dbPath, ks));
+    const all = new Map<string, EvalQueryResult>();
+    for (const q of toRun.values()) all.set(q.id, await runQuery(fixtureDir, baseCfg, q, dbPath, ks));
 
     // An absence check is only meaningful if the paired query actually retrieves
     // the passage. Mark the ones that prove nothing as vacuous.
-    const byId = new Map(results.map((r) => [r.id, r]));
-    for (const r of results) {
-      const q = selected.find((x) => x.id === r.id);
-      if (!q?.expect_absent || !q.paired_with) continue;
-      const paired = byId.get(q.paired_with);
-      if (!paired) continue;
+    for (const q of selected) {
+      const r = all.get(q.id) as EvalQueryResult;
+      if (!q.expect_absent || !q.paired_with) continue;
+      const paired = all.get(q.paired_with) as EvalQueryResult;
       const pairedHits = new Set(paired.hits.map((h) => h.passageId));
       r.vacuousAbsences = q.expect_absent.filter((p) => !pairedHits.has(p)).length;
     }
-    return results;
+    return selected.map((q) => all.get(q.id) as EvalQueryResult);
   } finally {
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
   }

@@ -206,13 +206,13 @@ test('deep multi-hop pairs are connected only through triple/synonym edges', () 
     const noTriples = buildAdj(['triple', 'synonym']);
     let checked = 0;
     for (const q of readQueries()) {
-      if (q.kind !== 'multi-hop' || !q.seed || !(q.seed in DEEP_TRIPLES)) continue;
+      if (!q.kind.startsWith('multi-hop') || !q.seed || !(q.seed in DEEP_TRIPLES)) continue;
       const target = flatExpected(q.expected_passages)[0].split('#')[0];
       assert.ok(Number.isFinite(hops(all, q.seed, target)), `query ${q.id}: seed and target are connected`);
       assert.equal(hops(noTriples, q.seed, target), Infinity, `query ${q.id}: a non-triple path exists`);
       checked++;
     }
-    assert.ok(checked >= 4, `expected at least 4 deep multi-hop queries, found ${checked}`);
+    assert.ok(checked >= 8, `expected at least 8 deep multi-hop queries (scoped + unscoped), found ${checked}`);
   } finally {
     db.close();
   }
@@ -262,6 +262,20 @@ test('remote-association pairs are the required graph distance apart', () => {
       }
       return Infinity;
     };
+    const componentOf = (from: string): Set<string> => {
+      const seen = new Set([from]);
+      const stack = [from];
+      while (stack.length > 0) {
+        const n = stack.pop() as string;
+        for (const m of adj.get(n) ?? []) {
+          if (!seen.has(m)) {
+            seen.add(m);
+            stack.push(m);
+          }
+        }
+      }
+      return seen;
+    };
     for (const q of readQueries()) {
       if (!q.seed) continue;
       const target = flatExpected(q.expected_passages)[0].split('#')[0];
@@ -269,7 +283,15 @@ test('remote-association pairs are the required graph distance apart', () => {
         assert.equal(hops(q.seed, target), 2, `query ${q.id}: 2-hop pair`);
       } else if (q.kind === 'remote-association-3hop') {
         assert.ok(hops(q.seed, target) >= 3, `query ${q.id}: 3-hop pair`);
+      } else {
+        continue;
       }
+      // no chain is its own connected component: it must reach the filler graph
+      const component = componentOf(q.seed);
+      assert.ok(
+        [...component].some((n) => n.startsWith('filler-')),
+        `query ${q.id}: chain is an isolated component`,
+      );
     }
   } finally {
     db.close();

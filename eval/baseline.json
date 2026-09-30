@@ -1,5 +1,5 @@
 {
-  "fixtureHash": "2c7dbd0d166bda3b1cf8e529ba4448313fe0344db97a578d094acef4e35f9177",
+  "fixtureHash": "d6f61f137821047924fd95f6e75fd67ec3f86d122278c349f030f55d41c5a5c3",
   "config": {
     "vault": {
       "factsHeading": "Facts",
@@ -120,11 +120,11 @@
         "pi-cluster#0",
         "filler-beta-052#0",
         "filler-alpha-060#0",
+        "windlass-anchor#0",
+        "loam-porosity#0",
         "pi-cluster#facts",
         "alpha-overview#facts",
-        "alpha-overview#0",
-        "filler-beta-026#0",
-        "filler-alpha-026#0"
+        "alpha-overview#0"
       ],
       "metrics": {
         "recallAtK": {
@@ -148,14 +148,14 @@
       "split": "holdout",
       "modeUsed": "hipporag",
       "hits": [
-        "filler-alpha-020#0",
         "filler-beta-042#0",
         "filler-gamma-024#0",
-        "filler-alpha-050#0",
+        "filler-alpha-020#0",
         "old-laptop#0",
-        "old-laptop#facts",
-        "alpha-overview#facts",
-        "filler-alpha-044#0"
+        "filler-alpha-050#0",
+        "rudder-keel#0",
+        "mulch-erosion#0",
+        "old-laptop#facts"
       ],
       "metrics": {
         "recallAtK": {
@@ -170,7 +170,7 @@
           "5": 0.2,
           "10": 0.1
         },
-        "mrr": 0.2
+        "mrr": 0.25
       }
     },
     {
@@ -181,12 +181,12 @@
       "hits": [
         "greenhouse-controller#0",
         "greenhouse-controller#facts",
-        "filler-alpha-008#0",
+        "trellis-pollination#0",
+        "mast-rigging#0",
         "beta-overview#facts",
         "beta-overview#0",
-        "greenhouse-ventilation#0",
-        "filler-alpha-035#0",
-        "filler-gamma-060#0"
+        "filler-alpha-014#0",
+        "filler-alpha-008#0"
       ],
       "metrics": {
         "recallAtK": {
@@ -212,12 +212,12 @@
       "hits": [
         "filler-beta-012#0",
         "field-gateway#0",
+        "sail-batten#0",
         "field-gateway#facts",
+        "hive-foraging#0",
         "gateway-firmware#0",
         "filler-alpha-041#0",
-        "filler-gamma-035#0",
-        "filler-alpha-026#0",
-        "filler-beta-045#0"
+        "filler-gamma-035#0"
       ],
       "metrics": {
         "recallAtK": {
@@ -244,11 +244,11 @@
         "filler-gamma-014#0",
         "filler-beta-002#0",
         "relay-tower#0",
+        "hull-caulking#0",
         "relay-tower#facts",
+        "silo-aeration#0",
         "gamma-overview#facts",
-        "field-gateway#0",
-        "filler-gamma-026#0",
-        "filler-beta-026#0"
+        "field-gateway#0"
       ],
       "metrics": {
         "recallAtK": {
@@ -272,29 +272,29 @@
       "split": "dev",
       "modeUsed": "hipporag",
       "hits": [
+        "ballast-trim#0",
         "solar-inverter#0",
         "solar-inverter#facts",
+        "grain-moisture#0",
         "delta-overview#facts",
         "delta-overview#0",
         "filler-alpha-008#0",
-        "filler-alpha-056#0",
-        "filler-beta-018#0",
         "filler-beta-014#0"
       ],
       "metrics": {
         "recallAtK": {
-          "1": 1,
+          "1": 0,
           "3": 1,
           "5": 1,
           "10": 1
         },
         "precisionAtK": {
-          "1": 1,
+          "1": 0,
           "3": 0.3333333333333333,
           "5": 0.2,
           "10": 0.1
         },
-        "mrr": 1
+        "mrr": 0.5
       }
     },
     {
@@ -305,12 +305,12 @@
       "hits": [
         "sensor-calibration#0",
         "alpha-overview#0",
-        "filler-beta-053#0",
-        "filler-gamma-043#0",
-        "pi-cluster#0",
         "filler-gamma-026#0",
-        "filler-gamma-031#0",
-        "filler-alpha-056#0"
+        "pi-cluster#0",
+        "filler-gamma-043#0",
+        "filler-alpha-026#0",
+        "filler-beta-053#0",
+        "filler-gamma-031#0"
       ],
       "metrics": {
         "recallAtK": {
@@ -337,10 +337,10 @@
         "probe-aging#0",
         "sensor-calibration#0",
         "filler-gamma-026#0",
-        "filler-alpha-014#0",
         "filler-gamma-016#0",
-        "filler-beta-057#0",
+        "filler-alpha-014#0",
         "filler-beta-062#0",
+        "filler-beta-057#0",
         "filler-alpha-067#0"
       ],
       "metrics": {
@@ -360,19 +360,50 @@
       }
     },
     {
+      "id": "q-sh-alpha-tool",
+      "kind": "single-hop",
+      "split": "holdout",
+      "modeUsed": "wikilink",
+      "hits": [
+        "alpha-overview#0",
+        "alpha-overview#facts",
+        "beta-overview#facts",
+        "delta-overview#facts",
+        "gamma-overview#facts",
+        "beta-overview#0",
+        "delta-overview#0",
+        "filler-alpha-026#0"
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
       "id": "q-scoped-alpha",
       "kind": "single-hop",
       "split": "dev",
       "modeUsed": "wikilink",
       "hits": [
         "alpha-overview#0",
-        "filler-alpha-008#0",
+        "filler-alpha-007#0",
+        "filler-alpha-013#0",
         "filler-alpha-056#0",
-        "filler-alpha-061#0",
-        "filler-alpha-044#0",
-        "filler-alpha-003#0",
-        "filler-alpha-038#0",
-        "filler-alpha-026#0"
+        "filler-alpha-063#0",
+        "filler-alpha-026#0",
+        "filler-alpha-053#0",
+        "alpha-overview#facts"
       ],
       "metrics": {
         "recallAtK": {
@@ -398,12 +429,12 @@
       "hits": [
         "beta-overview#0",
         "beta-overview#facts",
+        "filler-beta-058#0",
         "filler-beta-006#0",
+        "filler-beta-002#0",
         "filler-beta-026#0",
         "filler-beta-053#0",
-        "filler-beta-017#0",
-        "filler-beta-044#0",
-        "filler-beta-008#0"
+        "filler-beta-044#0"
       ],
       "metrics": {
         "recallAtK": {
@@ -464,23 +495,23 @@
         "filler-alpha-026#0",
         "alpha-overview#0",
         "delta-overview#0",
-        "filler-beta-021#0",
-        "alpha-overview#facts"
+        "alpha-overview#facts",
+        "gamma-overview#facts"
       ],
       "metrics": {
         "recallAtK": {
-          "1": 0,
-          "3": 0,
-          "5": 0,
-          "10": 0
+          "1": 1,
+          "3": 1,
+          "5": 1,
+          "10": 1
         },
         "precisionAtK": {
-          "1": 0,
-          "3": 0,
-          "5": 0,
-          "10": 0
+          "1": 1,
+          "3": 0.3333333333333333,
+          "5": 0.2,
+          "10": 0.1
         },
-        "mrr": 0
+        "mrr": 1
       }
     },
     {
@@ -495,8 +526,8 @@
         "beta-overview#0",
         "delta-overview#0",
         "beta-overview#facts",
-        "delta-overview#facts",
-        "alpha-overview#facts"
+        "alpha-overview#facts",
+        "delta-overview#facts"
       ],
       "metrics": {
         "recallAtK": {
@@ -515,19 +546,19 @@
       }
     },
     {
-      "id": "q-mh-alpha-tool",
+      "id": "q-mh-old-laptop-pref",
       "kind": "multi-hop",
       "split": "dev",
-      "modeUsed": "wikilink",
+      "modeUsed": "hipporag",
       "hits": [
-        "alpha-overview#0",
-        "alpha-overview#facts",
-        "beta-overview#facts",
-        "delta-overview#facts",
-        "gamma-overview#facts",
-        "beta-overview#0",
-        "delta-overview#0",
-        "filler-alpha-026#0"
+        "filler-beta-042#0",
+        "filler-gamma-024#0",
+        "filler-alpha-020#0",
+        "old-laptop#facts",
+        "old-laptop#0",
+        "filler-alpha-050#0",
+        "rudder-keel#0",
+        "mulch-erosion#0"
       ],
       "metrics": {
         "recallAtK": {
@@ -551,7 +582,14 @@
       "split": "dev",
       "modeUsed": "wikilink",
       "hits": [
-        "sensor-calibration#0"
+        "sensor-calibration#0",
+        "alpha-overview#0",
+        "filler-gamma-026#0",
+        "pi-cluster#0",
+        "filler-gamma-043#0",
+        "filler-alpha-026#0",
+        "filler-beta-053#0",
+        "filler-gamma-031#0"
       ],
       "metrics": {
         "recallAtK": {
@@ -575,7 +613,14 @@
       "split": "holdout",
       "modeUsed": "wikilink",
       "hits": [
-        "gateway-firmware#0"
+        "gateway-firmware#0",
+        "filler-gamma-035#0",
+        "filler-alpha-059#0",
+        "firmware-branch#0",
+        "field-gateway#0",
+        "filler-alpha-003#0",
+        "filler-beta-047#0",
+        "sail-batten#0"
       ],
       "metrics": {
         "recallAtK": {
@@ -599,7 +644,14 @@
       "split": "dev",
       "modeUsed": "wikilink",
       "hits": [
-        "soil-chemistry#0"
+        "soil-chemistry#0",
+        "alpha-overview#0",
+        "filler-gamma-026#0",
+        "filler-gamma-016#0",
+        "filler-alpha-014#0",
+        "filler-beta-062#0",
+        "filler-beta-057#0",
+        "filler-alpha-067#0"
       ],
       "metrics": {
         "recallAtK": {
@@ -620,6 +672,109 @@
     {
       "id": "q-mh-deep-4",
       "kind": "multi-hop",
+      "split": "dev",
+      "modeUsed": "wikilink",
+      "hits": [
+        "canopy-light#0",
+        "filler-gamma-026#0",
+        "filler-alpha-007#0",
+        "filler-alpha-006#0",
+        "filler-gamma-035#0",
+        "canopy-shade#0",
+        "filler-alpha-046#0",
+        "orchard-canopy#0"
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-mhs-deep-1",
+      "kind": "multi-hop-scoped",
+      "split": "dev",
+      "modeUsed": "wikilink",
+      "hits": [
+        "sensor-calibration#0"
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-mhs-deep-2",
+      "kind": "multi-hop-scoped",
+      "split": "holdout",
+      "modeUsed": "wikilink",
+      "hits": [
+        "gateway-firmware#0"
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-mhs-deep-3",
+      "kind": "multi-hop-scoped",
+      "split": "dev",
+      "modeUsed": "wikilink",
+      "hits": [
+        "soil-chemistry#0"
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-mhs-deep-4",
+      "kind": "multi-hop-scoped",
       "split": "dev",
       "modeUsed": "wikilink",
       "hits": [
@@ -647,6 +802,254 @@
       "split": "dev",
       "modeUsed": "hipporag",
       "hits": [
+        "beta-overview#facts",
+        "beta-overview#0",
+        "alpha-overview#facts",
+        "alpha-overview#0",
+        "filler-beta-055#0",
+        "gamma-overview#facts",
+        "gamma-overview#0",
+        "filler-alpha-009#0"
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-t-world-alpha-late",
+      "kind": "temporal",
+      "split": "holdout",
+      "modeUsed": "hipporag",
+      "hits": [
+        "beta-overview#facts",
+        "delta-overview#facts",
+        "beta-overview#0",
+        "delta-overview#0",
+        "alpha-overview#facts",
+        "alpha-overview#0",
+        "gamma-overview#facts",
+        "filler-beta-055#0"
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-t-world-gamma-early",
+      "kind": "temporal",
+      "split": "dev",
+      "modeUsed": "hipporag",
+      "hits": [
+        "beta-overview#facts",
+        "gamma-overview#facts",
+        "delta-overview#facts",
+        "delta-overview#0",
+        "beta-overview#0",
+        "gamma-overview#0",
+        "filler-beta-055#0",
+        "alpha-overview#facts"
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-t-world-gamma-late",
+      "kind": "temporal",
+      "split": "dev",
+      "modeUsed": "hipporag",
+      "hits": [
+        "beta-overview#facts",
+        "delta-overview#facts",
+        "beta-overview#0",
+        "delta-overview#0",
+        "gamma-overview#facts",
+        "gamma-overview#0",
+        "filler-beta-055#0",
+        "alpha-overview#facts"
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-t-system-beta-early",
+      "kind": "temporal",
+      "split": "dev",
+      "modeUsed": "hipporag",
+      "hits": [
+        "beta-overview#0",
+        "beta-overview#facts",
+        "delta-overview#0",
+        "delta-overview#facts",
+        "filler-alpha-021#0",
+        "filler-alpha-048#0",
+        "gamma-overview#0",
+        "alpha-overview#facts"
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 1,
+          "3": 1,
+          "5": 1,
+          "10": 1
+        },
+        "precisionAtK": {
+          "1": 1,
+          "3": 0.3333333333333333,
+          "5": 0.2,
+          "10": 0.1
+        },
+        "mrr": 1
+      }
+    },
+    {
+      "id": "q-t-system-beta-late",
+      "kind": "temporal",
+      "split": "dev",
+      "modeUsed": "hipporag",
+      "hits": [
+        "beta-overview#facts",
+        "beta-overview#0",
+        "delta-overview#facts",
+        "delta-overview#0",
+        "alpha-overview#0",
+        "alpha-overview#facts",
+        "gamma-overview#facts",
+        "gamma-overview#0"
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-t-system-delta-early",
+      "kind": "temporal",
+      "split": "holdout",
+      "modeUsed": "hipporag",
+      "hits": [
+        "delta-overview#0",
+        "delta-overview#facts",
+        "beta-overview#0",
+        "beta-overview#facts",
+        "gamma-overview#0",
+        "alpha-overview#facts",
+        "filler-alpha-048#0",
+        "gamma-overview#facts"
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 1,
+          "3": 1,
+          "5": 1,
+          "10": 1
+        },
+        "precisionAtK": {
+          "1": 1,
+          "3": 0.3333333333333333,
+          "5": 0.2,
+          "10": 0.1
+        },
+        "mrr": 1
+      }
+    },
+    {
+      "id": "q-t-system-delta-late",
+      "kind": "temporal",
+      "split": "dev",
+      "modeUsed": "hipporag",
+      "hits": [
+        "delta-overview#facts",
+        "delta-overview#0",
+        "beta-overview#facts",
+        "alpha-overview#0",
+        "beta-overview#0",
+        "filler-alpha-026#0",
+        "alpha-overview#facts",
+        "gamma-overview#facts"
+      ],
+      "metrics": {
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      }
+    },
+    {
+      "id": "q-ts-world-alpha-early",
+      "kind": "temporal-scoped",
+      "split": "dev",
+      "modeUsed": "hipporag",
+      "hits": [
         "alpha-overview#facts",
         "alpha-overview#0",
         "pi-cluster#0",
@@ -669,8 +1072,8 @@
       }
     },
     {
-      "id": "q-t-world-alpha-late",
-      "kind": "temporal",
+      "id": "q-ts-world-alpha-late",
+      "kind": "temporal-scoped",
       "split": "holdout",
       "modeUsed": "hipporag",
       "hits": [
@@ -696,8 +1099,8 @@
       }
     },
     {
-      "id": "q-t-world-gamma-early",
-      "kind": "temporal",
+      "id": "q-ts-world-gamma-early",
+      "kind": "temporal-scoped",
       "split": "dev",
       "modeUsed": "hipporag",
       "hits": [
@@ -723,8 +1126,8 @@
       }
     },
     {
-      "id": "q-t-world-gamma-late",
-      "kind": "temporal",
+      "id": "q-ts-world-gamma-late",
+      "kind": "temporal-scoped",
       "split": "dev",
       "modeUsed": "hipporag",
       "hits": [
@@ -750,8 +1153,8 @@
       }
     },
     {
-      "id": "q-t-system-beta-early",
-      "kind": "temporal",
+      "id": "q-ts-system-beta-early",
+      "kind": "temporal-scoped",
       "split": "dev",
       "modeUsed": "hipporag",
       "hits": [
@@ -775,8 +1178,8 @@
       }
     },
     {
-      "id": "q-t-system-beta-late",
-      "kind": "temporal",
+      "id": "q-ts-system-beta-late",
+      "kind": "temporal-scoped",
       "split": "dev",
       "modeUsed": "hipporag",
       "hits": [
@@ -802,8 +1205,8 @@
       }
     },
     {
-      "id": "q-t-system-delta-early",
-      "kind": "temporal",
+      "id": "q-ts-system-delta-early",
+      "kind": "temporal-scoped",
       "split": "holdout",
       "modeUsed": "hipporag",
       "hits": [
@@ -827,8 +1230,8 @@
       }
     },
     {
-      "id": "q-t-system-delta-late",
-      "kind": "temporal",
+      "id": "q-ts-system-delta-late",
+      "kind": "temporal-scoped",
       "split": "dev",
       "modeUsed": "hipporag",
       "hits": [
@@ -857,31 +1260,31 @@
       "id": "q-pref-sam",
       "kind": "preference",
       "split": "dev",
-      "modeUsed": "hipporag",
+      "modeUsed": "typed",
       "hits": [
         "coffee#0",
         "sam#facts",
-        "sam#0",
         "tea#0",
+        "sam#0",
+        "compass-bearing#0",
+        "tractor-hydraulics#0",
         "ada#facts",
-        "bo#facts",
-        "cy#facts",
-        "dee#facts"
+        "bo#facts"
       ],
       "metrics": {
         "recallAtK": {
           "1": 0,
-          "3": 0,
+          "3": 1,
           "5": 1,
           "10": 1
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0,
+          "3": 0.3333333333333333,
           "5": 0.2,
           "10": 0.1
         },
-        "mrr": 0.25
+        "mrr": 0.3333333333333333
       }
     },
     {
@@ -893,8 +1296,8 @@
         "ada#facts",
         "ada#0",
         "bo#facts",
-        "sam#facts",
         "cy#facts",
+        "sam#facts",
         "dee#facts",
         "eli#facts",
         "fay#facts"
@@ -924,8 +1327,8 @@
         "bo#facts",
         "bo#0",
         "ada#facts",
-        "sam#facts",
         "cy#facts",
+        "sam#facts",
         "dee#facts",
         "eli#facts",
         "fay#facts"
@@ -955,8 +1358,8 @@
         "cy#facts",
         "cy#0",
         "ada#facts",
-        "sam#facts",
         "bo#facts",
+        "sam#facts",
         "dee#facts",
         "eli#facts",
         "fay#facts"
@@ -986,8 +1389,8 @@
         "dee#facts",
         "dee#0",
         "ada#facts",
-        "sam#facts",
         "bo#facts",
+        "sam#facts",
         "cy#facts",
         "eli#facts",
         "fay#facts"
@@ -1017,8 +1420,8 @@
         "eli#facts",
         "eli#0",
         "ada#facts",
-        "sam#facts",
         "bo#facts",
+        "sam#facts",
         "cy#facts",
         "dee#facts",
         "fay#facts"
@@ -1048,8 +1451,8 @@
         "fay#facts",
         "fay#0",
         "ada#facts",
-        "sam#facts",
         "bo#facts",
+        "sam#facts",
         "cy#facts",
         "dee#facts",
         "eli#facts"
@@ -1079,11 +1482,11 @@
         "gus#facts",
         "gus#0",
         "ada#facts",
-        "sam#facts",
+        "old-laptop#facts",
         "bo#facts",
+        "sam#facts",
         "cy#facts",
-        "dee#facts",
-        "eli#facts"
+        "dee#facts"
       ],
       "metrics": {
         "recallAtK": {
@@ -1107,41 +1510,45 @@
       "split": "dev",
       "modeUsed": "wikilink",
       "hits": [
-        "electrode-drift#0",
+        "filler-beta-044#0",
+        "filler-gamma-032#0",
+        "filler-alpha-000#0",
+        "filler-alpha-056#0",
         "probe-aging#0",
-        "aquifer-salinity#0",
-        "loam-porosity#0"
+        "electrode-drift#0",
+        "filler-alpha-026#0",
+        "filler-beta-026#0"
       ],
       "metrics": {
         "recallAtK": {
           "1": 0,
-          "3": 1,
-          "5": 1,
-          "10": 1
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0.3333333333333333,
-          "5": 0.2,
-          "10": 0.1
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.3333333333333333
+        "mrr": 0
       }
     },
     {
       "id": "q-r2-1",
       "kind": "remote-association-2hop",
       "split": "dev",
-      "modeUsed": "wikilink",
+      "modeUsed": "hipporag",
       "hits": [
+        "filler-alpha-001#0",
+        "filler-alpha-057#0",
+        "2026-09-10-web-clipping#0",
+        "filler-beta-045#0",
+        "filler-gamma-033#0",
         "water-budgeting#0",
         "filler-beta-044#0",
-        "2026-09-10-web-clipping#0",
-        "filler-alpha-031#0",
-        "filler-beta-052#0",
-        "filler-alpha-057#0",
-        "filler-beta-059#0",
-        "filler-gamma-007#0"
+        "filler-alpha-031#0"
       ],
       "metrics": {
         "recallAtK": {
@@ -1163,16 +1570,16 @@
       "id": "q-r2-2",
       "kind": "remote-association-2hop",
       "split": "holdout",
-      "modeUsed": "wikilink",
+      "modeUsed": "hipporag",
       "hits": [
+        "filler-gamma-034#0",
+        "filler-alpha-002#0",
+        "filler-beta-046#0",
         "radio-duty#0",
+        "filler-alpha-058#0",
         "duty-cycle#0",
         "gateway-firmware#0",
-        "gamma-overview#0",
-        "field-gateway#0",
-        "relay-tower#0",
-        "filler-beta-026#0",
-        "filler-gamma-026#0"
+        "relay-tower#0"
       ],
       "metrics": {
         "recallAtK": {
@@ -1194,27 +1601,31 @@
       "id": "q-r2-3",
       "kind": "remote-association-2hop",
       "split": "dev",
-      "modeUsed": "wikilink",
+      "modeUsed": "hipporag",
       "hits": [
+        "filler-gamma-035#0",
+        "filler-alpha-059#0",
+        "filler-beta-047#0",
+        "filler-alpha-003#0",
         "firmware-branch#0",
         "gateway-firmware#0",
-        "beacon-ranging#0",
-        "hive-foraging#0"
+        "filler-alpha-053#0",
+        "filler-beta-026#0"
       ],
       "metrics": {
         "recallAtK": {
           "1": 0,
-          "3": 1,
-          "5": 1,
-          "10": 1
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0.3333333333333333,
-          "5": 0.2,
-          "10": 0.1
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.3333333333333333
+        "mrr": 0
       }
     },
     {
@@ -1223,60 +1634,60 @@
       "split": "dev",
       "modeUsed": "wikilink",
       "hits": [
+        "filler-alpha-004#0",
+        "filler-alpha-060#0",
+        "filler-gamma-036#0",
         "telemetry-failure#0",
-        "long-range-telemetry#0",
-        "gamma-overview#0",
-        "gamma-overview#facts",
-        "compost-nitrogen#0",
-        "silo-aeration#0",
-        "orchard-pruning#0",
-        "grain-moisture#0"
+        "filler-beta-048#0",
+        "filler-alpha-061#0",
+        "filler-beta-049#0",
+        "filler-alpha-005#0"
       ],
       "metrics": {
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 1,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.2,
-          "10": 0.1
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.2
+        "mrr": 0
       }
     },
     {
       "id": "q-r2-5",
       "kind": "remote-association-2hop",
       "split": "holdout",
-      "modeUsed": "wikilink",
+      "modeUsed": "hipporag",
       "hits": [
+        "filler-alpha-061#0",
+        "filler-beta-049#0",
+        "filler-alpha-005#0",
+        "filler-gamma-037#0",
         "long-range-telemetry#0",
-        "beacon-ranging#0",
-        "gamma-overview#0",
-        "telemetry-failure#0",
-        "gamma-overview#facts",
-        "orchard-pruning#0",
-        "grain-moisture#0",
-        "firmware-branch#0"
+        "filler-gamma-043#0",
+        "filler-alpha-004#0",
+        "filler-alpha-067#0"
       ],
       "metrics": {
         "recallAtK": {
           "1": 0,
           "3": 0,
           "5": 0,
-          "10": 1
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
           "5": 0,
-          "10": 0.1
+          "10": 0
         },
-        "mrr": 0.16666666666666666
+        "mrr": 0
       }
     },
     {
@@ -1285,14 +1696,14 @@
       "split": "dev",
       "modeUsed": "wikilink",
       "hits": [
-        "canopy-shade#0",
+        "filler-alpha-062#0",
+        "filler-alpha-006#0",
+        "filler-gamma-038#0",
+        "filler-beta-050#0",
         "canopy-light#0",
-        "filler-gamma-026#0",
-        "orchard-canopy#0",
-        "filler-alpha-046#0",
-        "filler-gamma-035#0",
-        "filler-gamma-045#0",
-        "filler-gamma-050#0"
+        "canopy-shade#0",
+        "filler-alpha-007#0",
+        "filler-gamma-026#0"
       ],
       "metrics": {
         "recallAtK": {
@@ -1314,16 +1725,16 @@
       "id": "q-r2-7",
       "kind": "remote-association-2hop",
       "split": "dev",
-      "modeUsed": "wikilink",
+      "modeUsed": "hipporag",
       "hits": [
+        "filler-alpha-007#0",
+        "filler-gamma-039#0",
+        "filler-beta-051#0",
         "orchard-canopy#0",
-        "alpha-overview#0",
-        "canopy-light#0",
+        "filler-alpha-063#0",
+        "filler-gamma-045#0",
         "orchard-pruning#0",
-        "filler-gamma-026#0",
-        "canopy-shade#0",
-        "filler-gamma-035#0",
-        "filler-alpha-046#0"
+        "alpha-overview#0"
       ],
       "metrics": {
         "recallAtK": {
@@ -1345,54 +1756,62 @@
       "id": "q-r3-0",
       "kind": "remote-association-3hop",
       "split": "dev",
-      "modeUsed": "wikilink",
+      "modeUsed": "hipporag",
       "hits": [
+        "filler-gamma-056#0",
+        "filler-alpha-024#0",
+        "filler-gamma-000#0",
         "weathervane-anemometer#0",
-        "sprocket-ratchet#0",
-        "windlass-anchor#0",
-        "lighthouse-foghorn#0"
+        "filler-beta-012#0",
+        "filler-beta-053#0",
+        "filler-alpha-026#0",
+        "filler-beta-026#0"
       ],
       "metrics": {
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 1,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.2,
-          "10": 0.1
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.25
+        "mrr": 0
       }
     },
     {
       "id": "q-r3-1",
       "kind": "remote-association-3hop",
       "split": "dev",
-      "modeUsed": "wikilink",
+      "modeUsed": "hipporag",
       "hits": [
+        "filler-alpha-025#0",
+        "filler-gamma-001#0",
+        "filler-beta-013#0",
+        "filler-gamma-057#0",
         "barometer-hygrometer#0",
-        "pulley-tension#0",
-        "rudder-keel#0",
-        "buoy-mooring#0"
+        "filler-alpha-053#0",
+        "filler-alpha-026#0",
+        "filler-gamma-026#0"
       ],
       "metrics": {
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 1,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.2,
-          "10": 0.1
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.25
+        "mrr": 0
       }
     },
     {
@@ -1401,164 +1820,184 @@
       "split": "holdout",
       "modeUsed": "wikilink",
       "hits": [
+        "filler-alpha-026#0",
+        "filler-beta-014#0",
+        "filler-gamma-058#0",
+        "filler-gamma-002#0",
         "thermistor-photodiode#0",
-        "clutch-friction#0",
-        "mast-rigging#0",
-        "harbor-dredging#0"
+        "filler-alpha-017#0",
+        "filler-gamma-026#0",
+        "filler-beta-026#0"
       ],
       "metrics": {
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 1,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.2,
-          "10": 0.1
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.25
+        "mrr": 0
       }
     },
     {
       "id": "q-r3-3",
       "kind": "remote-association-3hop",
       "split": "dev",
-      "modeUsed": "wikilink",
+      "modeUsed": "hipporag",
       "hits": [
+        "filler-beta-015#0",
+        "filler-alpha-027#0",
+        "filler-gamma-059#0",
+        "filler-gamma-003#0",
         "actuator-solenoid#0",
-        "brake-caliper#0",
-        "sail-batten#0",
-        "pier-pilings#0"
+        "filler-beta-026#0",
+        "filler-alpha-026#0",
+        "filler-beta-053#0"
       ],
       "metrics": {
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 1,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.2,
-          "10": 0.1
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.25
+        "mrr": 0
       }
     },
     {
       "id": "q-r3-4",
       "kind": "remote-association-3hop",
       "split": "dev",
-      "modeUsed": "wikilink",
+      "modeUsed": "hipporag",
       "hits": [
+        "filler-gamma-060#0",
+        "filler-alpha-028#0",
+        "filler-beta-016#0",
+        "filler-gamma-004#0",
         "manifold-gasket#0",
-        "axle-differential#0",
-        "hull-caulking#0",
-        "ferry-schedule#0"
+        "filler-beta-026#0",
+        "filler-gamma-026#0",
+        "filler-alpha-053#0"
       ],
       "metrics": {
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 1,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.2,
-          "10": 0.1
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.25
+        "mrr": 0
       }
     },
     {
       "id": "q-r3-5",
       "kind": "remote-association-3hop",
       "split": "holdout",
-      "modeUsed": "wikilink",
+      "modeUsed": "hipporag",
       "hits": [
+        "filler-beta-017#0",
+        "filler-gamma-061#0",
+        "filler-alpha-029#0",
+        "filler-gamma-005#0",
         "bearing-coupling#0",
-        "compass-bearing#0",
-        "chassis-welding#0",
-        "suspension-damper#0",
-        "flywheel-governor#0",
-        "current-rip#0",
-        "ballast-trim#0",
-        "tide-almanac#0"
+        "filler-beta-034#0",
+        "filler-alpha-046#0",
+        "filler-gamma-022#0"
       ],
       "metrics": {
         "recallAtK": {
           "1": 0,
           "3": 0,
           "5": 0,
-          "10": 1
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
           "5": 0,
-          "10": 0.1
+          "10": 0
         },
-        "mrr": 0.125
+        "mrr": 0
       }
     },
     {
       "id": "q-r3-6",
       "kind": "remote-association-3hop",
       "split": "dev",
-      "modeUsed": "wikilink",
+      "modeUsed": "hipporag",
       "hits": [
+        "filler-gamma-062#0",
+        "filler-beta-018#0",
+        "filler-gamma-006#0",
+        "filler-alpha-030#0",
         "flywheel-governor#0",
-        "chassis-welding#0",
-        "compass-bearing#0",
-        "current-rip#0"
+        "filler-beta-026#0",
+        "filler-alpha-026#0",
+        "filler-gamma-026#0"
       ],
       "metrics": {
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 1,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.2,
-          "10": 0.1
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.25
+        "mrr": 0
       }
     },
     {
       "id": "q-r3-7",
       "kind": "remote-association-3hop",
       "split": "dev",
-      "modeUsed": "wikilink",
+      "modeUsed": "hipporag",
       "hits": [
+        "filler-gamma-007#0",
+        "filler-alpha-031#0",
+        "filler-gamma-063#0",
+        "filler-beta-019#0",
         "throttle-carburetor#0",
-        "fender-rust#0",
-        "sextant-azimuth#0",
-        "shoal-sounding#0"
+        "filler-alpha-026#0",
+        "filler-beta-026#0",
+        "filler-beta-053#0"
       ],
       "metrics": {
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 1,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.2,
-          "10": 0.1
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.25
+        "mrr": 0
       }
     },
     {
@@ -1568,13 +2007,13 @@
       "modeUsed": "wikilink",
       "hits": [
         "probe-aging#0",
-        "filler-alpha-054#0",
-        "filler-alpha-012#0",
         "beta-overview#0",
-        "filler-alpha-017#0",
-        "greenhouse-controller#0",
+        "filler-alpha-054#0",
         "delta-overview#0",
-        "filler-gamma-032#0"
+        "filler-alpha-012#0",
+        "filler-alpha-017#0",
+        "filler-gamma-032#0",
+        "greenhouse-controller#0"
       ],
       "metrics": {
         "recallAtK": {
@@ -1600,10 +2039,10 @@
       "hits": [
         "2026-09-10-web-clipping#0",
         "probe-aging#0",
-        "filler-alpha-017#0",
-        "filler-alpha-012#0",
         "beta-overview#0",
-        "greenhouse-controller#0",
+        "filler-alpha-017#0",
+        "delta-overview#0",
+        "filler-alpha-012#0",
         "filler-gamma-032#0",
         "filler-alpha-015#0"
       ],
@@ -1627,41 +2066,75 @@
   "aggregates": [
     {
       "group": "hipporag",
-      "count": 25,
+      "count": 45,
       "recallAtK": {
-        "1": 0.16,
-        "3": 0.56,
-        "5": 0.64,
-        "10": 0.64
+        "1": 0.13333333333333333,
+        "3": 0.37777777777777777,
+        "5": 0.4,
+        "10": 0.4
       },
       "precisionAtK": {
-        "1": 0.16,
-        "3": 0.18666666666666665,
-        "5": 0.12800000000000003,
-        "10": 0.06400000000000002
+        "1": 0.13333333333333333,
+        "3": 0.12592592592592589,
+        "5": 0.08000000000000002,
+        "10": 0.04000000000000001
       },
-      "mrr": 0.33133333333333326
+      "mrr": 0.23518518518518525
+    },
+    {
+      "group": "typed",
+      "count": 1,
+      "recallAtK": {
+        "1": 0,
+        "3": 1,
+        "5": 1,
+        "10": 1
+      },
+      "precisionAtK": {
+        "1": 0,
+        "3": 0.3333333333333333,
+        "5": 0.2,
+        "10": 0.1
+      },
+      "mrr": 0.3333333333333333
     },
     {
       "group": "wikilink",
-      "count": 25,
+      "count": 17,
       "recallAtK": {
-        "1": 0.12,
-        "3": 0.2,
-        "5": 0.52,
-        "10": 0.6
+        "1": 0.17647058823529413,
+        "3": 0.17647058823529413,
+        "5": 0.17647058823529413,
+        "10": 0.17647058823529413
       },
       "precisionAtK": {
-        "1": 0.12,
-        "3": 0.06666666666666667,
-        "5": 0.10400000000000001,
-        "10": 0.06000000000000001
+        "1": 0.17647058823529413,
+        "3": 0.058823529411764705,
+        "5": 0.03529411764705883,
+        "10": 0.017647058823529415
       },
-      "mrr": 0.23633333333333337
+      "mrr": 0.17647058823529413
     },
     {
       "group": "multi-hop",
       "count": 8,
+      "recallAtK": {
+        "1": 0.125,
+        "3": 0.125,
+        "5": 0.125,
+        "10": 0.125
+      },
+      "precisionAtK": {
+        "1": 0.125,
+        "3": 0.041666666666666664,
+        "5": 0.025,
+        "10": 0.0125
+      },
+      "mrr": 0.125
+    },
+    {
+      "group": "multi-hop-scoped",
+      "count": 4,
       "recallAtK": {
         "1": 0,
         "3": 0,
@@ -1681,34 +2154,34 @@
       "count": 8,
       "recallAtK": {
         "1": 0,
-        "3": 0,
+        "3": 0.125,
         "5": 0.125,
         "10": 0.125
       },
       "precisionAtK": {
         "1": 0,
-        "3": 0,
+        "3": 0.041666666666666664,
         "5": 0.025,
         "10": 0.0125
       },
-      "mrr": 0.03125
+      "mrr": 0.041666666666666664
     },
     {
       "group": "remote-association-2hop",
       "count": 8,
       "recallAtK": {
         "1": 0,
-        "3": 0.25,
-        "5": 0.375,
-        "10": 0.5
+        "3": 0,
+        "5": 0,
+        "10": 0
       },
       "precisionAtK": {
         "1": 0,
-        "3": 0.08333333333333333,
-        "5": 0.07500000000000001,
-        "10": 0.05
+        "3": 0,
+        "5": 0,
+        "10": 0
       },
-      "mrr": 0.12916666666666668
+      "mrr": 0
     },
     {
       "group": "remote-association-3hop",
@@ -1716,36 +2189,53 @@
       "recallAtK": {
         "1": 0,
         "3": 0,
-        "5": 0.875,
-        "10": 1
+        "5": 0,
+        "10": 0
       },
       "precisionAtK": {
         "1": 0,
         "3": 0,
-        "5": 0.175,
-        "10": 0.09999999999999999
+        "5": 0,
+        "10": 0
       },
-      "mrr": 0.234375
+      "mrr": 0
     },
     {
       "group": "single-hop",
-      "count": 10,
+      "count": 11,
       "recallAtK": {
-        "1": 0.7,
-        "3": 0.9,
-        "5": 1,
-        "10": 1
+        "1": 0.5454545454545454,
+        "3": 0.8181818181818182,
+        "5": 0.9090909090909091,
+        "10": 0.9090909090909091
       },
       "precisionAtK": {
-        "1": 0.7,
-        "3": 0.3,
-        "5": 0.19999999999999998,
-        "10": 0.09999999999999999
+        "1": 0.5454545454545454,
+        "3": 0.2727272727272727,
+        "5": 0.1818181818181818,
+        "10": 0.0909090909090909
       },
-      "mrr": 0.8033333333333333
+      "mrr": 0.6893939393939394
     },
     {
       "group": "temporal",
+      "count": 8,
+      "recallAtK": {
+        "1": 0.25,
+        "3": 0.25,
+        "5": 0.25,
+        "10": 0.25
+      },
+      "precisionAtK": {
+        "1": 0.25,
+        "3": 0.08333333333333333,
+        "5": 0.05,
+        "10": 0.025
+      },
+      "mrr": 0.25
+    },
+    {
+      "group": "temporal-scoped",
       "count": 8,
       "recallAtK": {
         "1": 0,
@@ -1762,8 +2252,8 @@
       "mrr": 0.375
     },
     {
-      "group": "multi-hop:dev",
-      "count": 6,
+      "group": "multi-hop-scoped:dev",
+      "count": 3,
       "recallAtK": {
         "1": 0,
         "3": 0,
@@ -1777,6 +2267,40 @@
         "10": 0
       },
       "mrr": 0
+    },
+    {
+      "group": "multi-hop-scoped:holdout",
+      "count": 1,
+      "recallAtK": {
+        "1": 0,
+        "3": 0,
+        "5": 0,
+        "10": 0
+      },
+      "precisionAtK": {
+        "1": 0,
+        "3": 0,
+        "5": 0,
+        "10": 0
+      },
+      "mrr": 0
+    },
+    {
+      "group": "multi-hop:dev",
+      "count": 6,
+      "recallAtK": {
+        "1": 0.16666666666666666,
+        "3": 0.16666666666666666,
+        "5": 0.16666666666666666,
+        "10": 0.16666666666666666
+      },
+      "precisionAtK": {
+        "1": 0.16666666666666666,
+        "3": 0.05555555555555555,
+        "5": 0.03333333333333333,
+        "10": 0.016666666666666666
+      },
+      "mrr": 0.16666666666666666
     },
     {
       "group": "multi-hop:holdout",
@@ -1800,17 +2324,17 @@
       "count": 6,
       "recallAtK": {
         "1": 0,
-        "3": 0,
+        "3": 0.16666666666666666,
         "5": 0.16666666666666666,
         "10": 0.16666666666666666
       },
       "precisionAtK": {
         "1": 0,
-        "3": 0,
+        "3": 0.05555555555555555,
         "5": 0.03333333333333333,
         "10": 0.016666666666666666
       },
-      "mrr": 0.041666666666666664
+      "mrr": 0.05555555555555555
     },
     {
       "group": "preference:holdout",
@@ -1834,17 +2358,17 @@
       "count": 6,
       "recallAtK": {
         "1": 0,
-        "3": 0.3333333333333333,
-        "5": 0.5,
-        "10": 0.5
+        "3": 0,
+        "5": 0,
+        "10": 0
       },
       "precisionAtK": {
         "1": 0,
-        "3": 0.1111111111111111,
-        "5": 0.10000000000000002,
-        "10": 0.05000000000000001
+        "3": 0,
+        "5": 0,
+        "10": 0
       },
-      "mrr": 0.14444444444444446
+      "mrr": 0
     },
     {
       "group": "remote-association-2hop:holdout",
@@ -1853,15 +2377,15 @@
         "1": 0,
         "3": 0,
         "5": 0,
-        "10": 0.5
+        "10": 0
       },
       "precisionAtK": {
         "1": 0,
         "3": 0,
         "5": 0,
-        "10": 0.05
+        "10": 0
       },
-      "mrr": 0.08333333333333333
+      "mrr": 0
     },
     {
       "group": "remote-association-3hop:dev",
@@ -1869,16 +2393,16 @@
       "recallAtK": {
         "1": 0,
         "3": 0,
-        "5": 1,
-        "10": 1
+        "5": 0,
+        "10": 0
       },
       "precisionAtK": {
         "1": 0,
         "3": 0,
-        "5": 0.19999999999999998,
-        "10": 0.09999999999999999
+        "5": 0,
+        "10": 0
       },
-      "mrr": 0.25
+      "mrr": 0
     },
     {
       "group": "remote-association-3hop:holdout",
@@ -1886,53 +2410,53 @@
       "recallAtK": {
         "1": 0,
         "3": 0,
-        "5": 0.5,
-        "10": 1
+        "5": 0,
+        "10": 0
       },
       "precisionAtK": {
         "1": 0,
         "3": 0,
-        "5": 0.1,
-        "10": 0.1
+        "5": 0,
+        "10": 0
       },
-      "mrr": 0.1875
+      "mrr": 0
     },
     {
       "group": "single-hop:dev",
       "count": 7,
       "recallAtK": {
-        "1": 0.8571428571428571,
+        "1": 0.7142857142857143,
         "3": 1,
         "5": 1,
         "10": 1
       },
       "precisionAtK": {
-        "1": 0.8571428571428571,
+        "1": 0.7142857142857143,
         "3": 0.3333333333333333,
         "5": 0.19999999999999998,
         "10": 0.09999999999999999
       },
-      "mrr": 0.9285714285714286
+      "mrr": 0.8571428571428571
     },
     {
       "group": "single-hop:holdout",
-      "count": 3,
+      "count": 4,
       "recallAtK": {
-        "1": 0.3333333333333333,
-        "3": 0.6666666666666666,
-        "5": 1,
-        "10": 1
+        "1": 0.25,
+        "3": 0.5,
+        "5": 0.75,
+        "10": 0.75
       },
       "precisionAtK": {
-        "1": 0.3333333333333333,
-        "3": 0.2222222222222222,
-        "5": 0.20000000000000004,
-        "10": 0.10000000000000002
+        "1": 0.25,
+        "3": 0.16666666666666666,
+        "5": 0.15000000000000002,
+        "10": 0.07500000000000001
       },
-      "mrr": 0.5111111111111111
+      "mrr": 0.3958333333333333
     },
     {
-      "group": "temporal:dev",
+      "group": "temporal-scoped:dev",
       "count": 6,
       "recallAtK": {
         "1": 0,
@@ -1949,7 +2473,7 @@
       "mrr": 0.3611111111111111
     },
     {
-      "group": "temporal:holdout",
+      "group": "temporal-scoped:holdout",
       "count": 2,
       "recallAtK": {
         "1": 0,
@@ -1966,72 +2490,123 @@
       "mrr": 0.41666666666666663
     },
     {
-      "group": "none",
-      "count": 25,
+      "group": "temporal:dev",
+      "count": 6,
       "recallAtK": {
-        "1": 0.12,
-        "3": 0.2,
-        "5": 0.52,
-        "10": 0.6
+        "1": 0.16666666666666666,
+        "3": 0.16666666666666666,
+        "5": 0.16666666666666666,
+        "10": 0.16666666666666666
       },
       "precisionAtK": {
-        "1": 0.12,
-        "3": 0.06666666666666667,
-        "5": 0.10400000000000001,
-        "10": 0.06000000000000001
+        "1": 0.16666666666666666,
+        "3": 0.05555555555555555,
+        "5": 0.03333333333333333,
+        "10": 0.016666666666666666
       },
-      "mrr": 0.23633333333333337
+      "mrr": 0.16666666666666666
+    },
+    {
+      "group": "temporal:holdout",
+      "count": 2,
+      "recallAtK": {
+        "1": 0.5,
+        "3": 0.5,
+        "5": 0.5,
+        "10": 0.5
+      },
+      "precisionAtK": {
+        "1": 0.5,
+        "3": 0.16666666666666666,
+        "5": 0.1,
+        "10": 0.05
+      },
+      "mrr": 0.5
+    },
+    {
+      "group": "none",
+      "count": 17,
+      "recallAtK": {
+        "1": 0.17647058823529413,
+        "3": 0.17647058823529413,
+        "5": 0.17647058823529413,
+        "10": 0.17647058823529413
+      },
+      "precisionAtK": {
+        "1": 0.17647058823529413,
+        "3": 0.058823529411764705,
+        "5": 0.03529411764705883,
+        "10": 0.017647058823529415
+      },
+      "mrr": 0.17647058823529413
+    },
+    {
+      "group": "wikilink->typed",
+      "count": 1,
+      "recallAtK": {
+        "1": 0,
+        "3": 1,
+        "5": 1,
+        "10": 1
+      },
+      "precisionAtK": {
+        "1": 0,
+        "3": 0.3333333333333333,
+        "5": 0.2,
+        "10": 0.1
+      },
+      "mrr": 0.3333333333333333
     },
     {
       "group": "wikilink->typed,typed->hipporag",
-      "count": 25,
+      "count": 45,
       "recallAtK": {
-        "1": 0.16,
-        "3": 0.56,
-        "5": 0.64,
-        "10": 0.64
+        "1": 0.13333333333333333,
+        "3": 0.37777777777777777,
+        "5": 0.4,
+        "10": 0.4
       },
       "precisionAtK": {
-        "1": 0.16,
-        "3": 0.18666666666666665,
-        "5": 0.12800000000000003,
-        "10": 0.06400000000000002
+        "1": 0.13333333333333333,
+        "3": 0.12592592592592589,
+        "5": 0.08000000000000002,
+        "10": 0.04000000000000001
       },
-      "mrr": 0.33133333333333326
+      "mrr": 0.23518518518518525
     },
     {
       "group": "dev",
-      "count": 37,
+      "count": 46,
       "recallAtK": {
-        "1": 0.16216216216216217,
-        "3": 0.40540540540540543,
-        "5": 0.6216216216216216,
-        "10": 0.6216216216216216
+        "1": 0.15217391304347827,
+        "3": 0.34782608695652173,
+        "5": 0.34782608695652173,
+        "10": 0.34782608695652173
       },
       "precisionAtK": {
-        "1": 0.16216216216216217,
-        "3": 0.13513513513513511,
-        "5": 0.12432432432432436,
-        "10": 0.06216216216216218
+        "1": 0.15217391304347827,
+        "3": 0.11594202898550722,
+        "5": 0.06956521739130436,
+        "10": 0.03478260869565218
       },
-      "mrr": 0.30495495495495495
+      "mrr": 0.22826086956521746
     },
     {
       "group": "holdout",
-      "count": 13,
+      "count": 17,
       "recallAtK": {
-        "1": 0.07692307692307693,
-        "3": 0.3076923076923077,
-        "5": 0.46153846153846156,
-        "10": 0.6153846153846154
+        "1": 0.11764705882352941,
+        "3": 0.29411764705882354,
+        "5": 0.35294117647058826,
+        "10": 0.35294117647058826
       },
       "precisionAtK": {
-        "1": 0.07692307692307693,
-        "3": 0.10256410256410256,
-        "5": 0.0923076923076923,
-        "10": 0.061538461538461535
+        "1": 0.11764705882352941,
+        "3": 0.0980392156862745,
+        "5": 0.07058823529411765,
+        "10": 0.03529411764705882
       },
-      "mrr": 0.22371794871794867
+      "mrr": 0.20098039215686272
     }
   ],
   "modes": {
@@ -2039,6 +2614,23 @@
       {
         "group": "multi-hop",
         "count": 8,
+        "recallAtK": {
+          "1": 0.125,
+          "3": 0.125,
+          "5": 0.125,
+          "10": 0.125
+        },
+        "precisionAtK": {
+          "1": 0.125,
+          "3": 0.041666666666666664,
+          "5": 0.025,
+          "10": 0.0125
+        },
+        "mrr": 0.125
+      },
+      {
+        "group": "multi-hop-scoped",
+        "count": 4,
         "recallAtK": {
           "1": 0,
           "3": 0,
@@ -2068,24 +2660,24 @@
           "5": 0.025,
           "10": 0.0125
         },
-        "mrr": 0.03125
+        "mrr": 0.025
       },
       {
         "group": "remote-association-2hop",
         "count": 8,
         "recallAtK": {
           "1": 0,
-          "3": 0.25,
-          "5": 0.375,
-          "10": 0.5
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0.08333333333333333,
-          "5": 0.07500000000000001,
-          "10": 0.05
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.12916666666666668
+        "mrr": 0
       },
       {
         "group": "remote-association-3hop",
@@ -2093,36 +2685,53 @@
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.875,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.175,
-          "10": 0.09999999999999999
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.234375
+        "mrr": 0
       },
       {
         "group": "single-hop",
-        "count": 10,
+        "count": 11,
         "recallAtK": {
-          "1": 0.7,
-          "3": 0.9,
-          "5": 1,
-          "10": 1
+          "1": 0.5454545454545454,
+          "3": 0.8181818181818182,
+          "5": 0.9090909090909091,
+          "10": 0.9090909090909091
         },
         "precisionAtK": {
-          "1": 0.7,
-          "3": 0.3,
-          "5": 0.19999999999999998,
-          "10": 0.09999999999999999
+          "1": 0.5454545454545454,
+          "3": 0.2727272727272727,
+          "5": 0.1818181818181818,
+          "10": 0.0909090909090909
         },
-        "mrr": 0.8033333333333333
+        "mrr": 0.6848484848484848
       },
       {
         "group": "temporal",
+        "count": 8,
+        "recallAtK": {
+          "1": 0.25,
+          "3": 0.25,
+          "5": 0.25,
+          "10": 0.25
+        },
+        "precisionAtK": {
+          "1": 0.25,
+          "3": 0.08333333333333333,
+          "5": 0.05,
+          "10": 0.025
+        },
+        "mrr": 0.25
+      },
+      {
+        "group": "temporal-scoped",
         "count": 8,
         "recallAtK": {
           "1": 0,
@@ -2139,8 +2748,8 @@
         "mrr": 0.125
       },
       {
-        "group": "multi-hop:dev",
-        "count": 6,
+        "group": "multi-hop-scoped:dev",
+        "count": 3,
         "recallAtK": {
           "1": 0,
           "3": 0,
@@ -2154,6 +2763,40 @@
           "10": 0
         },
         "mrr": 0
+      },
+      {
+        "group": "multi-hop-scoped:holdout",
+        "count": 1,
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      },
+      {
+        "group": "multi-hop:dev",
+        "count": 6,
+        "recallAtK": {
+          "1": 0.16666666666666666,
+          "3": 0.16666666666666666,
+          "5": 0.16666666666666666,
+          "10": 0.16666666666666666
+        },
+        "precisionAtK": {
+          "1": 0.16666666666666666,
+          "3": 0.05555555555555555,
+          "5": 0.03333333333333333,
+          "10": 0.016666666666666666
+        },
+        "mrr": 0.16666666666666666
       },
       {
         "group": "multi-hop:holdout",
@@ -2187,7 +2830,7 @@
           "5": 0.03333333333333333,
           "10": 0.016666666666666666
         },
-        "mrr": 0.041666666666666664
+        "mrr": 0.03333333333333333
       },
       {
         "group": "preference:holdout",
@@ -2211,17 +2854,17 @@
         "count": 6,
         "recallAtK": {
           "1": 0,
-          "3": 0.3333333333333333,
-          "5": 0.5,
-          "10": 0.5
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0.1111111111111111,
-          "5": 0.10000000000000002,
-          "10": 0.05000000000000001
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.14444444444444446
+        "mrr": 0
       },
       {
         "group": "remote-association-2hop:holdout",
@@ -2230,15 +2873,15 @@
           "1": 0,
           "3": 0,
           "5": 0,
-          "10": 0.5
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
           "5": 0,
-          "10": 0.05
+          "10": 0
         },
-        "mrr": 0.08333333333333333
+        "mrr": 0
       },
       {
         "group": "remote-association-3hop:dev",
@@ -2246,16 +2889,16 @@
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 1,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.19999999999999998,
-          "10": 0.09999999999999999
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.25
+        "mrr": 0
       },
       {
         "group": "remote-association-3hop:holdout",
@@ -2263,53 +2906,53 @@
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.5,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.1,
-          "10": 0.1
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.1875
+        "mrr": 0
       },
       {
         "group": "single-hop:dev",
         "count": 7,
         "recallAtK": {
-          "1": 0.8571428571428571,
+          "1": 0.7142857142857143,
           "3": 1,
           "5": 1,
           "10": 1
         },
         "precisionAtK": {
-          "1": 0.8571428571428571,
+          "1": 0.7142857142857143,
           "3": 0.3333333333333333,
           "5": 0.19999999999999998,
           "10": 0.09999999999999999
         },
-        "mrr": 0.9285714285714286
+        "mrr": 0.8571428571428571
       },
       {
         "group": "single-hop:holdout",
-        "count": 3,
+        "count": 4,
         "recallAtK": {
-          "1": 0.3333333333333333,
-          "3": 0.6666666666666666,
-          "5": 1,
-          "10": 1
+          "1": 0.25,
+          "3": 0.5,
+          "5": 0.75,
+          "10": 0.75
         },
         "precisionAtK": {
-          "1": 0.3333333333333333,
-          "3": 0.2222222222222222,
-          "5": 0.20000000000000004,
-          "10": 0.10000000000000002
+          "1": 0.25,
+          "3": 0.16666666666666666,
+          "5": 0.15000000000000002,
+          "10": 0.07500000000000001
         },
-        "mrr": 0.5111111111111111
+        "mrr": 0.3833333333333333
       },
       {
-        "group": "temporal:dev",
+        "group": "temporal-scoped:dev",
         "count": 6,
         "recallAtK": {
           "1": 0,
@@ -2326,7 +2969,7 @@
         "mrr": 0.08333333333333333
       },
       {
-        "group": "temporal:holdout",
+        "group": "temporal-scoped:holdout",
         "count": 2,
         "recallAtK": {
           "1": 0,
@@ -2341,6 +2984,40 @@
           "10": 0.05
         },
         "mrr": 0.25
+      },
+      {
+        "group": "temporal:dev",
+        "count": 6,
+        "recallAtK": {
+          "1": 0.16666666666666666,
+          "3": 0.16666666666666666,
+          "5": 0.16666666666666666,
+          "10": 0.16666666666666666
+        },
+        "precisionAtK": {
+          "1": 0.16666666666666666,
+          "3": 0.05555555555555555,
+          "5": 0.03333333333333333,
+          "10": 0.016666666666666666
+        },
+        "mrr": 0.16666666666666666
+      },
+      {
+        "group": "temporal:holdout",
+        "count": 2,
+        "recallAtK": {
+          "1": 0.5,
+          "3": 0.5,
+          "5": 0.5,
+          "10": 0.5
+        },
+        "precisionAtK": {
+          "1": 0.5,
+          "3": 0.16666666666666666,
+          "5": 0.1,
+          "10": 0.05
+        },
+        "mrr": 0.5
       }
     ],
     "typed": [
@@ -2348,6 +3025,23 @@
         "group": "multi-hop",
         "count": 8,
         "recallAtK": {
+          "1": 0.125,
+          "3": 0.125,
+          "5": 0.125,
+          "10": 0.125
+        },
+        "precisionAtK": {
+          "1": 0.125,
+          "3": 0.041666666666666664,
+          "5": 0.025,
+          "10": 0.0125
+        },
+        "mrr": 0.125
+      },
+      {
+        "group": "multi-hop-scoped",
+        "count": 4,
+        "recallAtK": {
           "1": 0,
           "3": 0,
           "5": 0,
@@ -2366,34 +3060,34 @@
         "count": 8,
         "recallAtK": {
           "1": 0,
-          "3": 0,
+          "3": 0.125,
           "5": 0.125,
           "10": 0.125
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0,
+          "3": 0.041666666666666664,
           "5": 0.025,
           "10": 0.0125
         },
-        "mrr": 0.03125
+        "mrr": 0.041666666666666664
       },
       {
         "group": "remote-association-2hop",
         "count": 8,
         "recallAtK": {
           "1": 0,
-          "3": 0.25,
-          "5": 0.25,
-          "10": 0.25
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0.08333333333333333,
-          "5": 0.05,
-          "10": 0.025
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.08333333333333333
+        "mrr": 0
       },
       {
         "group": "remote-association-3hop",
@@ -2401,36 +3095,53 @@
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.875,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.175,
-          "10": 0.09999999999999999
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.234375
+        "mrr": 0
       },
       {
         "group": "single-hop",
-        "count": 10,
+        "count": 11,
         "recallAtK": {
-          "1": 0.7,
-          "3": 0.9,
-          "5": 1,
-          "10": 1
+          "1": 0.5454545454545454,
+          "3": 0.8181818181818182,
+          "5": 0.9090909090909091,
+          "10": 0.9090909090909091
         },
         "precisionAtK": {
-          "1": 0.7,
-          "3": 0.3,
-          "5": 0.19999999999999998,
-          "10": 0.09999999999999999
+          "1": 0.5454545454545454,
+          "3": 0.2727272727272727,
+          "5": 0.1818181818181818,
+          "10": 0.0909090909090909
         },
-        "mrr": 0.8033333333333333
+        "mrr": 0.6742424242424243
       },
       {
         "group": "temporal",
+        "count": 8,
+        "recallAtK": {
+          "1": 0.25,
+          "3": 0.25,
+          "5": 0.25,
+          "10": 0.25
+        },
+        "precisionAtK": {
+          "1": 0.25,
+          "3": 0.08333333333333333,
+          "5": 0.05,
+          "10": 0.025
+        },
+        "mrr": 0.25
+      },
+      {
+        "group": "temporal-scoped",
         "count": 8,
         "recallAtK": {
           "1": 0,
@@ -2447,8 +3158,8 @@
         "mrr": 0.375
       },
       {
-        "group": "multi-hop:dev",
-        "count": 6,
+        "group": "multi-hop-scoped:dev",
+        "count": 3,
         "recallAtK": {
           "1": 0,
           "3": 0,
@@ -2462,6 +3173,40 @@
           "10": 0
         },
         "mrr": 0
+      },
+      {
+        "group": "multi-hop-scoped:holdout",
+        "count": 1,
+        "recallAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0,
+          "5": 0,
+          "10": 0
+        },
+        "mrr": 0
+      },
+      {
+        "group": "multi-hop:dev",
+        "count": 6,
+        "recallAtK": {
+          "1": 0.16666666666666666,
+          "3": 0.16666666666666666,
+          "5": 0.16666666666666666,
+          "10": 0.16666666666666666
+        },
+        "precisionAtK": {
+          "1": 0.16666666666666666,
+          "3": 0.05555555555555555,
+          "5": 0.03333333333333333,
+          "10": 0.016666666666666666
+        },
+        "mrr": 0.16666666666666666
       },
       {
         "group": "multi-hop:holdout",
@@ -2485,17 +3230,17 @@
         "count": 6,
         "recallAtK": {
           "1": 0,
-          "3": 0,
+          "3": 0.16666666666666666,
           "5": 0.16666666666666666,
           "10": 0.16666666666666666
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0,
+          "3": 0.05555555555555555,
           "5": 0.03333333333333333,
           "10": 0.016666666666666666
         },
-        "mrr": 0.041666666666666664
+        "mrr": 0.05555555555555555
       },
       {
         "group": "preference:holdout",
@@ -2519,17 +3264,17 @@
         "count": 6,
         "recallAtK": {
           "1": 0,
-          "3": 0.3333333333333333,
-          "5": 0.3333333333333333,
-          "10": 0.3333333333333333
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0.1111111111111111,
-          "5": 0.06666666666666667,
-          "10": 0.03333333333333333
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.1111111111111111
+        "mrr": 0
       },
       {
         "group": "remote-association-2hop:holdout",
@@ -2554,16 +3299,16 @@
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 1,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.19999999999999998,
-          "10": 0.09999999999999999
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.25
+        "mrr": 0
       },
       {
         "group": "remote-association-3hop:holdout",
@@ -2571,53 +3316,53 @@
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.5,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.1,
-          "10": 0.1
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.1875
+        "mrr": 0
       },
       {
         "group": "single-hop:dev",
         "count": 7,
         "recallAtK": {
-          "1": 0.8571428571428571,
+          "1": 0.7142857142857143,
           "3": 1,
           "5": 1,
           "10": 1
         },
         "precisionAtK": {
-          "1": 0.8571428571428571,
+          "1": 0.7142857142857143,
           "3": 0.3333333333333333,
           "5": 0.19999999999999998,
           "10": 0.09999999999999999
         },
-        "mrr": 0.9285714285714286
+        "mrr": 0.8333333333333334
       },
       {
         "group": "single-hop:holdout",
-        "count": 3,
+        "count": 4,
         "recallAtK": {
-          "1": 0.3333333333333333,
-          "3": 0.6666666666666666,
-          "5": 1,
-          "10": 1
+          "1": 0.25,
+          "3": 0.5,
+          "5": 0.75,
+          "10": 0.75
         },
         "precisionAtK": {
-          "1": 0.3333333333333333,
-          "3": 0.2222222222222222,
-          "5": 0.20000000000000004,
-          "10": 0.10000000000000002
+          "1": 0.25,
+          "3": 0.16666666666666666,
+          "5": 0.15000000000000002,
+          "10": 0.07500000000000001
         },
-        "mrr": 0.5111111111111111
+        "mrr": 0.3958333333333333
       },
       {
-        "group": "temporal:dev",
+        "group": "temporal-scoped:dev",
         "count": 6,
         "recallAtK": {
           "1": 0,
@@ -2634,7 +3379,7 @@
         "mrr": 0.3611111111111111
       },
       {
-        "group": "temporal:holdout",
+        "group": "temporal-scoped:holdout",
         "count": 2,
         "recallAtK": {
           "1": 0,
@@ -2649,6 +3394,40 @@
           "10": 0.1
         },
         "mrr": 0.41666666666666663
+      },
+      {
+        "group": "temporal:dev",
+        "count": 6,
+        "recallAtK": {
+          "1": 0.16666666666666666,
+          "3": 0.16666666666666666,
+          "5": 0.16666666666666666,
+          "10": 0.16666666666666666
+        },
+        "precisionAtK": {
+          "1": 0.16666666666666666,
+          "3": 0.05555555555555555,
+          "5": 0.03333333333333333,
+          "10": 0.016666666666666666
+        },
+        "mrr": 0.16666666666666666
+      },
+      {
+        "group": "temporal:holdout",
+        "count": 2,
+        "recallAtK": {
+          "1": 0.5,
+          "3": 0.5,
+          "5": 0.5,
+          "10": 0.5
+        },
+        "precisionAtK": {
+          "1": 0.5,
+          "3": 0.16666666666666666,
+          "5": 0.1,
+          "10": 0.05
+        },
+        "mrr": 0.5
       }
     ],
     "hipporag": [
@@ -2656,52 +3435,69 @@
         "group": "multi-hop",
         "count": 8,
         "recallAtK": {
+          "1": 0.125,
+          "3": 0.125,
+          "5": 0.125,
+          "10": 0.125
+        },
+        "precisionAtK": {
+          "1": 0.125,
+          "3": 0.041666666666666664,
+          "5": 0.025,
+          "10": 0.0125
+        },
+        "mrr": 0.125
+      },
+      {
+        "group": "multi-hop-scoped",
+        "count": 4,
+        "recallAtK": {
           "1": 0,
-          "3": 0.5,
-          "5": 0.5,
-          "10": 0.5
+          "3": 1,
+          "5": 1,
+          "10": 1
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0.16666666666666666,
-          "5": 0.1,
-          "10": 0.05
+          "3": 0.3333333333333333,
+          "5": 0.2,
+          "10": 0.1
         },
-        "mrr": 0.25
+        "mrr": 0.5
       },
       {
         "group": "preference",
         "count": 8,
         "recallAtK": {
           "1": 0,
-          "3": 0,
+          "3": 0.125,
           "5": 0.125,
           "10": 0.125
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0,
+          "3": 0.041666666666666664,
           "5": 0.025,
           "10": 0.0125
         },
-        "mrr": 0.03125
+        "mrr": 0.041666666666666664
       },
       {
         "group": "remote-association-2hop",
         "count": 8,
         "recallAtK": {
           "1": 0,
-          "3": 0.25,
-          "5": 0.25,
-          "10": 0.25
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0.08333333333333333,
-          "5": 0.05,
-          "10": 0.025
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.08333333333333333
+        "mrr": 0
       },
       {
         "group": "remote-association-3hop",
@@ -2709,36 +3505,53 @@
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.875,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.175,
-          "10": 0.09999999999999999
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.234375
+        "mrr": 0
       },
       {
         "group": "single-hop",
-        "count": 10,
+        "count": 11,
         "recallAtK": {
-          "1": 0.7,
-          "3": 0.9,
-          "5": 1,
-          "10": 1
+          "1": 0.5454545454545454,
+          "3": 0.8181818181818182,
+          "5": 0.9090909090909091,
+          "10": 0.9090909090909091
         },
         "precisionAtK": {
-          "1": 0.7,
-          "3": 0.3,
-          "5": 0.19999999999999998,
-          "10": 0.09999999999999999
+          "1": 0.5454545454545454,
+          "3": 0.2727272727272727,
+          "5": 0.1818181818181818,
+          "10": 0.0909090909090909
         },
-        "mrr": 0.8033333333333333
+        "mrr": 0.6893939393939394
       },
       {
         "group": "temporal",
+        "count": 8,
+        "recallAtK": {
+          "1": 0.25,
+          "3": 0.25,
+          "5": 0.25,
+          "10": 0.25
+        },
+        "precisionAtK": {
+          "1": 0.25,
+          "3": 0.08333333333333333,
+          "5": 0.05,
+          "10": 0.025
+        },
+        "mrr": 0.25
+      },
+      {
+        "group": "temporal-scoped",
         "count": 8,
         "recallAtK": {
           "1": 0,
@@ -2755,55 +3568,89 @@
         "mrr": 0.375
       },
       {
-        "group": "multi-hop:dev",
-        "count": 6,
+        "group": "multi-hop-scoped:dev",
+        "count": 3,
         "recallAtK": {
           "1": 0,
-          "3": 0.5,
-          "5": 0.5,
-          "10": 0.5
+          "3": 1,
+          "5": 1,
+          "10": 1
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0.16666666666666666,
-          "5": 0.10000000000000002,
-          "10": 0.05000000000000001
+          "3": 0.3333333333333333,
+          "5": 0.20000000000000004,
+          "10": 0.10000000000000002
         },
-        "mrr": 0.25
+        "mrr": 0.5
+      },
+      {
+        "group": "multi-hop-scoped:holdout",
+        "count": 1,
+        "recallAtK": {
+          "1": 0,
+          "3": 1,
+          "5": 1,
+          "10": 1
+        },
+        "precisionAtK": {
+          "1": 0,
+          "3": 0.3333333333333333,
+          "5": 0.2,
+          "10": 0.1
+        },
+        "mrr": 0.5
+      },
+      {
+        "group": "multi-hop:dev",
+        "count": 6,
+        "recallAtK": {
+          "1": 0.16666666666666666,
+          "3": 0.16666666666666666,
+          "5": 0.16666666666666666,
+          "10": 0.16666666666666666
+        },
+        "precisionAtK": {
+          "1": 0.16666666666666666,
+          "3": 0.05555555555555555,
+          "5": 0.03333333333333333,
+          "10": 0.016666666666666666
+        },
+        "mrr": 0.16666666666666666
       },
       {
         "group": "multi-hop:holdout",
         "count": 2,
         "recallAtK": {
           "1": 0,
-          "3": 0.5,
-          "5": 0.5,
-          "10": 0.5
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0.16666666666666666,
-          "5": 0.1,
-          "10": 0.05
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.25
+        "mrr": 0
       },
       {
         "group": "preference:dev",
         "count": 6,
         "recallAtK": {
           "1": 0,
-          "3": 0,
+          "3": 0.16666666666666666,
           "5": 0.16666666666666666,
           "10": 0.16666666666666666
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0,
+          "3": 0.05555555555555555,
           "5": 0.03333333333333333,
           "10": 0.016666666666666666
         },
-        "mrr": 0.041666666666666664
+        "mrr": 0.05555555555555555
       },
       {
         "group": "preference:holdout",
@@ -2827,17 +3674,17 @@
         "count": 6,
         "recallAtK": {
           "1": 0,
-          "3": 0.3333333333333333,
-          "5": 0.3333333333333333,
-          "10": 0.3333333333333333
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
-          "3": 0.1111111111111111,
-          "5": 0.06666666666666667,
-          "10": 0.03333333333333333
+          "3": 0,
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.1111111111111111
+        "mrr": 0
       },
       {
         "group": "remote-association-2hop:holdout",
@@ -2862,16 +3709,16 @@
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 1,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.19999999999999998,
-          "10": 0.09999999999999999
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.25
+        "mrr": 0
       },
       {
         "group": "remote-association-3hop:holdout",
@@ -2879,53 +3726,53 @@
         "recallAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.5,
-          "10": 1
+          "5": 0,
+          "10": 0
         },
         "precisionAtK": {
           "1": 0,
           "3": 0,
-          "5": 0.1,
-          "10": 0.1
+          "5": 0,
+          "10": 0
         },
-        "mrr": 0.1875
+        "mrr": 0
       },
       {
         "group": "single-hop:dev",
         "count": 7,
         "recallAtK": {
-          "1": 0.8571428571428571,
+          "1": 0.7142857142857143,
           "3": 1,
           "5": 1,
           "10": 1
         },
         "precisionAtK": {
-          "1": 0.8571428571428571,
+          "1": 0.7142857142857143,
           "3": 0.3333333333333333,
           "5": 0.19999999999999998,
           "10": 0.09999999999999999
         },
-        "mrr": 0.9285714285714286
+        "mrr": 0.8571428571428571
       },
       {
         "group": "single-hop:holdout",
-        "count": 3,
+        "count": 4,
         "recallAtK": {
-          "1": 0.3333333333333333,
-          "3": 0.6666666666666666,
-          "5": 1,
-          "10": 1
+          "1": 0.25,
+          "3": 0.5,
+          "5": 0.75,
+          "10": 0.75
         },
         "precisionAtK": {
-          "1": 0.3333333333333333,
-          "3": 0.2222222222222222,
-          "5": 0.20000000000000004,
-          "10": 0.10000000000000002
+          "1": 0.25,
+          "3": 0.16666666666666666,
+          "5": 0.15000000000000002,
+          "10": 0.07500000000000001
         },
-        "mrr": 0.5111111111111111
+        "mrr": 0.3958333333333333
       },
       {
-        "group": "temporal:dev",
+        "group": "temporal-scoped:dev",
         "count": 6,
         "recallAtK": {
           "1": 0,
@@ -2942,7 +3789,7 @@
         "mrr": 0.3611111111111111
       },
       {
-        "group": "temporal:holdout",
+        "group": "temporal-scoped:holdout",
         "count": 2,
         "recallAtK": {
           "1": 0,
@@ -2957,12 +3804,46 @@
           "10": 0.1
         },
         "mrr": 0.41666666666666663
+      },
+      {
+        "group": "temporal:dev",
+        "count": 6,
+        "recallAtK": {
+          "1": 0.16666666666666666,
+          "3": 0.16666666666666666,
+          "5": 0.16666666666666666,
+          "10": 0.16666666666666666
+        },
+        "precisionAtK": {
+          "1": 0.16666666666666666,
+          "3": 0.05555555555555555,
+          "5": 0.03333333333333333,
+          "10": 0.016666666666666666
+        },
+        "mrr": 0.16666666666666666
+      },
+      {
+        "group": "temporal:holdout",
+        "count": 2,
+        "recallAtK": {
+          "1": 0.5,
+          "3": 0.5,
+          "5": 0.5,
+          "10": 0.5
+        },
+        "precisionAtK": {
+          "1": 0.5,
+          "3": 0.16666666666666666,
+          "5": 0.1,
+          "10": 0.05
+        },
+        "mrr": 0.5
       }
     ]
   },
   "trustViolations": 0,
   "absentViolations": 0,
   "orderViolations": 1,
-  "vacuousAbsences": 0,
+  "vacuousAbsences": 6,
   "failed": false
 }

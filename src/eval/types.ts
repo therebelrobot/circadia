@@ -15,7 +15,12 @@ export type EvalKind =
   | 'preference'
   | 'remote-association-2hop'
   | 'remote-association-3hop'
-  | 'trust';
+  | 'trust'
+  // Scoped correctness checks. These are reported separately and never folded
+  // into the per-kind recall headline: a scope shrinks the retrieval problem, so
+  // a scoped pass is not evidence the unscoped query works.
+  | 'multi-hop-scoped'
+  | 'temporal-scoped';
 
 /** Which half of the eval set a query belongs to. Tuning reads `dev` only. */
 export type EvalSplit = 'dev' | 'holdout';

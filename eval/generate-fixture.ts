@@ -96,19 +96,25 @@ function conceptNote(id: string, links: string[]): Note {
   return entity(id, 'concept', `${titleOf(id)} is a concept tracked in the field log.${linkLine}`, { created: '2026-01-06' });
 }
 
+/** Core notes a chain's hub/middle links to, so no chain is an isolated component. */
+const HUB_TARGETS = [
+  'pi-cluster', 'old-laptop', 'greenhouse-controller', 'field-gateway',
+  'relay-tower', 'solar-inverter', 'sam', 'hal',
+];
+
 function conceptNotes(): Note[] {
   const out: Note[] = [];
   for (let i = 0; i < 8; i++) {
     const { seed, target, hub } = remote2hop(i);
     out.push(conceptNote(seed, [hub]));
     out.push(conceptNote(target, [hub]));
-    out.push(conceptNote(hub, []));
+    out.push(conceptNote(hub, [HUB_TARGETS[i % HUB_TARGETS.length]]));
   }
   for (let i = 0; i < 8; i++) {
     const { seed, a, b, target } = remote3hop(i);
     out.push(conceptNote(seed, [a]));
     out.push(conceptNote(a, [b]));
-    out.push(conceptNote(b, [target]));
+    out.push(conceptNote(b, [target, HUB_TARGETS[i % HUB_TARGETS.length]]));
     out.push(conceptNote(target, []));
   }
   return out;
@@ -221,7 +227,7 @@ function coreNotes(): Note[] {
     entity('old-laptop', 'tool', 'The old-laptop is a retired ThinkPad used as a backup host for batch jobs.', {
       tags: ['alpha'],
       created: '2026-01-02',
-      facts: ['[status:: archived] [by:: user]'],
+      facts: ['[status:: archived] [by:: user]', '[maintained_by:: [[gus]]] [by:: user]'],
     }),
     entity('greenhouse-controller', 'tool', 'The greenhouse-controller is a small PLC that drives irrigation valves and ventilation fans.', {
       tags: ['beta'],
@@ -377,6 +383,9 @@ function fillerNotes(perProject: number): Note[] {
       }
       // ~10% of filler notes link to a core entity, so traversal has competing paths
       if (globalIndex % 10 === 0) links.push(`[[${pick(rng, DISTRACTOR_TARGETS)}]]`);
+      // every filler note links to a remote-association concept, so no chain is an
+      // isolated component and PPR mass has somewhere else to go
+      links.push(`[[${CONCEPTS[globalIndex % CONCEPTS.length]}]]`);
       globalIndex++;
       const sentences = [
         `${conn} the ${subj} ${verb} ${obj} and logs it to the ${project} dashboard.`,
