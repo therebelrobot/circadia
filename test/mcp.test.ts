@@ -1,9 +1,11 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { CONFIG_FILENAME, DEFAULT_CONFIG } from '../src/config.ts';
+import { CONFIG_FILENAME, DEFAULT_CONFIG, loadConfig } from '../src/config.ts';
+import { handleToolsCall } from '../src/mcp/server.ts';
+import { buildIndex } from '../src/index/indexer.ts';
 
 function createTestVault(): string {
   const vault = join(tmpdir(), 'circadia-mcp-test-' + Date.now());
@@ -174,5 +176,86 @@ describe('MCP conformance', () => {
     assert.ok(result.result);
     const episodes = (result.result as any).episodes;
     assert.ok(episodes);
+  });
+});
+
+// C16: the real `handleToolsCall` (not the stub above) must log access, pass scope and
+// session through, and reject an unparseable as_of. Expected values come from
+// docs/remediation.md C16 and docs/SECURITY.md T5 (the log stores only the query hash).
+function createRecallVault(): string {
+  const vault = join(tmpdir(), 'circadia-mcp-recall-test-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+  mkdirSync(vault, { recursive: true });
+  writeFileSync(
+    join(vault, CONFIG_FILENAME),
+    JSON.stringify(
+      {
+        graph: { defaultExtraction: 'typed', scopes: [], query: { mode: 'wikilink' } },
+        predicates: { strict: false, defs: {} },
+        embeddings: { provider: 'none' },
+        index: { path: '.circadia/index.sqlite' },
+        retrieval: { ...DEFAULT_CONFIG.retrieval, logAccess: false },
+      },
+      null,
+      2,
+    ),
+  );
+  mkdirSync(join(vault, 'projects', 'alpha'), { recursive: true });
+  mkdirSync(join(vault, 'projects', 'beta'), { recursive: true });
+  mkdirSync(join(vault, '.circadia'), { recursive: true });
+  writeFileSync(
+    join(vault, 'projects', 'alpha', 'alpha-note.md'),
+    '---\ntype: entity\nkind: project\ntags: [alpha]\n---\n# Alpha\n\nThe alpha widget calibration procedure.\n',
+  );
+  writeFileSync(
+    join(vault, 'projects', 'beta', 'beta-note.md'),
+    '---\ntype: entity\nkind: project\ntags: [beta]\n---\n# Beta\n\nThe beta widget calibration procedure.\n',
+  );
+  return vault;
+}
+
+describe('MCP recall (C16)', () => {
+  let vault: string;
+
+  beforeEach(() => {
+    vault = createRecallVault();
+  });
+
+  afterEach(() => {
+    cleanupVault(vault);
+  });
+
+  it('logs an access event with the session id and only the query hash', async () => {
+    const cfg = loadConfig(vault);
+    buildIndex(vault, cfg);
+    const res = await handleToolsCall(vault, cfg, 'recall', { query: 'widget calibration', session: 'sess-42' }, 1);
+    assert.ok(res.result, 'recall must succeed');
+
+    const logPath = join(vault, cfg.index.accessLog);
+    assert.ok(existsSync(logPath), 'the access log must be written');
+    const raw = readFileSync(logPath, 'utf8');
+    const events = raw.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    assert.ok(events.length > 0, 'at least one access event');
+    assert.ok(events.every((e) => e.session === 'sess-42'), 'every event carries the session id');
+    assert.ok(events.every((e) => typeof e.q === 'string' && /^[0-9a-f]{12}$/.test(e.q)), 'q is a 12-hex hash');
+    assert.ok(!raw.includes('widget calibration'), 'the query text must never be logged');
+  });
+
+  it('returns a JSON-RPC error for an unparseable as_of', async () => {
+    const cfg = loadConfig(vault);
+    buildIndex(vault, cfg);
+    const res = await handleToolsCall(vault, cfg, 'recall', { query: 'widget', as_of: 'not-a-date' }, 7);
+    assert.ok(res.error, 'must be a protocol error, not a result');
+    assert.equal(res.error.code, -32602);
+    assert.match(res.error.message, /as_of/);
+  });
+
+  it('passes scope through so only in-scope hits are returned', async () => {
+    const cfg = loadConfig(vault);
+    buildIndex(vault, cfg);
+    const res = await handleToolsCall(vault, cfg, 'recall', { query: 'widget calibration', scope: 'projects/alpha' }, 9);
+    assert.ok(res.result, 'recall must succeed');
+    const text = (res.result as { content: { text: string }[] }).content[0].text;
+    assert.ok(text.includes('projects/alpha/alpha-note.md'), 'the in-scope hit must be present');
+    assert.ok(!text.includes('projects/beta/beta-note.md'), 'the out-of-scope hit must be absent');
   });
 });

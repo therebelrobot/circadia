@@ -98,6 +98,7 @@ async function handleToolsList(
           as_of: { type: 'string' },
           top_k: { type: 'number' },
           scope: { type: 'string' },
+          session: { type: 'string' },
         },
         required: ['query'],
       },
@@ -162,10 +163,33 @@ export async function handleToolsCall(
     if (method === 'recall' && params && 'query' in params && typeof params.query === 'string') {
       const recallModule = await import('../retrieval/recall.ts');
       const query = params.query;
-      const asOf = params.as_of ? Date.parse(params.as_of as string) : null;
+      // An unparseable as_of must be a protocol error, not a silent NaN that filters
+      // every hit away. JSON-RPC 2.0 reserves -32602 for invalid params.
+      let asOf: number | null = null;
+      if (params.as_of !== undefined) {
+        if (typeof params.as_of !== 'string' || Number.isNaN(Date.parse(params.as_of))) {
+          return {
+            jsonrpc: '2.0',
+            id,
+            error: { code: -32602, message: 'Invalid params: as_of must be a parseable date string' },
+          };
+        }
+        asOf = Date.parse(params.as_of);
+      }
       const mode = params.mode as QueryMode | undefined;
       const topK = typeof params.top_k === 'number' ? params.top_k : undefined;
-      const r = await recallModule.recall(vaultRoot, cfg, query, { mode, asOf, topK, logAccess: false });
+      const scope = typeof params.scope === 'string' ? params.scope : undefined;
+      const session = typeof params.session === 'string' ? params.session : undefined;
+      // C16: log access by default (config `mcp.logAccess`). The log stores only the query
+      // hash, so this is privacy-safe, and without it MCP use never feeds ACT-R.
+      const r = await recallModule.recall(vaultRoot, cfg, query, {
+        mode,
+        asOf,
+        topK,
+        scope,
+        session,
+        logAccess: cfg.mcp.logAccess,
+      });
       return {
         jsonrpc: '2.0',
         id,

@@ -109,6 +109,15 @@ export interface Config {
     /** log each returned hit to the access log (reconsolidation / base-level activation) */
     logAccess: boolean;
   };
+  mcp: {
+    /**
+     * Log MCP `recall` hits to the access log. Defaults to true: the log stores only the
+     * query hash (never the query text), and without it agent use through MCP — the main
+     * use case — never feeds ACT-R or the reconsolidation window. Set false to keep the
+     * log clean for a vault whose MCP traffic should not count as memory use.
+     */
+    logAccess: boolean;
+  };
   embeddings: {
     provider: 'none' | 'http';
     /** an OpenAI-compatible /v1/embeddings endpoint, e.g. llama.cpp's llama-server */
@@ -187,6 +196,9 @@ export const DEFAULT_CONFIG: Config = {
     actrNoise: 1.0,
     trustFloor: 'low',
     includeSuperseded: false,
+    logAccess: true,
+  },
+  mcp: {
     logAccess: true,
   },
   embeddings: {

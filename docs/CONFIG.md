@@ -52,6 +52,12 @@ load.
 | `retrieval.includeSuperseded` | `false` | traverse superseded fact edges |
 | `retrieval.logAccess` | `true` | append returned hits to the access log |
 
+## mcp
+
+| key | default | meaning |
+|---|---|---|
+| `mcp.logAccess` | `true` | log MCP `recall` hits to the access log. The log stores only the query hash, never the query text, so this is privacy-safe; without it, agent use through MCP never feeds ACT-R or the reconsolidation window. Set `false` to keep MCP traffic out of the log |
+
 ## embeddings
 
 Passage embeddings for vector seeds (Phase 2). With `provider: "http"`,

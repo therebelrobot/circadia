@@ -17,7 +17,7 @@ meet. Read `docs/ROADMAP.md` Phase 3 and `docs/SECURITY.md` T1–T3 first.
 
 | tool | args | effect | writes |
 |---|---|---|---|
-| `recall` | `query: string`, `mode?: wikilink\|typed\|hipporag\|auto`, `as_of?: string`, `top_k?: number`, `scope?: string` | `recall()` + `renderForContext()` | access log only |
+| `recall` | `query: string`, `mode?: wikilink\|typed\|hipporag\|auto`, `as_of?: string`, `top_k?: number`, `scope?: string`, `session?: string` | `recall()` + `renderForContext()` | access log only (query hash, never the query text; `mcp.logAccess`, default on) |
 | `remember` | `text: string`, `session?: string`, `by?: user\|agent\|tool\|web`, `source?: chat\|tool\|import` | segment `text` at topic shifts and write one episode per segment | `episodes/**` **only** |
 | `timeline` | `entity: string` | facts about an entity ordered by `valid_from`, incl. superseded | none |
 | `relate` | `a: string`, `b: string`, `max_hops?: number` | shortest edge paths with provenance | none |

@@ -16,7 +16,7 @@ import { getMeta, openIndex } from '../index/db.ts';
 import { bm25Search, ftsSearch, type KeywordHit } from './keyword.ts';
 import { findCandidateTriples, filterTriplesWithLLM, extractSeeds, HttpTripleVerifier, type TripleVerifier } from './recognition-memory.ts';
 import { MODE_ORIGINS } from './modes.ts';
-import { personalizedPageRank } from './ppr.ts';
+import { addEdge, makeGraph, personalizedPageRank, type Graph } from './ppr.ts';
 import { appendAccess, baseLevelFromParts, queryHash, readAccessLog, readAccessLogFrom, retrievalProbability } from './activation.ts';
 import { loadAccessSummaries, presentationsForActivation, type NodePresentations } from './log-compact.ts';
 import { loadGraph, TRUST_RANK, type GraphCache } from './graph-cache.ts';
@@ -31,6 +31,12 @@ export interface RecallOptions {
   logAccess?: boolean;
   /** session id for reconsolidation window tracking */
   session?: string;
+  /**
+   * Restrict seeds and traversal to a path prefix or tag (docs/SECURITY.md T4). A value
+   * beginning with `tag:` matches notes carrying that tag; any other value is a
+   * vault-relative path prefix. See docs/RETRIEVAL.md §11.
+   */
+  scope?: string;
   now?: number;
   /** override db path (tests) */
   dbPath?: string;
@@ -98,6 +104,78 @@ interface RungResult {
   margin: number;
 }
 
+/**
+ * Node ids allowed by a recall `scope` (docs/SECURITY.md T4). SECURITY T4 says "a path
+ * prefix or tag" without saying how one string selects between them, so this takes the
+ * narrower reading: the form is explicit, never guessed.
+ *   - `tag:<name>`  → notes whose `tags` include `<name>`, plus their passages;
+ *   - anything else → notes and passages whose vault-relative path is the prefix itself
+ *                     or lies under it at a path-segment boundary (`projects/alpha` does
+ *                     not match `projects/alphabet`).
+ * Phrase nodes (hipporag) carry no path or tags; a phrase is in scope only when an
+ * in-scope passage mentions it, so a scoped hipporag traversal stays inside the scope.
+ */
+export function resolveScope(db: DatabaseSync, scope: string): Set<string> {
+  const ids = new Set<string>();
+  if (scope.startsWith('tag:')) {
+    const tag = scope.slice('tag:'.length);
+    const notes = db.prepare(`SELECT id, tags FROM nodes WHERE kind = 'note'`).all() as { id: string; tags: string | null }[];
+    const noteIds: string[] = [];
+    for (const n of notes) {
+      let tags: string[] = [];
+      try {
+        const parsed: unknown = JSON.parse(n.tags ?? '[]');
+        if (Array.isArray(parsed)) tags = parsed as string[];
+      } catch {
+        tags = [];
+      }
+      if (tags.includes(tag)) {
+        ids.add(n.id);
+        noteIds.push(n.id);
+      }
+    }
+    if (noteIds.length > 0) {
+      const ph = noteIds.map(() => '?').join(',');
+      for (const r of db.prepare(`SELECT id FROM nodes WHERE note_id IN (${ph})`).all(...noteIds) as { id: string }[]) {
+        ids.add(r.id);
+      }
+    }
+  } else {
+    const prefix = scope.replace(/\/+$/, '');
+    if (prefix.length > 0) {
+      const rows = db.prepare(`SELECT id, path FROM nodes WHERE path IS NOT NULL`).all() as { id: string; path: string }[];
+      for (const r of rows) {
+        if (r.path === prefix || r.path.startsWith(prefix + '/')) ids.add(r.id);
+      }
+    }
+  }
+  // Keep phrase nodes reachable from in-scope passages so hipporag traversal survives a scope.
+  const mentions = db
+    .prepare(`SELECT src, dst FROM edges WHERE origin = 'triple' AND type = 'mentions' AND dst IS NOT NULL`)
+    .all() as { src: string; dst: string }[];
+  for (const m of mentions) if (ids.has(m.src)) ids.add(m.dst);
+  return ids;
+}
+
+/** Keep only edges whose both endpoints are in `allowed` — a scoped traversal. */
+function filterGraph(g: Graph, allowed: Set<string>): Graph {
+  const out = makeGraph();
+  for (let i = 0; i < g.ids.length; i++) {
+    const a = g.ids[i];
+    if (!allowed.has(a)) continue;
+    const nb = g.nbr[i];
+    const ws = g.w[i];
+    for (let k = 0; k < nb.length; k++) {
+      const j = nb[k];
+      if (j <= i) continue; // undirected edges are stored twice; add each once
+      const b = g.ids[j];
+      if (!allowed.has(b)) continue;
+      addEdge(out, a, b, ws[k]);
+    }
+  }
+  return out;
+}
+
 function runRung(
   db: DatabaseSync,
   cfg: Config,
@@ -108,9 +186,13 @@ function runRung(
   presentations: Map<string, NodePresentations>,
   topK: number,
   tokenBudget: number,
+  scopeIds: Set<string> | null,
   graphCache?: GraphCache,
 ): RungResult {
-  const g = graphCache?.getGraph(mode, asOf, cfg) ?? loadGraph(db, mode, asOf, cfg);
+  const loaded = graphCache?.getGraph(mode, asOf, cfg) ?? loadGraph(db, mode, asOf, cfg);
+  // A scope is a traversal filter: only edges with both endpoints in scope participate,
+  // so activation cannot leak in from a project outside the scope.
+  const g = scopeIds ? filterGraph(loaded, scopeIds) : loaded;
 
   const ppr = personalizedPageRank(g, seeds, {
     damping: cfg.graph.damping,
@@ -235,7 +317,11 @@ export async function recall(vaultRoot: string, cfg: Config, query: string, opts
         }
       }
     }
-    const fused = rrf(lists);
+    // A scope filters seeds as well as traversal: an out-of-scope cue must not seed the
+    // walk, or its neighbours would surface even with the graph filtered.
+    const scopeIds = opts.scope ? resolveScope(db, opts.scope) : null;
+    let fused = rrf(lists);
+    if (scopeIds) fused = new Map([...fused.entries()].filter(([id]) => scopeIds.has(id)));
     const seeds = new Map([...fused.entries()].map(([id, v]) => [id, v.score]));
 
     // ACT-R presentations: compacted summaries + raw events after the summary's watermark,
@@ -278,7 +364,7 @@ export async function recall(vaultRoot: string, cfg: Config, query: string, opts
     let result: RungResult = { hits: [], margin: 0 };
     for (let i = 0; i < ladder.length; i++) {
       modeUsed = ladder[i];
-      result = runRung(db, cfg, modeUsed, seeds, asOf, activationNow, presentations, topK, tokenBudget, opts.graphCache);
+      result = runRung(db, cfg, modeUsed, seeds, asOf, activationNow, presentations, topK, tokenBudget, scopeIds, opts.graphCache);
       if (modeRequested !== 'auto' || i === ladder.length - 1) break;
       const a = cfg.graph.query.auto;
       const reasons: string[] = [];

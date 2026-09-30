@@ -111,7 +111,9 @@ the example vault.
 6. **Budget.** Take the top K until the token budget (characters ÷ 4) is spent. The first
    hit is always included.
 7. **Log.** Append `{t, node, kind: 'recall', q: sha256(query)[:12]}` per hit to
-   `.circadia/access.jsonl`, unless `--no-log` is set or `logAccess` is false.
+   `.circadia/access.jsonl`, unless `--no-log` is set or `logAccess` is false. The MCP
+   `recall` tool logs by default (`mcp.logAccess`, default `true`); the log stores only the
+   query hash, never the query text.
 
 ## 4. Scoring
 
@@ -241,3 +243,27 @@ only non-derivable usage record and as-of queries before the watermark need it. 
 - **Scale.** Cosine is brute force over all stored passage embeddings: fine to about
   10⁵ passages (a few hundred ms in JS on a Pi-class machine). Beyond that an ANN index
   would be needed, which means a dependency and an ADR. See `docs/PERFORMANCE.md`.
+
+## 11. Scope
+
+`recall` takes an optional `scope` (CLI `--scope`, MCP `scope`, `RecallOptions.scope`) that
+restricts **seeds and traversal** to one part of a vault, so projects kept in one vault stay
+apart (docs/SECURITY.md T4). SECURITY T4 says "a path prefix or tag" without saying how one
+string selects between them, so the form is explicit rather than guessed:
+
+| `scope` value | matches |
+|---|---|
+| `projects/alpha` | notes and passages whose vault-relative path is `projects/alpha` or lies under it at a path-segment boundary (`projects/alpha/…`; **not** `projects/alphabet`) |
+| `tag:research` | notes whose `tags` include `research`, plus their passages |
+
+A scoped recall:
+
+1. drops every seed outside the scope, so an out-of-scope cue cannot start the walk;
+2. keeps only graph edges whose **both** endpoints are in scope, so activation cannot leak
+   in from a neighbouring project;
+3. therefore returns only in-scope passages.
+
+Phrase nodes (hipporag) carry no path or tags. A phrase is in scope only when an in-scope
+passage mentions it, so a scoped `hipporag` traversal stays inside the scope instead of
+bridging out through a shared phrase. An unscoped recall is unchanged. A scope that matches
+nothing returns no hits.
