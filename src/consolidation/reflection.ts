@@ -1,5 +1,8 @@
 // Schema note generation (reflection). Auto-writes schemas/<entity>-overview.md when
 // consolidated episode importance accumulates past a threshold. Detects human edits via git diff.
+//
+// `renderReflection` is pure (no writes) so `consolidate` can build its in-memory change
+// set for `--dry-run` (C7). `reflect` is the thin I/O wrapper.
 
 import { writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -12,20 +15,31 @@ export interface ReflectionResult {
   changed: boolean;
   /** human edits detected */
   hasHumanEdits: boolean;
-  /** path to schema note */
+  /** absolute path to schema note */
   path: string;
 }
 
+/** Pure render result: the content to write, not the write itself. */
+export interface ReflectionRender {
+  entity: string;
+  /** vault-relative path of the schema note */
+  relPath: string;
+  /** the schema note content */
+  content: string;
+  changed: boolean;
+  hasHumanEdits: boolean;
+}
+
 /**
- * Generate or update an entity's overview schema note based on consolidated facts.
- * Returns false if human edits are detected (to avoid overwriting).
+ * Compute the schema note for an entity, without writing it.
+ * Returns null when the summed importance is below the threshold.
  */
-export function reflect(
+export function renderReflection(
   vaultPath: string,
   entity: string,
   facts: Fact[],
   threshold: number,
-): ReflectionResult | null {
+): ReflectionRender | null {
   // Compute summed importance
   const importance = facts.reduce((acc, f) => acc + (f.conf ?? 1), 0);
 
@@ -33,7 +47,6 @@ export function reflect(
     return null;
   }
 
-  const schemaPath = join(vaultPath, 'schemas', `${entity}-overview.md`);
   const relPath = `schemas/${entity}-overview.md`;
 
   // Check for human edits via git
@@ -56,12 +69,7 @@ export function reflect(
   }
 
   if (hasHumanEdits) {
-    return {
-      entity,
-      changed: false,
-      hasHumanEdits: true,
-      path: schemaPath,
-    };
+    return { entity, relPath, content: '', changed: false, hasHumanEdits: true };
   }
 
   // Build schema content
@@ -90,13 +98,30 @@ export function reflect(
     lines.push('');
   }
 
-  writeFileSync(schemaPath, lines.join('\n'));
+  return { entity, relPath, content: lines.join('\n'), changed: true, hasHumanEdits: false };
+}
 
+/**
+ * Generate or update an entity's overview schema note based on consolidated facts.
+ * Returns null if the importance is below the threshold; `changed: false` if human edits
+ * are detected (to avoid overwriting).
+ */
+export function reflect(
+  vaultPath: string,
+  entity: string,
+  facts: Fact[],
+  threshold: number,
+): ReflectionResult | null {
+  const render = renderReflection(vaultPath, entity, facts, threshold);
+  if (!render) return null;
+  if (render.changed) {
+    writeFileSync(join(vaultPath, render.relPath), render.content);
+  }
   return {
     entity,
-    changed: true,
-    hasHumanEdits: false,
-    path: schemaPath,
+    changed: render.changed,
+    hasHumanEdits: render.hasHumanEdits,
+    path: join(vaultPath, render.relPath),
   };
 }
 

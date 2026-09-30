@@ -288,9 +288,12 @@ test('C13: a triple candidate always queues with reason "derived from triple cac
   assert.equal(result.queued, 1);
 
   const pending = readFileSync(join(v, '.circadia/pending.jsonl'), 'utf8');
-  const decision = JSON.parse(pending.trim().split('\n').pop()!) as { reason: string; candidate: { origin: string; episodeId: string } };
+  // ADR-0007: the pending record is flat and versioned (no nested `candidate`).
+  const decision = JSON.parse(pending.trim().split('\n').pop()!) as { v: number; reason: string; origin: string; episode: string };
+  assert.equal(decision.v, 1);
   assert.equal(decision.reason, 'derived from triple cache');
-  assert.equal(decision.candidate.origin, 'triple');
+  assert.equal(decision.origin, 'triple');
+  assert.equal(decision.episode, 'x');
 
   // The candidate's src must never point at a note: nothing was written.
   const text = readFileSync(join(v, 'entities/projects/x.md'), 'utf8');

@@ -12,6 +12,8 @@ import { formatFact, parseFactLine } from '../vault/facts.ts';
 import type { Fact, Problem } from '../types.ts';
 
 export interface SupersedeOptions {
+  /** vault-relative path, used only for problem reporting */
+  path?: string;
   /** epoch ms for the superseded date (system time: when we stopped believing it) */
   supersededAt: number;
   /**
@@ -33,6 +35,12 @@ export interface SupersedeResult {
   changed: boolean;
 }
 
+/** Result of the pure supersession transform: the new file content, not a write. */
+export interface SupersedeApplyResult extends SupersedeResult {
+  /** the transformed note content (equal to the input when `changed` is false) */
+  content: string;
+}
+
 function objectKey(f: { object: Fact['object'] }): string {
   return f.object.kind === 'link' ? `[[${f.object.link.target}]]` : f.object.value;
 }
@@ -42,11 +50,13 @@ function objectKey(f: { object: Fact['object'] }): string {
  * 1. Find current fact(s) with the same predicate but a different object in ## Facts.
  * 2. Strike them, close their `valid` interval, and move them to ## History.
  * 3. Append the new fact via formatFact().
+ *
+ * Pure: string in, string out. `consolidate` uses this to build its in-memory change
+ * set (C7); `supersede` below is the thin I/O wrapper.
  */
-export function supersede(notePath: string, opts: SupersedeOptions): SupersedeResult {
+export function applySupersede(content: string, opts: SupersedeOptions): SupersedeApplyResult {
   const problems: Problem[] = [];
   const superseded: Fact[] = [];
-  const content = readFileSync(notePath, 'utf8');
   const lines = content.split('\n');
 
   // Locate ## Facts and ## History.
@@ -69,14 +79,16 @@ export function supersede(notePath: string, opts: SupersedeOptions): SupersedeRe
     }
   }
 
+  const reportPath = opts.path ?? '<note>';
+
   if (factsStart === -1) {
     problems.push({
       severity: 'error',
-      path: notePath,
+      path: reportPath,
       code: 'supersede.no-facts-section',
       message: 'no ## Facts section found',
     });
-    return { superseded, problems, changed: false };
+    return { superseded, problems, changed: false, content };
   }
 
   const newObjKey = objectKey(opts.newFact);
@@ -87,7 +99,7 @@ export function supersede(notePath: string, opts: SupersedeOptions): SupersedeRe
     if (!lines[i].trim().startsWith('- ')) continue;
     const parsed = parseFactLine(lines[i], {
       noteId: 'supersede',
-      path: notePath,
+      path: reportPath,
       line: i + 1,
       section: 'facts',
       defaultRecordedAt: null,
@@ -102,11 +114,11 @@ export function supersede(notePath: string, opts: SupersedeOptions): SupersedeRe
   if (toSupersede.length === 0) {
     problems.push({
       severity: 'warning',
-      path: notePath,
+      path: reportPath,
       code: 'supersede.no-match',
       message: `no current fact matches predicate=${opts.newFact.predicate} with a different object`,
     });
-    return { superseded, problems, changed: false };
+    return { superseded, problems, changed: false, content };
   }
 
   // Strike the old facts, closing their world-time interval at the change date (not the
@@ -159,6 +171,16 @@ export function supersede(notePath: string, opts: SupersedeOptions): SupersedeRe
     out.push(...rest.slice(hEnd));
   }
 
-  writeFileSync(notePath, out.join('\n'));
-  return { superseded, problems, changed: true };
+  return { superseded, problems, changed: true, content: out.join('\n') };
+}
+
+/**
+ * I/O wrapper: read `notePath`, apply supersession, write it back when changed.
+ * Kept for callers that want the side effect directly (tests, future review).
+ */
+export function supersede(notePath: string, opts: SupersedeOptions): SupersedeResult {
+  const content = readFileSync(notePath, 'utf8');
+  const result = applySupersede(content, { ...opts, path: opts.path ?? notePath });
+  if (result.changed) writeFileSync(notePath, result.content);
+  return { superseded: result.superseded, problems: result.problems, changed: result.changed };
 }

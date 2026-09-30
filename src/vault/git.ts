@@ -23,22 +23,55 @@ export interface CommitResult {
 const GIT_OPTS = { encoding: 'utf8' as const, stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe'] };
 
 /**
- * Create a git commit for consolidation changes.
+ * Return the vault-relative paths among `paths` that already have uncommitted changes
+ * (staged or unstaged). `consolidate` calls this BEFORE it writes, so it can refuse to
+ * commit a path a human was already editing (C8).
  */
-export function createConsolidationCommit(vaultRoot: string, opts: ConsolidationCommitOptions): CommitResult | null {
+export function getDirtyPaths(vaultRoot: string, paths: string[]): string[] {
+  if (!isGitRepo(vaultRoot) || paths.length === 0) return [];
+  try {
+    const out = execFileSync('git', ['status', '--porcelain', '--', ...paths], {
+      cwd: vaultRoot,
+      ...GIT_OPTS,
+    });
+    return out
+      .split('\n')
+      .filter((l) => l.trim())
+      .map((l) => l.slice(3).trim());
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Create a git commit for consolidation changes.
+ *
+ * C8: stages ONLY `paths` (the files this run wrote), never the whole tree. An unrelated
+ * uncommitted user edit is left alone. The caller is responsible for refusing to commit
+ * when one of `paths` was already dirty before the run (see `getDirtyPaths`).
+ */
+export function createConsolidationCommit(
+  vaultRoot: string,
+  paths: string[],
+  opts: ConsolidationCommitOptions,
+): CommitResult | null {
   if (!isGitRepo(vaultRoot)) {
+    return null;
+  }
+  if (paths.length === 0) {
     return null;
   }
 
   try {
-    // Stage all changed files in the vault
-    execFileSync('git', ['add', '-A'], {
+    // Stage only the paths this run wrote. `--` separates flags from paths, and each
+    // path is its own argv element, so a path with spaces is inert.
+    execFileSync('git', ['add', '--', ...paths], {
       cwd: vaultRoot,
       ...GIT_OPTS,
     });
 
-    // Check if there are any changes
-    const statusOutput = execFileSync('git', ['status', '--porcelain'], {
+    // Check if there are any staged changes among those paths
+    const statusOutput = execFileSync('git', ['status', '--porcelain', '--', ...paths], {
       cwd: vaultRoot,
       ...GIT_OPTS,
     });
@@ -79,34 +112,6 @@ export function createConsolidationCommit(vaultRoot: string, opts: Consolidation
   } catch (e) {
     console.error(`git commit failed: ${(e as Error).message}`);
     throw e;
-  }
-}
-
-/**
- * Print the git diff that would be committed (for --dry-run mode).
- */
-export function printConsolidationDiff(vaultRoot: string): void {
-  if (!isGitRepo(vaultRoot)) {
-    console.log('not a git repository');
-    return;
-  }
-
-  try {
-    // Stage all changes temporarily
-    execFileSync('git', ['add', '-A'], {
-      cwd: vaultRoot,
-      ...GIT_OPTS,
-    });
-
-    // Print diff
-    const diff = execFileSync('git', ['diff', '--staged'], {
-      cwd: vaultRoot,
-      ...GIT_OPTS,
-    });
-
-    console.log(diff);
-  } catch (e) {
-    console.error(`git diff failed: ${(e as Error).message}`);
   }
 }
 

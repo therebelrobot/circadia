@@ -430,11 +430,11 @@ export async function main(argv: string[]): Promise<number> {
       console.log(`processed episodes: ${result.processedEpisodes.length}`);
       console.log(`pending queue: ${result.pendingPath}`);
 
-      if (dryRun && commit) {
-        // Show what would be committed
-        const { printConsolidationDiff } = await import('../vault/git.ts');
-        console.log('\n--- would-be commit diff ---');
-        printConsolidationDiff(vault);
+      if (dryRun) {
+        // C7: the diff is computed in-process from the change set; git is never invoked,
+        // so a dry run cannot stage or alter the working tree.
+        console.log('\n--- would-be changes (unified diff) ---');
+        console.log(result.diff && result.diff.length > 0 ? result.diff : '(no changes)');
       }
       return 0;
     }

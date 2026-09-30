@@ -1,8 +1,15 @@
 // Consolidation (Phase 4 "sleep" job): episode replay → candidate extraction → entity
 // resolution → schema-fit gate → apply.
 // Follows src/consolidation/README.md contract and docs/ROADMAP.md Phase 4.
+//
+// C6: candidates carry a stable key; a key already pending, rejected, or promoted is
+//     skipped, and a triple is only re-proposed when its passage content changed.
+// C7: the whole run is computed as an in-memory change set. A dry run prints an
+//     in-process unified diff and writes nothing (no git, no state files).
+// C8: the commit stages only the paths this run wrote, and refuses when one of them was
+//     already dirty before the run.
 
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { openIndex } from '../index/db.ts';
 import { STATE_DIR, type Config } from '../config.ts';
@@ -11,12 +18,24 @@ import { parseVault } from '../index/indexer.ts';
 import { setConsolidatedDate, hasFencedFrontmatter } from '../vault/episode-mark.ts';
 import { localDateString, parseInstant } from '../vault/time.ts';
 import { asWikiLink, shortHash } from '../vault/util.ts';
-import { writeFactToNote, type WritableFact } from '../vault/fact-write.ts';
+import { appendFactLine, type WritableFact } from '../vault/fact-write.ts';
+import { unifiedDiff } from '../vault/diff.ts';
+import { getDirtyPaths, createConsolidationCommit } from '../vault/git.ts';
 import { extractCandidates, type Candidate } from './candidate.ts';
 import { resolveEntity } from './entity.ts';
-import { evaluateGate } from './schema.ts';
-import { promoteTriplesToCandidates } from './promote.ts';
-import { supersede } from './supersede.ts';
+import { evaluateGate, factObjectKey } from './schema.ts';
+import { promoteTriplesToCandidates, readSeenHashes, serializeSeenHashes } from './promote.ts';
+import { applySupersede } from './supersede.ts';
+import { renderReflection } from './reflection.ts';
+import {
+  PENDING_RECORD_VERSION,
+  candidateKey,
+  pendingPath as pendingPathFor,
+  rejectedPath as rejectedPathFor,
+  readKeys,
+  serializeRecords,
+  type PendingRecord,
+} from './pending.ts';
 
 export interface ConsolidationResult {
   promoted: number;
@@ -24,6 +43,16 @@ export interface ConsolidationResult {
   superseded: number;
   processedEpisodes: string[];
   pendingPath: string;
+  /** unified diff of the change set; only set for a dry run */
+  diff?: string;
+}
+
+/** An in-memory file edit: what the file was, and what it would become. */
+interface FileChange {
+  /** vault-relative posix path */
+  path: string;
+  before: string;
+  after: string;
 }
 
 /** An episode is unconsolidated when it has no valid `consolidated:` date. */
@@ -62,7 +91,22 @@ export async function consolidate(
   let superseded = 0;
   const processedEpisodes: string[] = [];
 
-  // Collect all candidates from episodes
+  // --- In-memory change set (C7) -------------------------------------------------
+  // Nothing is written until the whole run is computed. A dry run prints the diff and
+  // writes nothing at all.
+  const changes = new Map<string, FileChange>();
+  const stage = (path: string, transform: (before: string) => string): void => {
+    const existing = changes.get(path);
+    const before = existing
+      ? existing.before
+      : existsSync(join(vault, path))
+        ? readFileSync(join(vault, path), 'utf8')
+        : '';
+    const after = transform(existing ? existing.after : before);
+    changes.set(path, { path, before, after });
+  };
+
+  // --- Candidate collection ------------------------------------------------------
   const allCandidates: Candidate[] = [];
   for (const ep of episodes) {
     if (cfg.extraction.provider === 'none') {
@@ -73,21 +117,59 @@ export async function consolidate(
     allCandidates.push(...candidates);
   }
 
-  // Collect high-confidence triples from HippoRAG triple cache (Phase 5: promotion path).
-  // These triples are proposed as consolidation candidates but always queue (ADR-0006).
-  const tripleCandidates = promoteTriplesToCandidates(vault, cfg);
+  // Triple-cache candidates (Phase 5). Only passages whose contentHash changed since the
+  // last run are proposed (C6).
+  const seenPath = join(vault, STATE_DIR, 'triples-seen.json');
+  const seenHashes = readSeenHashes(seenPath);
+  const { candidates: tripleCandidates, seen: nextSeenHashes } = promoteTriplesToCandidates(
+    vault,
+    cfg,
+    undefined,
+    seenHashes,
+  );
   allCandidates.push(...tripleCandidates);
 
-  const pendingPath = join(vault, STATE_DIR, 'pending.jsonl');
-  mkdirSync(dirname(pendingPath), { recursive: true });
+  // --- Dedup (C6) ----------------------------------------------------------------
+  // A candidate is skipped when its key is already pending, rejected, or promoted.
+  const seenKeys = new Set<string>([
+    ...readKeys(pendingPathFor(vault)),
+    ...readKeys(rejectedPathFor(vault)),
+  ]);
+  for (const note of allNotes) {
+    for (const f of note.facts) {
+      if (f.status !== 'current') continue;
+      seenKeys.add(
+        candidateKey({
+          subject: note.id,
+          predicate: f.predicate,
+          object: factObjectKey(f),
+          src: f.src?.target ?? '',
+        }),
+      );
+    }
+  }
 
   const today = localDateString();
   const todayMs = parseInstant(today);
+  const newPending: PendingRecord[] = [];
 
   for (const c of allCandidates) {
     const subjectRef = resolveEntity(db, c.subject);
     const objLink = asWikiLink(c.object);
     const objectRef = resolveEntity(db, objLink ? objLink.target : c.object);
+
+    // Stable key over the resolved identity, so a re-run sees the same key.
+    const objectKey = objectRef
+      ? `[[${objectRef.id}]]`
+      : (asWikiLink(c.object)?.target ?? c.object);
+    const key = candidateKey({
+      subject: subjectRef?.id ?? c.subject,
+      predicate: c.predicate,
+      object: objectKey,
+      src: c.episodeId,
+    });
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
 
     // The gate is pure: read the subject note's current facts here and pass them in.
     const subjectNote = subjectRef ? noteById.get(subjectRef.id) : undefined;
@@ -101,40 +183,47 @@ export async function consolidate(
 
     if (decision.action === 'promote' && subjectRef) {
       const fact = buildFact(c, subjectRef.id, objectRef?.id ?? null, todayMs, validAt);
-      writeFactToNote(vault, subjectRef.path, fact, { factsHeading: cfg.vault.factsHeading });
+      stage(subjectRef.path, (raw) =>
+        appendFactLine(raw, fact, { factsHeading: cfg.vault.factsHeading }),
+      );
       promoted++;
       trackFact(entityFacts, subjectRef.path, fact);
     } else if (decision.action === 'supersede' && subjectRef) {
       const supersededAt = todayMs ?? Date.now();
       const newFact = buildFact(c, subjectRef.id, objectRef?.id ?? null, supersededAt, validAt);
-      const result = supersede(join(vault, subjectRef.path), { supersededAt, validAt, newFact });
-      if (result.changed) {
+      let changed = false;
+      stage(subjectRef.path, (raw) => {
+        const r = applySupersede(raw, {
+          path: subjectRef.path,
+          supersededAt,
+          validAt,
+          newFact,
+        });
+        changed = r.changed;
+        return r.content;
+      });
+      if (changed) {
         superseded++;
         trackFact(entityFacts, subjectRef.path, newFact);
       } else {
         queued++;
-        writeFileSync(pendingPath, JSON.stringify(decision) + '\n', { flag: 'a' });
+        newPending.push(pendingRecord(key, c, decision.reason, todayMs));
       }
     } else if (decision.action === 'noop') {
       // Corroboration: the fact is already current. Nothing to write.
     } else {
       queued++;
-      // Append to pending.jsonl
-      writeFileSync(pendingPath, JSON.stringify(decision) + '\n', { flag: 'a' });
+      newPending.push(pendingRecord(key, c, decision.reason, todayMs));
     }
   }
 
-  // Mark episodes as consolidated.
+  // --- Episode marks -------------------------------------------------------------
   // Episodes are append-only: the only permitted mutation is the `consolidated:` field.
   // setConsolidatedDate performs a minimal in-place text edit (one line changed) so
   // quotes, comments, block lists, and the `---` fences survive untouched.
   // Local calendar date, not UTC: an evening run in a negative-offset timezone must not
   // stamp tomorrow's date on the episode.
   for (const ep of episodes) {
-    if (opts.dryRun) {
-      processedEpisodes.push(ep.path);
-      continue;
-    }
     const raw = readFileSync(join(vault, ep.path), 'utf8');
     if (!hasFencedFrontmatter(raw)) {
       // Don't corrupt a malformed episode; surface it instead.
@@ -142,55 +231,119 @@ export async function consolidate(
       processedEpisodes.push(ep.path);
       continue;
     }
-    const updated = setConsolidatedDate(raw, today);
-    if (updated !== raw) {
-      writeFileSync(join(vault, ep.path), updated, 'utf8');
-    }
+    stage(ep.path, (r) => setConsolidatedDate(r, today));
     processedEpisodes.push(ep.path);
   }
 
-  // Reflection: generate schema notes for entities with sufficient importance
-  const threshold = opts.reflectionThreshold ?? 3;
-  for (const [entity, facts] of entityFacts) {
-    const { reflect } = await import('./reflection.ts');
-    const result = reflect(vault, entity, facts, threshold);
-    if (result?.changed) {
-      console.log(`reflected: ${entity}`);
-    }
+  // --- Pending queue -------------------------------------------------------------
+  if (newPending.length > 0) {
+    const rel = join(STATE_DIR, 'pending.jsonl');
+    stage(rel, (before) => before + serializeRecords(newPending));
   }
 
-  // Handle git commit
-  if (opts.commit && !opts.dryRun) {
-    try {
-      const { createConsolidationCommit } = await import('../vault/git.ts');
-      const commitResult = createConsolidationCommit(vault, {
-        promoted,
-        queued,
-        superseded,
-      });
-      if (commitResult) {
-        console.log(`committed: ${commitResult.hash.slice(0, 7)}`);
-      }
-    } catch (e) {
-      console.error(`warning: git commit failed: ${(e as Error).message}`);
+  // --- Triple seen-hash state ----------------------------------------------------
+  // Record the passage hashes we saw so an unchanged passage is not re-proposed. Staged
+  // like any other write so a dry run leaves it untouched (C7) and the commit includes it.
+  if (nextSeenHashes.size > 0 || existsSync(seenPath)) {
+    const rel = join(STATE_DIR, 'triples-seen.json');
+    stage(rel, () => serializeSeenHashes(nextSeenHashes));
+  }
+
+  // --- Reflection ----------------------------------------------------------------
+  // Generate schema notes for entities with sufficient importance.
+  const threshold = opts.reflectionThreshold ?? 3;
+  for (const [entity, facts] of entityFacts) {
+    const render = renderReflection(vault, entity, facts, threshold);
+    if (render?.changed) {
+      stage(render.relPath, () => render.content);
     }
   }
 
   db.close();
 
-  return { promoted, queued, superseded, processedEpisodes, pendingPath };
+  // --- Apply or print ------------------------------------------------------------
+  const written = [...changes.values()].filter((c) => c.after !== c.before);
+  const writtenPaths = written.map((c) => c.path);
+
+  if (opts.dryRun) {
+    const diff = written.map((c) => unifiedDiff(c.path, c.before, c.after)).join('');
+    return {
+      promoted,
+      queued,
+      superseded,
+      processedEpisodes,
+      pendingPath: pendingPathFor(vault),
+      diff,
+    };
+  }
+
+  // C8: capture pre-existing dirtiness of the paths we are about to write, BEFORE writing.
+  const preDirty = getDirtyPaths(vault, writtenPaths);
+
+  for (const c of written) {
+    const abs = join(vault, c.path);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, c.after, 'utf8');
+  }
+
+  // --- Commit (C8) ---------------------------------------------------------------
+  if (opts.commit && writtenPaths.length > 0) {
+    if (preDirty.length > 0) {
+      console.warn(
+        `warning: refusing to commit; these paths had uncommitted changes before this run: ${preDirty.join(', ')}`,
+      );
+    } else {
+      try {
+        const commitResult = createConsolidationCommit(vault, writtenPaths, {
+          promoted,
+          queued,
+          superseded,
+        });
+        if (commitResult) {
+          console.log(`committed: ${commitResult.hash.slice(0, 7)}`);
+        }
+      } catch (e) {
+        console.error(`warning: git commit failed: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  return { promoted, queued, superseded, processedEpisodes, pendingPath: pendingPathFor(vault) };
+}
+
+/** Build the versioned pending record for a queued candidate. */
+function pendingRecord(
+  key: string,
+  c: Candidate,
+  reason: string,
+  queuedAt: number | null,
+): PendingRecord {
+  return {
+    v: PENDING_RECORD_VERSION,
+    key,
+    subject: c.subject,
+    predicate: c.predicate,
+    object: c.object,
+    episode: c.episodeId,
+    by: c.by,
+    trust: c.trust,
+    origin: c.origin,
+    reason,
+    queuedAt: queuedAt ?? Date.now(),
+  };
 }
 
 /**
  * Build the fact a promoted/superseding candidate becomes.
  *
- * - `object` is a wikilink when the object resolved to a note, else a literal.
+ * - `object` is a wikilink when the object resolved to a note, else a literal. The
+ *   wikilink target comes from the vault's parser (`asWikiLink`), never a regex.
  * - `by: agent` with `src:: [[episode]]` — consolidation is the only writer of agent
  *   facts (SCHEMA §4.5), and provenance is mandatory.
  * - `trust` is inherited from the source episode, never hardcoded.
  * - `id` is a content hash (not `Date.now()`), so re-running is idempotent.
  */
-function buildFact(
+export function buildFact(
   c: Candidate,
   subjectId: string,
   objectId: string | null,
