@@ -1,501 +1,178 @@
-# Circadia: remediation handoff
+# Circadia: remediation status
 
-Audit of `therebelrobot/circadia` at commit `c67157e` (2026-09-29, package version 0.1.3).
-The roadmap marks Phases 1–6 complete. The tests pass (90/90) and the typecheck is clean, but the
-consolidation ("sleep") pipeline destroys data on its first run. Several checked roadmap items
-are not wired up, and two security invariants are missing. This document lists every issue
-found, with its evidence and a fix direction. It is written for an agent picking up the repo
-with no other context.
+Last updated 2026-09-29, at commit `79d37e9`. The original audit was taken at `c67157e`.
 
----
+Every P0 and P1 issue from the audit is fixed, and each fix has been verified end to end:
+through the real CLI against a mock model, through the official MCP SDK client, and with
+regression tests that fail on the old code. Several further issues found during remediation
+are fixed too (§2). Five small items remain (§3). None of them affects correctness or safety.
 
-## 0. Ground rules for the agent doing this work
-
-1. **Read `AGENTS.md` in full first.** Its hard constraints still apply:
-   - zero runtime dependencies;
-   - type-stripped TypeScript with `.ts` imports;
-   - no private hostnames or machine names;
-   - no OpenAI or xAI models.
-2. **Reproduce each issue before fixing it.** The repro steps below are exact. Fix only what
-   you've reproduced. If something here turns out to be wrong, say so in your report instead of
-   "fixing" it.
-3. **Every fix gets a regression test that fails before the fix and passes after it.** Many of
-   these bugs survived because the tests assert counts, not effects. Tests must check what ends
-   up in the files on disk.
-4. **Never run anything against a real vault.** Use temp copies of `examples/vault/`. Tests
-   must not mutate `examples/vault/` (AGENTS.md §7).
-5. **Don't cut a release.** The owner decides when to publish. The package is on npm, but
-   nobody else uses it, so there's no urgency to deprecate it.
-6. **Work in the priority order in §2.** P0 items block everything else, because consolidation
-   is currently unsafe to run.
-7. Don't expand scope. Features that are listed as unimplemented get either implemented or
-   unchecked on the roadmap. Say which you chose in your report.
-
-Scratch repro setup, used throughout:
-
-```bash
-npm ci && npm test && npm run typecheck      # baseline: 90 pass
-S=$(mktemp -d)
-cp -r examples/vault "$S/v"
-node bin/circadia.mjs index --vault "$S/v"
-```
+At `79d37e9`: 175 tests pass, the typecheck is clean, the example vault lints clean, runtime
+dependencies are zero, and `git grep "execSync(" src` is empty.
 
 ---
 
-## 1. Summary
+## 1. Audit issues
 
-| ID | Sev | Area | Issue |
+| ID | Issue | Status | Commit(s) |
 |---|---|---|---|
-| C1 | P0 | consolidation | Marking episodes rewrites their frontmatter without `---` fences, corrupting every processed episode |
-| C2 | P0 | consolidation | Promoted facts are never written to the vault |
-| C3 | P0 | consolidation | Supersession is never called; `superseded` is always 0 |
-| C4 | P0 | security | The "web/tool episodes always queue" gate rule is a TODO (memory-poisoning defense missing) |
-| C5 | P0 | security | Shell injection via `--as-of <git ref>` in the CLI |
-| C6 | P1 | consolidation | Not idempotent: each run re-appends the same queued candidates |
-| C7 | P1 | consolidation | `--dry-run` writes `pending.jsonl`, runs reflection, and stages the whole working tree |
-| C8 | P1 | consolidation | The consolidation commit uses `git add -A`, sweeping in unrelated user edits |
-| C9 | P1 | review | `circadia review` can't read the pending format; "accept" silently drops the candidate |
-| C10 | P1 | LLM clients | All three LLM clients send `prompt` to a chat-completions endpoint, which is the wrong wire format |
-| C11 | P1 | consolidation | The candidate prompt and parser disagree (array vs `{candidates}` object); no predicate validation |
-| C12 | P1 | security | Synonym edges are hardcoded to `trust: medium`, laundering low-trust content past the trust floor |
-| C13 | P1 | security | Triple promotion ignores source trust and records a note, not an episode, as `src` |
-| C14 | P1 | retrieval | Once access-log summaries exist, recall ignores new accesses and `--as-of` for ACT-R |
-| C15 | P1 | retrieval | `resolveCommit` returns HEAD's timestamp for any non-date git ref |
-| C16 | P1 | MCP | The MCP `recall` hardcodes `logAccess: false` and ignores `scope` and `session` |
-| C17 | P2 | Phase 6 | Git-backed as-of for prose isn't wired (`readFileAtCommit` has no callers) |
-| C18 | P2 | Phase 4 | Reconsolidation window: session ids are logged but nothing reads them |
-| C19 | P2 | Phase 3 | Recall `scope` isn't implemented anywhere |
-| C20 | P2 | Phase 3 | The Mastra integration example is checked but doesn't exist |
-| C21 | P2 | consolidation | Reflection only detects uncommitted human edits (`git diff HEAD`) |
-| C22 | P2 | consolidation | `selectEpisodes` ignores the "re-process if mtime is newer than `consolidated`" rule |
-| C23 | P2 | consolidation | Fact ids are `f-${Date.now()}` and collide within one run; the entity-resolution regex is broken |
-| C24 | P2 | consistency | `.circadia` is hardcoded in 5 places instead of using `STATE_DIR` |
-| C25 | P2 | tests | Consolidation tests write `palimpsest.config.json`, which is now ignored |
-| C26 | P2 | tests | No tests for log compaction, recognition memory, review, git as-of, commit-per-run, segmentation |
-| C27 | P3 | shell safety | Remaining `execSync` calls interpolate paths into shell strings |
-| C28 | P3 | hygiene | `src/.DS_Store` is committed |
-| C29 | P3 | docs | The roadmap overstates completion; `predicates.defs` defaults to `{}`, so nothing can ever auto-promote |
+| C1 | Consolidation corrupted episode frontmatter | Fixed: a one-line in-place `consolidated:` edit | `68067c2` |
+| C2 | Promoted facts never written | Fixed | `3a776b5`, `564e8e6` |
+| C3 | Supersession never wired in | Fixed; many-valued default, world-time dates | `3a776b5`, `16d23ad` |
+| C4 | Web/tool episodes could auto-promote | Fixed: untrusted sources always queue | `3a776b5` |
+| C5 | Shell injection via `--as-of` | Fixed: `execFileSync` everywhere, refs verified | `0a5fbc7` |
+| C6 | Consolidation not idempotent | Fixed: stable keys, `rejected.jsonl`, triple re-proposal tracking | `6dcc2cd` |
+| C7 | `--dry-run` had side effects | Fixed: in-memory change set, in-process diff | `6dcc2cd` |
+| C8 | Commit swept in unrelated edits | Fixed: commits only run paths; refuses if they were already dirty | `6dcc2cd` |
+| C9 | `review` lost accepted candidates | Fixed: accept writes the fact, reject is recorded, unknown input re-prompts | `bff09b4`, `5b0b61d` |
+| C10 | LLM clients used the wrong wire format | Fixed: shared `src/llm/chat.ts` client | `b88e2ce` |
+| C11 | Candidate prompt/parser mismatch, unfenced text | Fixed: `{"candidates":[...]}` contract, validation, escaped fences | `b88e2ce`, `b3950f7` |
+| C12 | Synonym edges laundered trust | Fixed: min of endpoint trust | `8bcd219`, `80f091b` |
+| C13 | Triple promotion ignored trust and provenance | Fixed: triple candidates always queue (ADR-0006) | `3a776b5` |
+| C14 | Access-log summaries froze ACT-R, ignored as-of | Fixed: optimized-learning form, watermark, tail read (ADR-0009) | `3cc8c91`, `f057227` |
+| C15 | `resolveCommit` returned HEAD's timestamp | Fixed | `0a5fbc7` |
+| C16 | MCP `recall` didn't log access or pass scope/session | Fixed: `mcp.logAccess` (default on) | `6e15443` |
+| C17 | Git-backed as-of for prose not wired | Fixed: falls back to current text and says so | `e288c30` |
+| C18 | Reconsolidation window unimplemented | **Open**: see §3 | none |
+| C19 | Recall `scope` not implemented | Fixed: path prefix or `tag:name`, CLI and MCP | `6e15443`, `b343a94` |
+| C20 | Mastra example missing | **Open**: see §3 | none |
+| C21 | Reflection missed committed human edits | Fixed: `generated_hash`, no git needed | `e288c30` |
+| C22 | Episode re-selection policy | Fixed: body-hash state; world-time supersession guard | `e288c30`, `79d37e9` |
+| C23 | Fact-id collisions, broken wikilink regex | Fixed | `3a776b5`, `6dcc2cd` |
+| C24 | `.circadia` hardcoded in 5 places | Fixed: `STATE_DIR` | `24d973b` |
+| C25 | Tests wrote stale `palimpsest` fixtures | Fixed | `24d973b` |
+| C26 | Test coverage gaps | **Mostly closed**: see §3 | many |
+| C27 | Paths interpolated into shell strings | Fixed | `0a5fbc7` |
+| C28 | `src/.DS_Store` committed | **Open**: see §3 | none |
+| C29 | Roadmap overstates completion | **Open**: see §3 | none |
 
----
+## 2. Issues found during remediation (all fixed)
 
-## 2. Issues in detail
+| Issue | Why it mattered | Commit(s) |
+|---|---|---|
+| MCP `remember` let callers claim `by: user` (the default was `user`) | An agent reading a hostile page could mint trusted episodes that skip the C4 queue and supersede facts. Now it defaults to `agent`, and `user` is refused over MCP | `b3950f7` |
+| Data fences could be closed by the text inside them | Pasted `</episode-data>` put attacker text outside the fence. Tags inside the text are now escaped | `b3950f7` |
+| MCP transport unusable by real clients | Responses had `id: null`, stdin was read in chunks, a banner went to stdout, notifications got replies, and `initialize` lacked `protocolVersion`. Now verified with `@modelcontextprotocol/sdk` (dev-only, ADR-0008) | `8e5c00c`, `6010a56`, `c4230a7`, `afec071` |
+| Phrase nodes never embedded | Synonym edges (Phase 5) never formed in a real vault | `80f091b` |
+| Compaction gave no speed benefit | Recall read the whole raw log anyway. It now reads from the summary's byte offset (~600 ms → ~250 ms at 300k events) | `f057227` |
+| mtime-based re-selection reverted facts (from the first C22 attempt) | A vault copy re-selected old episodes; an old claim superseded a newer fact and wrote a backwards interval. Replaced with body hashes plus a world-time guard | `79d37e9` |
+| UTC dates stamped in consolidation, review and episode filenames | Evening runs west of UTC stamped tomorrow's date | `0a5fbc7`, `5b0b61d`, `8e5c00c` |
 
-### P0: fix before consolidation is run on anything
+## 3. Open items
 
-#### C1. Consolidation corrupts every episode it marks
+### C18: reconsolidation window
 
-- **Where:** `src/consolidation/consolidate.ts`, the "Mark episodes as consolidated" block
-  (~line 127) and `serializeFrontmatter` (~line 182).
-- **What:** `serializeFrontmatter` returns `key: value` lines with no `---` fences and no
-  trailing newline. The file is then written as `fmOut + body`. Every processed episode loses
-  its frontmatter delimiters, and `consolidated: <date>` is glued onto the H1 line. The files
-  stop parsing as episodes. The serializer also drops quotes, so `source: "[[x]]"` loses the
-  quotes SCHEMA §2 requires, and it drops comments. This happens even with
-  `extraction.provider: none`.
-- **Invariant broken:** AGENTS.md §4 says episodes are append-only, and the only permitted edit
-  is setting `consolidated:`.
-- **Repro:**
-  ```bash
-  node bin/circadia.mjs consolidate --vault "$S/v" --no-commit
-  head -9 "$S/v/episodes/2026/08/2026-08-11-migration.md"   # no fences; "consolidated: …# Migrated…"
-  node bin/circadia.mjs lint --vault "$S/v"                  # 3 × note.missing-type
-  ```
-- **Fix direction:** Don't reserialize the frontmatter. Do a minimal text edit on the raw file:
-  - if a `consolidated:` line exists inside the fenced block, replace that line;
-  - otherwise insert one line before the closing `---`.
+The roadmap (Phase 4) says facts recalled in the same `session` as a contradicting episode
+are prioritized for review. Session ids are now logged on every recall (C16), but nothing in
+`src/consolidation/` reads them.
 
-  Leave every other byte unchanged. Put this in a small pure function in `src/vault/`, since
-  episodes are a vault concern, and delete `serializeFrontmatter`.
-- **Tests:**
-  - Before and after the edit, the file differs by exactly one line.
-  - The file re-parses as `type: episode`, and `lint` is clean.
-  - Quoted wikilinks, comments and block lists survive.
-  - Running it twice produces the same bytes.
+- **Implement:** when a queued contradiction's subject fact was recalled in the same
+  session as the contradicting episode, mark the pending record `priority: "reconsolidation"`
+  and sort those records first in `circadia review`. Test: a recall with `session: s1` plus
+  an episode with `session: s1` contradicting that fact produces a prioritized record; the
+  same scenario with different sessions doesn't.
+- **Or uncheck** the roadmap item and say why.
 
-#### C2. Promoted facts are never written
+### C20: Mastra integration example
 
-- **Where:** `consolidate.ts` ~line 92 (the `decision.action === 'promote'` branch).
-- **What:** The branch builds a `Fact`, increments `promoted`, and passes it to reflection. It
-  never appends the fact to the entity note. Nothing outside `supersede.ts` calls `formatFact()`.
-  The fact is also built wrongly:
-  - `object` is always a literal, even when the candidate object resolved to a note;
-  - `valid` is empty, and `recordedAt` isn't written as `at::`;
-  - `trust` is hardcoded to `medium` instead of being inherited from the episode.
-- **Fix direction:**
-  - Write the promoted fact into the subject note's `## Facts` section using `formatFact()`.
-  - Use a wikilink object when `objectRef` resolved, and a literal otherwise.
-  - Set `by:: agent`, `src:: [[<episode id>]]`, `at:: <today>`, and a `conf::` value.
-  - Inherit trust from the source episode.
-  - Put the section edit in `src/vault/` and reuse it from `supersede.ts` and `review` (C9).
-- **Tests:** An episode with a known entity and a known predicate produces the exact expected
-  fact line in the entity file. `lint` stays clean. Re-running consolidation doesn't add the
-  line again (see C6).
+It's checked on the roadmap, but `examples/` contains only `vault/`.
 
-#### C3. Supersession isn't wired in
+- **Implement:** `examples/mastra/` with a minimal agent that connects to `circadia mcp`
+  over stdio through Mastra's MCP client, calls `recall` and `remember`, and a README.
+  Keep its dependencies inside `examples/mastra/package.json`, never in the root package.
+- **Or uncheck** it.
 
-- **Where:** `consolidate.ts`. `supersede()` in `src/consolidation/supersede.ts` has unit tests
-  but no caller.
-- **What:** The gate never checks candidates against current facts. "Contradiction" is never
-  detected, so `superseded` is always 0. The Phase 4 acceptance fixture ("we moved X to Y
-  supersedes `X runs_on Z`") is not tested end to end.
-- **Fix direction:**
-  - In the gate, look up current facts for the same subject and predicate.
-  - If a single-valued predicate has a different object, that's a contradiction. Queue it,
-    unless the episode is `by: user` and explicit, as the README gate table says. In that case,
-    call `supersede()`.
-  - Make the gate a pure function, so the IO lives in `consolidate.ts`.
-- **Test:** The roadmap's Phase 4 acceptance fixture, run end to end through
-  `circadia consolidate`, produces correct `valid`, `at` and `superseded` dates, and the old
-  line moves to `## History`.
+### C26: test coverage sweep
 
-#### C4. The memory-poisoning gate rule is missing
+Most gaps closed as each fix added tests. Do one sweep:
+- list every module in `src/`, and for each one without a direct test, add one, or record
+  in the report why it's covered indirectly;
+- add the **mock-model end-to-end scenario** (§5) as a permanent test, if it isn't one
+  already. It has caught more real bugs than any unit test.
 
-- **Where:** `src/consolidation/schema.ts` ~line 24: `// … for now pass through`.
-- **What:** The consolidation README requires that candidates from `by: web` or `by: tool`
-  episodes **always queue** and never auto-promote. `SECURITY.md` T1 lists this as a planned
-  control, and ARCHITECTURE §3 calls it the main defense against memory poisoning. It isn't
-  implemented, and the `Candidate` type doesn't carry the episode's `by` or trust. The Phase 4
-  acceptance criterion ("a web-sourced episode can only produce queued candidates") currently
-  holds only by accident, because `predicates.defs` is empty by default (C29).
-- **Fix direction:**
-  - Carry `by` and `trust` from the episode, or the source note for triple candidates, into
-    `Candidate`.
-  - In `evaluateGate`, check `by ∈ {web, tool}` or `trust === 'low'` first, and queue with
-    reason `untrusted source`.
-- **Test:** The acceptance fixture, with a known entity, a known predicate and a
-  `by: web` episode, queues and never promotes. Also test that a triple from a low-trust note
-  queues.
+### C28: `src/.DS_Store`
 
-#### C5. Shell injection through `--as-of`
+`git rm --cached src/.DS_Store`, and add `.DS_Store` to `.gitignore`.
 
-- **Where:** `src/vault/git.ts` ~line 155: `` execSync(`git rev-parse ${ref}^{commit} …`) ``.
-  It's reached from `src/cli/main.ts` recall when `--as-of` isn't a date.
-- **What:** The ref string is interpolated into a shell command.
-- **Repro:** `touch` is confirmed to run:
-  ```bash
-  cd "$S/v" && git init -q && git add -A && git -c user.email=t@example.com -c user.name=t commit -qm init && cd -
-  node bin/circadia.mjs recall --vault "$S/v" --no-log --as-of 'HEAD;touch${IFS}'"$S"'/pwned;#' "x"
-  ls "$S/pwned"   # exists
-  ```
-  The MCP `recall` isn't affected, because it uses `Date.parse` on `as_of`. Keep it that way,
-  or route it through the same safe resolver.
-- **Fix direction:**
-  - Replace every `execSync` with a shell string in `git.ts` and `reflection.ts` with
-    `execFileSync('git', [..args], { cwd })`. That passes arguments without a shell.
-  - Validate refs with `git check-ref-format --allow-onelevel` or `rev-parse --verify`, and pass
-    `--` before paths.
-  - Add a lint rule or a grep test that fails if `execSync(` appears anywhere in `src/`.
-- **Test:** The repro above no longer creates the file, and it returns a clear "invalid ref"
-  error.
+### C29: roadmap accuracy
 
-### P1: correctness and security
+Do a final pass over `docs/ROADMAP.md` so every checkbox matches the code:
+- C18 and C20 are currently checked but not done;
+- Phase 5's acceptance criterion depends on the Phase 7 eval set, which doesn't exist yet.
+  Mark it "implemented; acceptance pending Phase 7";
+- note that `predicates.defs` defaults to `{}`, so nothing auto-promotes until predicates
+  are defined, and that `cardinality` defaults to `many`.
 
-#### C6. Consolidation isn't idempotent
+## 4. Working rules for the next agent
 
-- **What:** `promoteTriplesToCandidates` re-proposes the whole triple cache on every run, and
-  queued decisions are appended to `pending.jsonl` without deduplication. On the example vault,
-  run 1 gives 9 pending lines and run 2 gives 18. This breaks the Phase 4 acceptance criterion
-  ("running consolidation twice is idempotent").
-- **Fix direction:**
-  - Give each candidate a stable key: hash `(subject, predicate, object, src)`.
-  - Skip keys that are already pending, rejected or promoted. Keep a small `rejected.jsonl`, so
-    a rejected candidate doesn't come back.
-  - Only propose triples whose `contentHash` has changed since the last run.
-- **Test:** Running consolidation twice over the same fixture gives byte-identical vault files
-  and `pending.jsonl`.
+These rules came from real failures during remediation.
 
-#### C7. `--dry-run` has side effects
+**Verification**
+- Report only what you verified by running it. For each issue ID: "fixed" (name the test),
+  "partial" (say what's missing), or "not started".
+- A claim like "idempotent" or "safe" must state its exact scope.
 
-- **What:**
-  - The queue branch appends to `pending.jsonl` regardless of `dryRun`.
-  - Reflection runs and writes `schemas/*.md` regardless of `dryRun`.
-  - `printConsolidationDiff` in `git.ts` (~line 91) runs `git add -A`, which stages the user's
-    entire working tree.
-- **Repro:** `consolidate --dry-run` on a fresh copy creates `.circadia/pending.jsonl`.
-- **Fix direction:**
-  - Build the full change set in memory: fact edits, episode marks, pending lines, and
-    reflections.
-  - In a dry run, print it as a unified diff computed in-process. Git isn't needed for this.
-  - Apply it only when not in a dry run.
-- **Test:** A dry run leaves the vault byte-identical, including `.circadia/` and the git index.
+**Data safety**
+- Never run a mutating command (`consolidate`, `review`, `index --full`, migrations) on
+  anything tracked in the repo, including `examples/vault/`. Copy it to a temp directory.
+- Before committing, run `git status` and `git diff --stat`. If anything changed that you
+  didn't intend, stop and explain.
 
-#### C8. The consolidation commit sweeps in unrelated edits
+**Scope**
+- Don't modify or revert code outside the issue IDs you were given. If earlier work looks
+  wrong, report it; don't undo it. (An earlier session silently reverted a security fix.)
+- List every file you touched and the issue ID it belongs to.
 
-- **Where:** `git.ts` ~line 27: `git add -A` in `createConsolidationCommit`.
-- **What:** Any uncommitted user edits, plus `access.jsonl`, get committed as
-  "consolidation run". That defeats SECURITY T1's "review or revert everything sleep changed".
-- **Fix direction:**
-  - Stage only the paths this run wrote, with `git add -- <paths>`.
-  - If those paths already had uncommitted user changes before the run, refuse to commit, or
-    commit only the run's hunks, and warn.
-  - Have `createConsolidationCommit` take the list of paths.
+**Tests**
+- Take expected values from the spec (`docs/SCHEMA.md`, the ROADMAP acceptance criteria),
+  not from what the code currently outputs. A test once locked in the wrong `valid::` date.
+- Assert effects on disk: file contents, lint results, which fact is current. Checking which
+  episodes were *selected* missed a regression that reverted facts.
+- Each fix gets a test that fails before the fix, and the report must say so.
 
-#### C9. `circadia review` is broken and loses data
+**Semantics**
+- For a new config key or default, choose the value that can't lose or misstate data for a
+  user who never sets it, and say what that user gets. `cardinality: single` as the default
+  struck out correct facts.
+- Name what each written value means: world time (`valid::`) vs system time (`at::`,
+  `superseded::`, `consolidated:`), plus trust and provenance.
+- Never trust mtime as evidence of an edit. Copies, checkouts and restores all change it.
 
-- **Where:** `src/cli/review.ts`.
-- **What:**
-  - It reads `c.subject`, `c.predicate` and `c.object`, but the pending lines are
-    `GateDecision` objects (`{action, reason, candidate: {…}}`). Every prompt therefore shows
-    `undefined undefined undefined`.
-  - "Accept" only increments a counter: the fact is never written, and the candidate is dropped
-    from the queue.
-  - Any unrecognized answer also drops the candidate.
-  - It hardcodes `.circadia/pending.jsonl`.
-- **Fix direction:**
-  - Define one pending-record type (a versioned JSON line) shared by `consolidate` and
-    `review`.
-  - Accept writes the fact through the same writer as C2, with `by:: user` and
-    `src:: [[<episode>]]`. It supersedes if needed.
-  - Reject goes to `rejected.jsonl`.
-  - Unknown input re-prompts.
-  - Pull the decision logic out of the readline loop so it can be tested.
-- **Test:** Drive review with scripted input over a fixture queue. Check that the accepted fact
-  line appears in the entity file, the rejected key goes to `rejected.jsonl`, and the edited
-  record stays in the queue.
+**Commits**
+- Name the issue IDs in the commit message. Commit when done. Say "committed, not pushed"
+  unless you were told to push.
+- Don't commit new untracked files unless asked; list them in the report instead.
 
-#### C10. The LLM clients use the wrong wire format
+## 5. Verification recipes
 
-- **Where:**
-  - `src/consolidation/candidate.ts` ~line 33;
-  - `src/extract/triples.ts` ~line 158 (`HttpTripleExtractor`);
-  - `src/retrieval/recognition-memory.ts` ~line 72 (`HttpTripleVerifier`).
-- **What:** All three POST `{model, prompt, …}` to `extraction.endpoint`, which defaults to
-  `/v1/chat/completions`, then read `choices[0].message.content`. Chat completions takes
-  `messages`, not `prompt`. Read `docs/CONFIG.md` and llama.cpp's server docs to confirm the
-  exact behavior against llama-server. Either way, the request shape doesn't match the endpoint
-  the config names.
+These are the checks that found real bugs the unit tests missed. Run them after any change
+to consolidation, review, recall or MCP.
 
-  `candidate.ts` also has two more problems:
-  - It always sends `Authorization: Bearer ` (with an empty token) when no key is set.
-  - It doesn't handle a missing `choices` field before indexing into it.
-- **Fix direction:**
-  - Write one shared `src/llm/chat.ts` client, with zero dependencies, that sends
-    `{model, messages: [{role: 'system', …}, {role: 'user', …}], response_format?, temperature, max_tokens}`.
-  - Send the bearer header only when the key env var is set.
-  - Give it a timeout via `AbortSignal.timeout`.
-  - Return a typed error on a malformed response.
-  - Use it in all three places.
-  - Add an integration test that runs against a tiny in-process `node:http` mock. The mock
-    must reject requests that don't have `messages`.
+**Mock-model end-to-end** (consolidation, supersession, review): run a tiny `node:http`
+server on `127.0.0.1` that answers `/v1/chat/completions`. It returns `400` for bodies
+without `messages`, and otherwise returns canned `{"candidates":[...]}` keyed by marker words
+in the fenced episode text. Point a temp copy of `examples/vault/` at it, then check:
+1. a user episode "moved X to Y" supersedes `runs_on` with `valid::` = the episode date and
+   `at::` = the run date;
+2. a user episode adding a second `depends_on` accumulates rather than superseding;
+3. a `by: web` episode queues as "untrusted source";
+4. running consolidation twice is a no-op;
+5. `touch -d "+2 days"` on every episode, then consolidating, changes nothing and lints clean;
+6. an old episode remembered after a newer fact queues as "older than the current fact";
+7. `circadia review` with paced input: garbage re-prompts, accept writes a `by:: user` fact,
+   reject goes to `rejected.jsonl`.
 
-#### C11. The candidate extraction contract is inconsistent
+**MCP SDK client**: connect `@modelcontextprotocol/sdk`'s `Client` over
+`StdioClientTransport` to `node bin/circadia.mjs mcp --vault <temp>`, then:
+- list the tools;
+- make two concurrent calls, and check each response matches its request;
+- call `remember` (the episode gets `by: agent`);
+- call `remember` with `by: "user"` (expect an `isError` result);
+- check `access.jsonl` holds session ids and query hashes, never query text.
 
-- **Where:** `candidate.ts`.
-- **What:**
-  - The prompt says "Output ONLY a JSON array", but `response_format: json_object` forces an
-    object, and the parser reads `json.candidates`. A compliant model's output is therefore
-    parsed as zero candidates.
-  - The roadmap claims predicates are validated against `predicates.defs`, but the extractor
-    doesn't validate anything.
-  - Episode text is pasted into the prompt unfenced. A web-clipped episode is attacker-
-    controlled text going into an extraction prompt. That's only acceptable because C4 would
-    queue whatever comes out, and C4 isn't implemented.
-- **Fix direction:**
-  - Ask for `{"candidates": [...]}` explicitly.
-  - Validate each item: its shape, a snake_case predicate, and a confidence between 0 and 1.
-  - Drop and count invalid items.
-  - Wrap episode text in a delimited data block, and tell the model it's data, not
-    instructions.
-  - Pass the known predicate list into the prompt.
+**Timezone**: run date-stamping paths with `TZ=America/New_York` in the evening (after
+20:00 local, when UTC is already the next day). Stamped dates must be the local date.
 
-#### C12. Synonym edges launder trust
-
-- **Where:** `src/index/indexer.ts` ~line 439: synonym edges are inserted with a literal
-  `'medium'` trust.
-- **What:** A phrase that appears only in a `trust: low` (web) note gets a medium-trust edge to
-  phrases in trusted notes. That lets low-trust content get past `retrieval.trustFloor` through
-  the synonym path.
-- **Fix direction:** Give each synonym edge the minimum trust of its two endpoint phrases, where
-  a phrase's trust is the minimum trust of the passages it came from. Add a test with a
-  low-trust fixture phrase, run with `trustFloor: medium`.
-
-#### C13. Triple promotion ignores trust and provenance
-
-- **Where:** `src/consolidation/promote.ts` ~line 43.
-- **What:** Candidates from the triple cache use the source *note* id as `episodeId`. So the
-  resulting fact's `src::` would point at an entity note, not an episode, which breaks the
-  provenance model in SCHEMA §4. The note's trust and `by` aren't carried over either.
-- **Fix direction:**
-  - Carry trust and `by` from the source note.
-  - Add a `srcKind: 'episode' | 'note'` to `Candidate`, or require triple candidates to always
-    queue with reason `derived from triple cache`. Queuing is the simpler, safer default; if
-    you choose it, record that in an ADR.
-
-#### C14. Compacted summaries freeze ACT-R and break as-of
-
-- **Where:** `src/retrieval/recall.ts` ~line 245 and `src/retrieval/log-compact.ts`.
-- **What:**
-  - If the summaries file exists, recall uses only the summaries. Accesses logged after the last
-    `access-log compact` are ignored, so activation stops learning.
-  - The as-of filter is applied to raw events but not to summaries, so `--as-of` activation
-    includes future accesses. That violates ARCHITECTURE §8.
-  - `summariesToPresentations` returns `[first, ...last10]` and discards `count`. So the
-    frequency term is lost, and the "optimized-learning approximation" the roadmap names isn't
-    implemented.
-  - Compaction never truncates the raw log, so the log still grows without bound.
-- **Fix direction:**
-  - Presentations for a node = its compacted summary + raw events after the summary's
-    watermark, with both filtered to `≤ asOf`.
-  - Implement ACT-R's optimized-learning form for the compacted part:
-    `B ≈ ln(n / (1 − d)) − d·ln(L)`, where `L` is the time since the first presentation. Keep
-    exact terms for the recent events.
-  - Store a watermark in the summaries file.
-  - Decide explicitly whether compaction rotates the raw log, and record that in an ADR. The raw
-    log isn't derivable (AGENTS.md §4), so never delete it without a backup.
-- **Tests:**
-  - Activation after compaction equals the pre-compaction activation, within tolerance.
-  - New accesses after compaction change the ranking.
-  - An as-of query before compaction ignores later accesses.
-
-#### C15. The git-ref timestamp is wrong
-
-- **Where:** `git.ts` ~line 161: `git log -1 --format="%at %s"` is run without the resolved
-  hash.
-- **What:** `--as-of <any ref>` resolves to HEAD's timestamp, not the ref's.
-- **Fix:** Use `git log -1 --format=%at%x00%s <hash>`, through `execFileSync` (C5).
-- **Test:** Two commits in a fixture repo; `--as-of <first-hash>` gives the first commit's
-  time.
-
-#### C16. The MCP `recall` drops learning and scoping
-
-- **Where:** `src/mcp/server.ts` ~line 130.
-- **What:**
-  - `logAccess: false` is hardcoded, so agent use through MCP, which is the main use case,
-    never feeds ACT-R or the reconsolidation window.
-  - The `scope` and `session` params are advertised in the tool schema but ignored. Only
-    `remember` passes a session through.
-  - An invalid `as_of` becomes `NaN` instead of an error.
-- **Fix direction:**
-  - Default MCP recall to logging access. The access log stores only the query hash, so this is
-    privacy-safe. Make it configurable.
-  - Pass `session` and `scope` through (see C19).
-  - Return a JSON-RPC error for an unparseable `as_of`.
-- **Tests:** Extend `test/mcp.test.ts`:
-  - a recall call appends an access event with the session id;
-  - a bad `as_of` returns an error.
-
-### P2: roadmap items checked but not delivered, and weaker bugs
-
-- **C17. Git-backed as-of for prose (Phase 6).** `readFileAtCommit` and `getNoteCommitAtTime`
-  exist in `git.ts`, but nothing calls them. Recall's prose is always the current text. Either
-  implement it (at as-of time, render passages from the note at the last commit ≤ T) or uncheck
-  the item.
-- **C18. Reconsolidation window (Phase 4).** `session` is written to the access log
-  (`recall.ts` ~line 293). Nothing in `src/consolidation/` reads it. Either implement it (queue
-  priority for facts recalled in the same session as a contradicting episode; depends on C3) or
-  uncheck it.
-- **C19. Recall `scope` (Phase 3).** There's no scope handling in `recall.ts`. Implement it as a
-  seed and traversal filter by path prefix or tag, per SECURITY T4, or uncheck it.
-- **C20. Mastra integration example (Phase 3).** It's checked, but there's no example in the
-  repo; `examples/` holds only `vault/`. Add `examples/mastra/` with a minimal agent that uses
-  the stdio server, or uncheck it.
-- **C21. Reflection's human-edit detection.** `reflection.ts` ~line 43 uses
-  `git diff HEAD -- <path>`, which only sees uncommitted edits. Human edits that were committed
-  later get overwritten. Compare against the last *generated* version instead: store a content
-  hash in the schema note's frontmatter (`generated_hash`), and skip regeneration if the
-  current body's hash differs. This also works without git.
-- **C22. Episode re-selection.** `selectEpisodes` skips any episode with a valid `consolidated`
-  date. The roadmap says to re-process when the file's mtime is newer than that date. Note the
-  tension: episodes are append-only, so a newer mtime usually means C1-style damage or a manual
-  fix. Decide which, and document it.
-- **C23. Small consolidation bugs.**
-  - Fact ids from `Date.now()` collide within one run. Use the existing block-id convention
-    (`^f-…`), derived from a content hash.
-  - `c.object.replace(/^[[\s*|\s*]]/g, '')` is a character class, not a wikilink stripper. Use
-    the vault's wikilink parser.
-- **C24. The state dir is hardcoded.** `'.circadia'` is a literal in:
-  - `consolidate.ts:84`;
-  - `review.ts:24`;
-  - `triples.ts:31`;
-  - `watch.ts:104`;
-  - `main.ts:103`.
-
-  Import `STATE_DIR` from `src/config.ts` everywhere. The rename was supposed to centralize
-  this.
-- **C25. Stale test fixtures.** `test/consolidation.test.ts` writes `palimpsest.config.json`
-  and `.palimpsest/...` paths, which the renamed loader ignores. So those tests run on defaults,
-  not the config they set up. Also, `test/triple-extraction.test.ts` and several temp-dir
-  prefixes still say `palimpsest`. Use `CONFIG_FILENAME` and `STATE_DIR` in tests. Then
-  `git grep -i palimpsest -- test src` should return nothing.
-- **C26. Coverage gaps.** There are no tests for:
-  - `log-compact.ts`;
-  - `recognition-memory.ts` (beyond the noop path);
-  - `review.ts`;
-  - `git.ts` (commit-per-run, `resolveCommit`, `history`);
-  - `episodes/segment.ts`;
-  - `graph-cache.ts`.
-
-  Each fix above adds tests. Also add at least one test per remaining module.
-
-### P3: hygiene
-
-- **C27.** After C5, no `execSync` with an interpolated string should remain anywhere.
-  `getNoteCommitAtTime` (~line 238) and `reflection.ts` interpolate file paths into shell
-  strings. Paths come from vault filenames, so this is lower risk, but it's the same class of
-  bug.
-- **C28.** `git rm --cached src/.DS_Store`, and add `.DS_Store` to `.gitignore`.
-- **C29. Roadmap accuracy.**
-  - Update `docs/ROADMAP.md` so every checkbox matches reality after your work.
-  - Phase 5's acceptance criterion depends on the Phase 7 eval set, which doesn't exist. Mark
-    Phase 5 "implemented, acceptance pending Phase 7".
-  - Document that `predicates.defs` defaults to `{}`, so nothing auto-promotes until the user
-    defines predicates. Consider shipping the example vault's predicate set as a documented
-    starter.
-
----
-
-## 3. Suggested commit sequence
-
-Each commit is green on its own (`npm test && npm run typecheck`):
-
-1. `test: fix stale fixtures to use CONFIG_FILENAME/STATE_DIR` (C25, C24). This comes first, so
-   the later tests exercise real config.
-2. `fix(git)!: replace shell-string execSync with execFileSync; validate refs` (C5, C15, C27)
-3. `fix(consolidation): minimal in-place consolidated: edit; never reserialize frontmatter` (C1)
-4. `feat(vault): fact-section writer shared by consolidate/supersede/review` (groundwork for C2)
-5. `fix(consolidation): write promoted facts; wire supersession; enforce untrusted-source rule` (C2, C3, C4, C13)
-6. `fix(consolidation): idempotent candidates, side-effect-free dry run, scoped commits` (C6, C7, C8, C23)
-7. `fix(review): shared pending record type; accept writes facts; rejected.jsonl` (C9)
-8. `refactor(llm): shared chat-completions client; fix wire format and prompts` (C10, C11)
-9. `fix(index): synonym edge trust = min of endpoints` (C12)
-10. `fix(retrieval): summaries + post-watermark events, as-of aware, optimized-learning ACT-R` (C14)
-11. `fix(mcp): log access, pass session/scope, reject bad as_of` (C16), plus C19 if implemented
-12. `feat or docs: C17, C18, C20, C21, C22` (implement or uncheck each one)
-13. `docs: roadmap and CONFIG accuracy; chore: remove .DS_Store` (C28, C29)
-
-Add ADRs for:
-
-- the pending-record format and `rejected.jsonl`;
-- triple candidates always queuing (if you choose that);
-- the access-log compaction and rotation policy.
-
----
-
-## 4. Definition of done
-
-- Every P0 and P1 item is fixed, with a regression test that failed before the fix.
-- The full end-to-end fixture runs on a temp vault that is a git repo: index → consolidate →
-  review (scripted accept) → consolidate again. After it:
-  - `lint` is clean;
-  - episodes differ from their originals only in the `consolidated:` line;
-  - the accepted fact appears with correct provenance;
-  - the contradiction is superseded into `## History`;
-  - the web-sourced candidate is still queued;
-  - the second consolidate run produces no diff;
-  - there's exactly one new git commit per non-empty run, touching only the files that run
-    wrote.
-- `git grep -n "execSync(" src` returns nothing.
-- `git grep -n -i palimpsest -- src test` returns only the legacy-name constants, if they exist.
-- `docs/ROADMAP.md` checkboxes match the code.
-- `npm test` passes, with a higher count than 90, and `npm run typecheck` is clean.
-
-## 5. Report back with
-
-1. The commits you made, mapped to issue IDs.
-2. For each issue, one of: fixed (with its test name), or intentionally deferred or unchecked
-   (with the reason).
-3. Any issue in this document that you found to be wrong, with evidence.
-4. Decisions that need the owner:
-   - whether to publish a fixed 0.1.4;
-   - the compaction and rotation policy;
-   - whether triple candidates always queue.
+**Scale**: generate a 300k-event `access.jsonl` and time `recall` before and after
+`access-log compact`. The compacted run should be close to the tiny-log baseline; an
+`--as-of` before the watermark should read the full log.
