@@ -22,10 +22,17 @@ meet. Read `docs/ROADMAP.md` Phase 3 and `docs/SECURITY.md` T1–T3 first.
 | `timeline` | `entity: string` | facts about an entity ordered by `valid_from`, incl. superseded | none |
 | `relate` | `a: string`, `b: string`, `max_hops?: number` | shortest edge paths with provenance | none |
 | `get_note` | `id: string` | raw note content | none |
+| `wake` | none | read the night's dream log once and forget it; returns the sleep report and the top kept fragments, fenced as `<untrusted-data source="dreams">` with the narration rules outside the fence | none (deletes the log) |
+| `endorse_dream` | `id: string`, `note?: string` | set a dream candidate's state to `endorsed`; the first endorsement resets expiry, later ones do not extend it; `note` is free text, at most 280 characters | dream state only |
+| `dismiss_dream` | `id: string` | close a dream candidate | dream state only |
 
 ## Invariants (must have tests)
 
 - `remember` never creates or modifies anything outside `episodes/`.
+- `endorse_dream` and `dismiss_dream` write nothing in the vault; only the candidate's own
+  state under `.circadia/dreams/` changes. Only `circadia review`, with a human at the
+  keyboard, writes the accepted `related_to` fact (ADR-0011).
+- `wake` deletes the log on read; a second call reports nothing left.
 - `remember` derives every path with `slugify()` from server-side data (date + title).
   Caller strings never become paths.
 - `recall` output always goes through `renderForContext()`, so low-trust passages are

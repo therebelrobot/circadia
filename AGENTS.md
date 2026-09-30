@@ -26,6 +26,7 @@ npm run example:recall -- "query"   # --no-log is baked in so the example access
 node bin/circadia.mjs relate --vault examples/vault orchard-sensors pi-cluster
 node bin/circadia.mjs timeline --vault examples/vault orchard-sensors
 node bin/circadia.mjs dream --vault examples/vault --sample-only   # sample REM pairs; no model calls
+node bin/circadia.mjs wake --vault examples/vault   # read the night's dream log once and forget it
 npm run benchmark         # 10k-note synthetic vault: index, incremental, recall p50/p95, RSS
 npm run eval              # generate the eval fixture, then run the retrieval eval
 npm run eval:check        # same, but exit non-zero on any baseline delta (CI)

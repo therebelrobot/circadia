@@ -81,10 +81,10 @@ test('official MCP SDK connects, lists tools, and calls one', async () => {
     await client.connect(transport);
 
     const tools = await client.listTools();
-    assert.equal(tools.tools.length, 5, 'the server must advertise 5 tools');
+    assert.equal(tools.tools.length, 8, 'the server must advertise 8 tools');
     assert.deepEqual(
       tools.tools.map((t) => t.name).sort(),
-      ['get_note', 'recall', 'relate', 'remember', 'timeline'],
+      ['dismiss_dream', 'endorse_dream', 'get_note', 'recall', 'relate', 'remember', 'timeline', 'wake'],
     );
 
     const res = await client.callTool({

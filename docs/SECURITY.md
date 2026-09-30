@@ -33,6 +33,11 @@ Controls (✔ = implemented in Phase 1, ◻ = planned):
   confirmation before promotion.
 - ◻ **Consolidation diff review** (Phase 4). Each run is a single git commit, so you can
   review or revert everything "sleep" changed.
+- ✔ **Dream firewall** (Phase 8). The REM pass writes only under `.circadia/dreams/`; the
+  only route into the vault is a human accept in `circadia review`. The MCP `wake`,
+  `endorse_dream` and `dismiss_dream` tools change dream state only and write nothing in
+  the vault. Dream output is fenced as `<untrusted-data source="dreams">` with the
+  narration rules outside the fence, and a model `gist` over 200 characters is pruned.
 
 ### T2: Unauthorized access to the memory service
 
@@ -79,6 +84,9 @@ Controls, required for Phase 3 and later; the defaults here are non-negotiable:
 - ✔ The embedding and extraction defaults point at local llama.cpp (`127.0.0.1`).
 - Hosted providers are opt-in per config, with the key read from an env var named in
   config, never stored in config.
+- Dream proposals use the configured `extraction` endpoint, a local model by default. A
+  hosted endpoint carries passage text off the machine; `docs/CONFIG.md` says so next to
+  the key.
 - Use a **spend-capped** key: an OpenRouter key with a per-key `limit` and `limit_reset`.
   Note that a hosted provider receives the text of passages sent for embedding or
   extraction.

@@ -36,6 +36,7 @@ commands
   extract               extract hipporag triples from episodes
   consolidate           replay episodes to consolidate facts into entity notes
   dream                 run the REM pass (--dry-run | --sample-only)
+  wake                  read the night's dream log once and forget it (--json)
   review                interactive review of pending consolidation candidates
   stats                 show index statistics
   history <id>          show all versions of a note across commits
@@ -568,10 +569,21 @@ export async function main(argv: string[]): Promise<number> {
       }
       return 0;
     }
+    case 'wake': {
+      const cfg = loadConfig(vault);
+      const { wake, renderWake, wakeJson } = await import('../dreams/wake.ts');
+      const result = wake(vault, cfg);
+      if (json) console.log(JSON.stringify(wakeJson(result), null, 2));
+      else console.log(renderWake(result));
+      return 0;
+    }
     case 'review': {
       const { review } = await import('./review.ts');
       const result = await review(vault);
       console.log(`review complete: ${result.promoted} promoted, ${result.rejected} rejected, ${result.edited} edited`);
+      if (result.dreamAccepted > 0 || result.dreamRejected > 0) {
+        console.log(`dreams: ${result.dreamAccepted} accepted, ${result.dreamRejected} rejected`);
+      }
       return 0;
     }
     case 'stats': {

@@ -151,6 +151,29 @@ async function handleToolsList(
         required: ['id'],
       },
     },
+    {
+      name: 'wake',
+      description: "Read the night's dream log once and forget it.",
+      inputSchema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'endorse_dream',
+      description: 'Endorse a dream candidate (state change only; writes nothing in the vault).',
+      inputSchema: {
+        type: 'object',
+        properties: { id: { type: 'string' }, note: { type: 'string' } },
+        required: ['id'],
+      },
+    },
+    {
+      name: 'dismiss_dream',
+      description: 'Dismiss a dream candidate (state change only; writes nothing in the vault).',
+      inputSchema: {
+        type: 'object',
+        properties: { id: { type: 'string' } },
+        required: ['id'],
+      },
+    },
   ];
   return { jsonrpc: '2.0', id, result: { tools } };
 }
@@ -277,6 +300,56 @@ export async function handleToolsCall(
         const text = r.paths.length > 0 ? r.paths.map((p) => p.nodes.join(' → ')).join('\n') : 'No path found';
         return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text }], paths: r.paths.map((p) => ({ nodes: p.nodes, edges: p.edges })), found: r.found } };
       } finally { db.close(); }
+    }
+
+    if (method === 'wake') {
+      const wakeModule = await import('../dreams/wake.ts');
+      const r = wakeModule.wake(vaultRoot, cfg);
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          content: [{ type: 'text', text: wakeModule.renderWake(r) }],
+          ...wakeModule.wakeJson(r),
+        },
+      };
+    }
+
+    if (method === 'endorse_dream' && params && 'id' in params && typeof params.id === 'string') {
+      // RFC-0001 "Confirmation": the agent relays that the user liked a fragment. This
+      // writes nothing in the vault; only the candidate's own state changes.
+      const candModule = await import('../dreams/candidates.ts');
+      const note = typeof params.note === 'string' ? params.note : undefined;
+      const r = candModule.transitionCandidate(vaultRoot, params.id, 'endorse', {
+        note,
+        ttlNights: cfg.dreaming.candidateTtlNights,
+      });
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          content: [{ type: 'text', text: r.message }],
+          ok: r.ok,
+          candidate: r.candidate ?? null,
+          ...(r.ok ? {} : { isError: true }),
+        },
+      };
+    }
+
+    if (method === 'dismiss_dream' && params && 'id' in params && typeof params.id === 'string') {
+      // Removing is always safe to delegate; this writes nothing in the vault.
+      const candModule = await import('../dreams/candidates.ts');
+      const r = candModule.transitionCandidate(vaultRoot, params.id, 'dismiss');
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          content: [{ type: 'text', text: r.message }],
+          ok: r.ok,
+          candidate: r.candidate ?? null,
+          ...(r.ok ? {} : { isError: true }),
+        },
+      };
     }
 
     if (method === 'get_note' && params && 'id' in params && typeof params.id === 'string') {

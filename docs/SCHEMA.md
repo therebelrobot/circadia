@@ -207,6 +207,11 @@ Predicates live in `circadia.config.json` under `predicates`:
 - `strict: true`: unknown predicates are a lint error.
 - `inverse` lets graph traversal label reverse edges; edges are always traversable both
   ways for spreading activation regardless.
+- `related_to` is the generic association predicate. It is `many` (a note may relate to
+  many others) and has **no inverse**. `circadia init` defines it by default, and
+  `circadia review` writes it when a human accepts a dream candidate (RFC-0001). An
+  accepted association is an ordinary `by:: user` fact, visible to every mode as a `fact`
+  edge.
 
 ## 6. Graph modes and extraction scopes
 

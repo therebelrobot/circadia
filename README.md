@@ -115,6 +115,7 @@ node bin/circadia.mjs recall --vault ~/memory --context "drip timing"   # LLM-re
 node bin/circadia.mjs relate --vault ~/memory orchard-sensors pi-cluster  # shortest paths
 node bin/circadia.mjs timeline --vault ~/memory orchard-sensors          # fact history
 node bin/circadia.mjs dream  --vault ~/memory --sample-only  # sample REM pairs (no model calls)
+node bin/circadia.mjs wake   --vault ~/memory  # read the night's dream log once and forget it
 node bin/circadia.mjs stats  --vault ~/memory
 ```
 

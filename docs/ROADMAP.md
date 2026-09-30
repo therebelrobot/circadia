@@ -281,7 +281,7 @@ RFC-0001. Contract in `src/dreams/README.md`; decision in ADR-0011.
       sampling over non-dream origins, proposal through the extraction model, grounding,
       scoring, and the night's log. Shared `src/util/rng.ts` extracted from the two LCG
       copies. `circadia init` adds `.circadia/dreams/` to `.gitignore`.
-- [ ] **Stage 3 — Candidates, wake, review.** `circadia wake [--json]`, MCP `wake`,
+- [x] **Stage 3 — Candidates, wake, review.** `circadia wake [--json]`, MCP `wake`,
       `endorse_dream`, `dismiss_dream`, the dreams section in `circadia review`, and
       candidate expiry.
 - [ ] **Stage 4 — Dream edges at weight 0.** `EdgeOrigin` gains `'dream'`, `MODE_ORIGINS`,
