@@ -85,6 +85,7 @@ node bin/circadia.mjs --help
 | `src/vault/frontmatter.ts` | YAML **subset** parser | flat maps only; don't grow it into full YAML |
 | `src/vault/time.ts` | period/interval parsing | half-open intervals, UTC for date-only values |
 | `src/vault/facts.ts` | fact-line grammar + serializer | must match `docs/SCHEMA.md` §4 exactly |
+| `src/vault/fact-write.ts` | append a fact line to a note's `## Facts` | pure `appendFactLine` + I/O wrapper; idempotent; used by consolidation |
 | `src/vault/parse.ts` | note → passages, links, facts, problems | passage ids are `<noteId>#<n>` and `<noteId>#facts` |
 | `src/vault/walk.ts` | file discovery | skips dot-folders, `_meta/`, `vault.ignore` globs |
 | `src/extract/scope.ts` | per-note extraction mode | precedence: frontmatter > first scope rule > default |
@@ -95,7 +96,8 @@ node bin/circadia.mjs --help
 | `src/cli/main.ts` | CLI | `main(argv)` is async and returns an exit code, so it's testable (`await main(...)`) |
 | `src/cli/watch.ts` | `watch` command | reindexes on change; embeds best-effort after each reindex |
 | `benchmarks/` | synthetic vault generator + benchmark runner | `npm run benchmark`; results in `docs/PERFORMANCE.md` |
-| `src/mcp/`, `src/consolidation/` | contracts only | read their READMEs |
+| `src/consolidation/` | episode replay → candidate extraction → schema-fit gate → promote/queue/supersede | `schema.ts` `evaluateGate` is pure (facts are read in `consolidate.ts`); untrusted sources and triple candidates always queue (ADR-0006) |
+| `src/mcp/` | MCP server (stdio) | contract in its README |
 
 ## 6. How to make a change
 

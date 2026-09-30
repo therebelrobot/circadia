@@ -1,9 +1,18 @@
 // Triple-to-candidate promotion path (Phase 5: HippoRAG).
 // High-confidence triples from the triple cache are proposed to consolidation
 // as candidate facts. They still go through the consolidation gate.
+//
+// C13 / ADR-0006: a triple's only provenance is a passage id, not an episode. Using the
+// source *note* id as `episodeId` would make a promoted fact's `src::` point at an entity
+// note, which SCHEMA §4 forbids. Rather than invent provenance, triple candidates are
+// marked `origin: 'triple'` and the gate always queues them. The source note's `by` and
+// `trust` are still carried so the gate can reason about them.
 
 import type { Config } from '../config.ts';
+import type { SourceKind, Trust } from '../types.ts';
 import { loadTriples } from '../extract/triples.ts';
+import { parseVault, noteTrust } from '../index/indexer.ts';
+import { DEFAULT_TRUST } from '../vault/facts.ts';
 import type { Candidate } from './candidate.ts';
 
 /**
@@ -18,7 +27,7 @@ export const DEFAULT_PROMOTION_CONFIDENCE_THRESHOLD = 0.8;
  */
 export function promoteTriplesToCandidates(
   vaultRoot: string,
-  _cfg: Config,
+  cfg: Config,
   minConfidence: number = DEFAULT_PROMOTION_CONFIDENCE_THRESHOLD,
 ): Candidate[] {
   const { triples } = loadTriples(vaultRoot);
@@ -29,19 +38,26 @@ export function promoteTriplesToCandidates(
     return conf >= minConfidence;
   });
 
-  // Convert to Candidate format
+  // Resolve each triple's source note so we can inherit its `by`/`trust`.
+  const notesById = new Map(parseVault(vaultRoot, cfg).map((n) => [n.id, n]));
+
   return highConfidenceTriples.map((t) => {
-    // Use passageId as the "episodeId" equivalent for provenance tracking
-    // This allows consolidation to reference the source note
     const sourceNoteId = t.passageId.split('#')[0];
+    const note = notesById.get(sourceNoteId);
+    const by = (note?.frontmatter.by as SourceKind | undefined) ?? 'agent';
+    const trust: Trust = note ? noteTrust(note) : (DEFAULT_TRUST[by] ?? 'low');
 
     return {
       subject: t.subject,
       predicate: t.predicate,
       object: t.object,
       valid: true, // High-confidence triples from HippoRAG are assumed valid
+      explicit: false, // a triple is derived, never a direct user assertion
+      origin: 'triple' as const,
       episodeId: sourceNoteId,
       confidence: t.conf ?? 0.5,
+      by,
+      trust,
     };
   });
 }

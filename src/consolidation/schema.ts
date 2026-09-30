@@ -1,10 +1,16 @@
-// Schema-fit gate: decide whether to promote or queue consolidation candidates.
+// Schema-fit gate: decide whether to promote, queue, supersede, or ignore a candidate.
+//
+// The gate is a PURE function: it takes the candidate, the resolved entity refs, and the
+// subject note's current facts, and returns a decision. All I/O (reading the subject
+// note, writing facts, calling supersede) happens in consolidate.ts. This keeps the
+// memory-poisoning defense (ARCHITECTURE §3) testable in isolation.
 
 import type { Config } from '../config.ts';
+import type { Fact } from '../types.ts';
 import type { Candidate } from './candidate.ts';
 import type { NoteRef } from './entity.ts';
 
-export type GateAction = 'promote' | 'queue';
+export type GateAction = 'promote' | 'queue' | 'supersede' | 'noop';
 
 export interface GateDecision {
   action: GateAction;
@@ -12,31 +18,77 @@ export interface GateDecision {
   candidate: Candidate;
   subjectRef: NoteRef | null;
   objectRef: NoteRef | null;
+  /** the current fact this candidate contradicts, when action is 'supersede' or 'queue' */
+  conflict?: Fact;
+}
+
+/** Canonical object key for comparing a fact's object with a candidate's. */
+export function factObjectKey(f: Fact): string {
+  return f.object.kind === 'link' ? `[[${f.object.link.target}]]` : f.object.value;
+}
+
+/** A predicate is single-valued unless its def says `cardinality: "many"`. */
+export function isSingleValued(cfg: Config, predicate: string): boolean {
+  return (cfg.predicates.defs[predicate]?.cardinality ?? 'single') === 'single';
 }
 
 /**
  * Evaluate a candidate against the schema-fit gate.
- * Returns 'promote' for known entity + known predicate + no conflict,
- * 'queue' for new entity, unknown predicate, or contradictions.
+ *
+ * Order matters:
+ *  1. C4 — untrusted sources (`by: web|tool` or `trust: low`) always queue, before any
+ *     promotion check. This is the memory-poisoning defense.
+ *  2. C13 — triple-cache candidates always queue (ADR-0006): their provenance is a
+ *     passage, not an episode, so they cannot carry a valid `src::`.
+ *  3. Known subject + known predicate:
+ *     - a different object on a single-valued predicate is a contradiction → queue, or
+ *       supersede when a `by: user` episode states it explicitly;
+ *     - the same object is corroboration → no-op.
+ *  4. Otherwise promote (known subject + known predicate, no conflict) or queue.
  */
-export function evaluateGate(candidate: Candidate, cfg: Config, subjectRef: NoteRef | null, objectRef: NoteRef | null): GateDecision {
-  // Check source kind constraint: web/tool episodes never auto-promote
-  // (This assumes we have access to episode by/source somewhere; for now pass through)
+export function evaluateGate(
+  candidate: Candidate,
+  cfg: Config,
+  subjectRef: NoteRef | null,
+  objectRef: NoteRef | null,
+  currentFacts: Fact[] = [],
+): GateDecision {
+  // C4: untrusted sources never auto-promote. Checked first.
+  if (candidate.by === 'web' || candidate.by === 'tool' || candidate.trust === 'low') {
+    return { action: 'queue', reason: 'untrusted source', candidate, subjectRef, objectRef };
+  }
 
-  const { predicate } = candidate;
+  // C13: triple-cache candidates always queue (ADR-0006).
+  if (candidate.origin === 'triple') {
+    return { action: 'queue', reason: 'derived from triple cache', candidate, subjectRef, objectRef };
+  }
 
-  // Check if predicate is known
-  const knownPredicates = Object.keys(cfg.predicates.defs);
-  const knownPredicate = knownPredicates.includes(predicate);
-
-  // Check if both entities are known
+  const knownPredicate = Object.keys(cfg.predicates.defs).includes(candidate.predicate);
   const knownSubject = subjectRef !== null;
-  const knownObject = objectRef !== null;
 
-  // Gate rules:
-  // - Promote: known entity, known predicate, no conflict
-  // - Queue: new entity, unknown predicate, or contradiction
-  if (knownSubject && knownObject && knownPredicate) {
+  if (knownSubject && knownPredicate) {
+    const samePredicate = currentFacts.filter((f) => f.predicate === candidate.predicate);
+    const newObjectKey = objectRef ? `[[${objectRef.id}]]` : candidate.object;
+
+    const conflict = samePredicate.find((f) => factObjectKey(f) !== newObjectKey);
+    if (conflict) {
+      if (isSingleValued(cfg, candidate.predicate) && candidate.by === 'user' && candidate.explicit) {
+        return {
+          action: 'supersede',
+          reason: 'contradicts a current fact (user-confirmed)',
+          candidate,
+          subjectRef,
+          objectRef,
+          conflict,
+        };
+      }
+      return { action: 'queue', reason: 'contradicts a current fact', candidate, subjectRef, objectRef, conflict };
+    }
+
+    if (samePredicate.some((f) => factObjectKey(f) === newObjectKey)) {
+      return { action: 'noop', reason: 'corroborates a current fact', candidate, subjectRef, objectRef };
+    }
+
     return {
       action: 'promote',
       reason: 'known entity + known predicate + no conflict',
@@ -48,7 +100,6 @@ export function evaluateGate(candidate: Candidate, cfg: Config, subjectRef: Note
 
   const reasons: string[] = [];
   if (!knownSubject) reasons.push('new entity');
-  if (!knownObject) reasons.push('new object entity');
   if (!knownPredicate) reasons.push('unknown predicate');
 
   return {

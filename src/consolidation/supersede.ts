@@ -1,6 +1,11 @@
 // Bi-temporal fact supersession. Implements docs/ROADMAP.md Phase 4:
 // strike old facts, mark with [superseded:: date], move to ## History, append new facts.
 // Never delete a fact.
+//
+// A contradiction is the SAME predicate with a DIFFERENT object (a single-valued
+// predicate can only hold one object at a time). The old fact's world-time interval is
+// closed at the supersession date, and the new fact opens there, so "what was true in
+// July" and "what did we believe in July" stay independently answerable.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { formatFact, parseFactLine } from '../vault/facts.ts';
@@ -10,9 +15,7 @@ export interface SupersedeOptions {
   /** epoch ms for the superseded date */
   supersededAt: number;
   /** new fact to append */
-  newFact: Omit<Fact, 'line' | 'raw' | 'line'>;
-  /** note path to update */
-  notePath: string;
+  newFact: Omit<Fact, 'line' | 'raw'>;
 }
 
 export interface SupersedeResult {
@@ -24,29 +27,30 @@ export interface SupersedeResult {
   changed: boolean;
 }
 
+function objectKey(f: { object: Fact['object'] }): string {
+  return f.object.kind === 'link' ? `[[${f.object.link.target}]]` : f.object.value;
+}
+
 /**
  * Apply bi-temporal supersession to a note:
- * 1. Find fact(s) with the same predicate+object in ## Facts
- * 2. Strike them and move to ## History
- * 3. Append the new fact via formatFact()
+ * 1. Find current fact(s) with the same predicate but a different object in ## Facts.
+ * 2. Strike them, close their `valid` interval, and move them to ## History.
+ * 3. Append the new fact via formatFact().
  */
 export function supersede(notePath: string, opts: SupersedeOptions): SupersedeResult {
   const problems: Problem[] = [];
   const superseded: Fact[] = [];
-  let changed = false;
-
   const content = readFileSync(notePath, 'utf8');
   const lines = content.split('\n');
 
-  // Find ## Facts and ## History sections
+  // Locate ## Facts and ## History.
   let factsStart = -1;
   let factsEnd = -1;
   let historyStart = -1;
-
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() === '## Facts') {
+    const t = lines[i].trim();
+    if (t === '## Facts') {
       factsStart = i;
-      // Find end of Facts section (next ## header)
       for (let j = i + 1; j < lines.length; j++) {
         if (lines[j].trim().startsWith('## ')) {
           factsEnd = j;
@@ -54,7 +58,7 @@ export function supersede(notePath: string, opts: SupersedeOptions): SupersedeRe
         }
       }
       if (factsEnd === -1) factsEnd = lines.length;
-    } else if (lines[i].trim() === '## History') {
+    } else if (t === '## History') {
       historyStart = i;
     }
   }
@@ -69,96 +73,84 @@ export function supersede(notePath: string, opts: SupersedeOptions): SupersedeRe
     return { superseded, problems, changed: false };
   }
 
-  // Find facts to supersede (matching predicate and object)
-  const factLines: { index: number; fact: string }[] = [];
+  const newObjKey = objectKey(opts.newFact);
+
+  // Find current facts with the same predicate and a different object.
+  const toSupersede: { index: number; fact: Fact }[] = [];
   for (let i = factsStart + 1; i < factsEnd; i++) {
-    if (lines[i].trim().startsWith('- ')) {
-      const ctx = {
-        noteId: `note-${Date.now()}`,
-        path: notePath,
-        line: i + 1,
-        section: 'facts' as const,
-        defaultRecordedAt: Date.now(),
-      };
-      const parsed = parseFactLine(lines[i], ctx);
-      if (parsed.fact) {
-        // Check if this fact matches the one to supersede (same predicate+object)
-        const newPred = opts.newFact.predicate;
-        const newObj = opts.newFact.object.kind === 'link' ? `[[${opts.newFact.object.link.target}]]` : opts.newFact.object.value;
-        if (parsed.fact.predicate === newPred && parsed.fact.status === 'current') {
-          const oldObj = parsed.fact.object.kind === 'link' ? `[[${parsed.fact.object.link.target}]]` : parsed.fact.object.value;
-          if (oldObj === newObj) {
-            factLines.push({ index: i, fact: lines[i] });
-            superseded.push(parsed.fact);
-          }
-        }
-      }
-    }
+    if (!lines[i].trim().startsWith('- ')) continue;
+    const parsed = parseFactLine(lines[i], {
+      noteId: 'supersede',
+      path: notePath,
+      line: i + 1,
+      section: 'facts',
+      defaultRecordedAt: null,
+    });
+    if (!parsed.fact) continue;
+    if (parsed.fact.predicate !== opts.newFact.predicate) continue;
+    if (parsed.fact.status !== 'current') continue;
+    if (objectKey(parsed.fact) === newObjKey) continue; // identical: corroboration, not supersession
+    toSupersede.push({ index: i, fact: parsed.fact });
   }
 
-  if (factLines.length === 0) {
+  if (toSupersede.length === 0) {
     problems.push({
       severity: 'warning',
       path: notePath,
       code: 'supersede.no-match',
-      message: `no current fact matches predicate=${opts.newFact.predicate} object=${opts.newFact.object.kind === 'link' ? opts.newFact.object.link.target : opts.newFact.object.value}`,
+      message: `no current fact matches predicate=${opts.newFact.predicate} with a different object`,
     });
     return { superseded, problems, changed: false };
   }
 
-  // Build new content
-  const newLines: string[] = [];
+  // Strike the old facts, closing their world-time interval at the supersession date.
+  const struckLines = toSupersede.map(({ fact }) =>
+    formatFact({
+      ...fact,
+      valid: { from: fact.valid.from, to: fact.valid.to ?? opts.supersededAt },
+      supersededAt: opts.supersededAt,
+      status: 'superseded',
+    }),
+  );
+  for (const { fact } of toSupersede) superseded.push(fact);
 
-  for (let i = 0; i < lines.length; i++) {
-    if (i === factsStart) {
-      // Output ## Facts header
-      newLines.push(lines[i]);
-      // Add superseded facts to History
-      const supersededLines = factLines
-        .map(({ fact }) => {
-          const ctx = {
-            noteId: `note-${Date.now()}`,
-            path: notePath,
-            line: 0,
-            section: 'history' as const,
-            defaultRecordedAt: Date.now(),
-          };
-          const parsed = parseFactLine(fact, ctx);
-          if (parsed.fact) {
-            // Add superseded date if not already present
-            const updatedFact = {
-              ...parsed.fact,
-              supersededAt: opts.supersededAt,
-              status: 'superseded' as const,
-            };
-            return formatFact(updatedFact);
-          }
-          return fact;
-        })
-        .join('\n');
-      newLines.push(supersededLines ? `\n${supersededLines}\n` : '\n');
+  const remove = new Set(toSupersede.map((f) => f.index));
 
-      // Output new fact
-      const newFactLine = formatFact(opts.newFact);
-      newLines.push(newFactLine);
-
-      // Skip old fact lines
-      i = factLines[factLines.length - 1].index;
-      continue;
-    }
-
-    newLines.push(lines[i]);
+  // Rebuild: everything up to and including the Facts heading, minus the superseded
+  // lines, then the new fact.
+  const out: string[] = [];
+  for (let i = 0; i <= factsStart; i++) out.push(lines[i]);
+  for (let i = factsStart + 1; i < factsEnd; i++) {
+    if (!remove.has(i)) out.push(lines[i]);
   }
+  while (out.length > factsStart + 1 && out[out.length - 1].trim() === '') out.pop();
+  out.push(formatFact(opts.newFact));
+  out.push('');
 
-  // If there's no History section, create one
+  // Append the struck lines to History, creating the section if it is absent.
+  const rest = lines.slice(factsEnd);
   if (historyStart === -1) {
-    // Find where to insert ## History (after Facts section)
-    const insertAt = factsEnd;
-    newLines.splice(insertAt, 0, '## History', '', newLines.slice(factsEnd).join('\n').replace('## History', '').trimStart());
+    out.push('## History');
+    out.push(...struckLines);
+    out.push('');
+    out.push(...rest);
+  } else {
+    const relHistory = historyStart - factsEnd;
+    let hEnd = rest.length;
+    for (let i = relHistory + 1; i < rest.length; i++) {
+      if (rest[i].trim().startsWith('## ')) {
+        hEnd = i;
+        break;
+      }
+    }
+    const before = rest.slice(0, hEnd);
+    while (before.length > relHistory + 1 && before[before.length - 1].trim() === '') before.pop();
+    out.push(...before);
+    out.push(...struckLines);
+    out.push('');
+    out.push(...rest.slice(hEnd));
   }
 
-  writeFileSync(notePath, newLines.join('\n'));
-  changed = true;
-
-  return { superseded, problems, changed };
+  writeFileSync(notePath, out.join('\n'));
+  return { superseded, problems, changed: true };
 }

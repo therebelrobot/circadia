@@ -83,7 +83,7 @@ LLM used for hipporag triple extraction and for consolidation.
 | key | default | meaning |
 |---|---|---|
 | `predicates.strict` | `false` | unknown predicates are errors (true) or warnings (false) |
-| `predicates.defs` | `{}` | `name → { object?: entity\|literal\|any, inverse?, values?, description? }` |
+| `predicates.defs` | `{}` | `name → { object?: entity\|literal\|any, inverse?, values?, description?, cardinality? }`. `cardinality` is `single` (default) or `many`; a `single` predicate with a second, different object is a contradiction the consolidation gate resolves (queue, or supersede when a `by: user` episode states it explicitly) |
 
 ## Example
 

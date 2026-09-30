@@ -23,6 +23,12 @@ export interface PredicateDef {
   inverse?: string;
   values?: string[];
   description?: string;
+  /**
+   * How many objects a subject may hold for this predicate. `single` (default) means a
+   * second, different object is a contradiction the consolidation gate must resolve;
+   * `many` means multiple objects coexist (e.g. `depends_on`).
+   */
+  cardinality?: 'single' | 'many';
 }
 
 export interface Config {
@@ -241,6 +247,11 @@ export function validateConfig(c: Config): string[] {
       errs.push(`graph.scopes[${i}].match must have at least one criterion`);
     }
   });
+  for (const [name, def] of Object.entries(c.predicates.defs)) {
+    if (def.cardinality !== undefined && def.cardinality !== 'single' && def.cardinality !== 'many') {
+      errs.push(`predicates.defs.${name}.cardinality must be "single" or "many"`);
+    }
+  }
   if (!(c.graph.damping > 0 && c.graph.damping < 1)) errs.push('graph.damping must be in (0, 1)');
   if (!['high', 'medium', 'low'].includes(c.retrieval.trustFloor)) {
     errs.push('retrieval.trustFloor must be high, medium, or low');
