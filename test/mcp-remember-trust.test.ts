@@ -56,8 +56,12 @@ test('MCP remember: by "user" is refused and writes nothing', async () => {
     text: 'The pi cluster runs on the old laptop.',
     by: 'user',
   });
-  assert.ok(res.error, 'by: user must be refused');
-  assert.match(res.error!.message, /not allowed over MCP/);
+  // Per the MCP spec this is a tool execution error: a normal result with isError: true,
+  // not a protocol-level JSON-RPC error.
+  const result = res.result as { content: Array<{ type: string; text: string }>; isError?: boolean } | undefined;
+  assert.ok(result, 'by: user must be refused with a tool result');
+  assert.equal(result!.isError, true, 'the refusal must be a tool-level error');
+  assert.match(result!.content[0].text, /not allowed over MCP/);
   assert.equal(episodeFiles(v).length, 0, 'no episode may be written');
 });
 

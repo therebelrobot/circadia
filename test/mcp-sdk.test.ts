@@ -96,11 +96,12 @@ test('official MCP SDK connects, lists tools, and calls one', async () => {
     assert.ok(content[0].text.includes('Wrote'), `unexpected content: ${content[0].text}`);
     assert.equal(episodeFiles(vault).length, 1, 'remember must write one episode');
 
-    // A tool-level refusal surfaces to the client as a protocol error it can show.
-    await assert.rejects(
-      () => client.callTool({ name: 'remember', arguments: { text: 'x', by: 'user' } }),
-      /not allowed over MCP/,
-    );
+    // A business-logic refusal comes back as a tool result with isError: true, which the
+    // client can show to the model without treating it as a transport failure.
+    const refused = await client.callTool({ name: 'remember', arguments: { text: 'x', by: 'user' } });
+    assert.equal(refused.isError, true, 'the by:user refusal must be a tool-level error');
+    const refusedContent = refused.content as Array<{ type: string; text: string }>;
+    assert.match(refusedContent[0].text, /not allowed over MCP/);
   } finally {
     await client.close();
   }

@@ -185,12 +185,16 @@ export async function handleToolsCall(
       // refuse `user` outright. Human-authored episodes come from editing the vault or
       // the CLI, never from this tool.
       if (params.by === 'user') {
+        // Per the MCP spec, a business-logic failure is a TOOL EXECUTION error: report it
+        // inside the result with `isError: true` so the client can show it to the model,
+        // rather than as a protocol-level JSON-RPC error. (Unknown tools and server
+        // errors stay protocol errors.)
         return {
           jsonrpc: '2.0',
           id,
-          error: {
-            code: -32602,
-            message: 'remember: by "user" is not allowed over MCP; use "agent", "tool", or "web"',
+          result: {
+            content: [{ type: 'text', text: 'remember: by "user" is not allowed over MCP; use "agent", "tool", or "web"' }],
+            isError: true,
           },
         };
       }
@@ -251,7 +255,12 @@ export async function handleToolsCall(
       const notes = indexerModule.parseVault(vaultRoot, cfg);
       const note = notes.find((n) => n.id === params.id || n.path === params.id);
       if (!note) {
-        return { jsonrpc: '2.0', id, error: { code: -32000, message: 'Note not found: ' + params.id } };
+        // Business-logic failure: a tool execution error, not a protocol error.
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: { content: [{ type: 'text', text: 'Note not found: ' + params.id }], isError: true },
+        };
       }
       const filePath = pathModule.join(vaultRoot, note.path);
       const text = fsModule.readFileSync(filePath, 'utf8');
