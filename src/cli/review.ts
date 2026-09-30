@@ -268,27 +268,45 @@ export function applyDreamDecision(
   if (!noteA) return { action: 'error', message: `note "${candidate.a}" does not resolve; left open` };
   if (!noteB) return { action: 'error', message: `note "${candidate.b}" does not resolve; left open` };
 
-  // System time for `at::` is the LOCAL calendar date, so an evening accept does not stamp
-  // tomorrow's UTC date (same rule as an accepted fact).
-  const now = systemDateNow();
-  const fact: WritableFact = {
-    id: `f-${shortHash(candidate.a, 'related_to', `[[${candidate.b}]]`, now)}`,
-    predicate: 'related_to',
-    object: { kind: 'link', link: { target: candidate.b } },
-    valid: { from: now, to: null },
-    recordedAt: now,
-    supersededAt: null,
-    by: 'user',
-    trust: DEFAULT_TRUST.user,
-    conf: 1,
-    src: null,
-    status: 'current',
-    comment: null,
-  };
-  const changed = writeFactToNote(vault, noteA.path, fact, { factsHeading: cfg.vault.factsHeading });
+  // Don't write a duplicate: if note a already has a current `related_to:: [[b]]`, accept
+  // just marks the candidate accepted. The exact-line guard in `appendFactLine` is not
+  // enough, because the line carries `at::` and a block id that differ per day.
+  const already = noteA.facts.some(
+    (f) =>
+      f.predicate === 'related_to' &&
+      f.status === 'current' &&
+      f.object.kind === 'link' &&
+      f.object.link.target === candidate.b,
+  );
+
+  let changed = false;
+  if (!already) {
+    // System time for `at::` is the LOCAL calendar date, so an evening accept does not
+    // stamp tomorrow's UTC date (same rule as an accepted fact).
+    const now = systemDateNow();
+    const fact: WritableFact = {
+      id: `f-${shortHash(candidate.a, 'related_to', `[[${candidate.b}]]`, now)}`,
+      predicate: 'related_to',
+      object: { kind: 'link', link: { target: candidate.b } },
+      valid: { from: now, to: null },
+      recordedAt: now,
+      supersededAt: null,
+      by: 'user',
+      trust: DEFAULT_TRUST.user,
+      conf: 1,
+      src: null,
+      status: 'current',
+      comment: null,
+    };
+    changed = writeFactToNote(vault, noteA.path, fact, { factsHeading: cfg.vault.factsHeading });
+  }
+
   const r = transitionCandidate(vault, candidate.id, 'accept', { today });
   if (!r.ok) return { action: 'error', message: r.message };
-  return { action: 'accepted', message: changed ? 'accepted; wrote related_to fact' : 'accepted; fact already present' };
+  return {
+    action: 'accepted',
+    message: already ? 'accepted; related_to fact already present' : changed ? 'accepted; wrote related_to fact' : 'accepted; fact already present',
+  };
 }
 
 /**

@@ -211,8 +211,12 @@ note titles and gist. Quotes, scores and pruned fragments stay out. The `--json`
 - The report and fragments are fenced together in one
   `<untrusted-data source="dreams">` block, with tags inside escaped as
   `renderForContext()` does.
-- The narration `rules` sit outside the fence: they are Circadia's instructions, not
-  model output.
+- The one-line summary and the narration `rules` sit outside the fence: they are
+  Circadia's judgment and instructions, not model output.
+- "Slept badly" means the REM pass actually failed, or every sample errored. A standalone
+  `circadia dream` records consolidation as "did not run", which is not a failure, so a
+  clean standalone pass reads "slept fine"; a few errors out of many samples are reported
+  but do not make the night bad.
 - With `recallFragments: 0`, `wake` returns the report only.
 
 **Forgetting.** `wake` renames the log to `<night>.json.reading-<pid>-<random>` before
@@ -260,7 +264,8 @@ same rule.
 
 `related_to` must be in `predicates.defs`. `circadia init` already defines it, with
 cardinality `many` and no inverse. If a vault lacks it, review says so and offers to add
-it. An accepted association is then an ordinary user fact, visible to every mode as a
+it: a y/n prompt that writes `related_to` into `predicates.defs`. An accepted association
+is then an ordinary user fact, visible to every mode as a
 `fact` edge. It no longer depends on dream edges at all.
 
 ### Data model and state

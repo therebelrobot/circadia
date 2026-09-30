@@ -26,7 +26,8 @@ once and forgets it.
 - The pass never appends to `access.jsonl` (no false familiarity).
 - Notes below `dreaming.trustFloor` are never sampled.
 - Passage text is fenced with `fenceData(text, 'passage-data')`; `wake` output is fenced as
-  `<untrusted-data source="dreams">` with the narration rules outside the fence.
+  `<untrusted-data source="dreams">` with the one-line summary and the narration rules
+  outside the fence (they are Circadia's judgment and instructions, not model output).
 - The pass refuses to run when `.circadia/dreams/` is not git-ignored, or when anything under
   it is tracked.
 - Re-running a night is a no-op: candidate ids are `d-<night>-<hash(a, b)>` and existing ids

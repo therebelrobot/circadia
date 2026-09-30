@@ -17,7 +17,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../src/config.ts';
 import { buildIndex } from '../src/index/indexer.ts';
-import { wake, renderWake } from '../src/dreams/wake.ts';
+import { wake, renderWake, wakeJson } from '../src/dreams/wake.ts';
 import { writeLog, logPath, logDir, type DreamLog } from '../src/dreams/log.ts';
 
 const execFileP = promisify(execFile);
@@ -116,7 +116,54 @@ test('wake: two concurrent processes return the log once', async () => {
   }
 });
 
-test('wake: a failed pass yields "slept badly"', () => {
+test('wake: a standalone clean pass reads "slept fine"', () => {
+  const v = makeVault();
+  try {
+    const cfg = loadConfig(v);
+    buildIndex(v, cfg, { dbPath: join(v, '.circadia', 'index.sqlite') });
+    // A standalone `circadia dream`: consolidation did not run, the REM pass did, no errors.
+    writeLog(
+      v,
+      makeLog({
+        report: {
+          consolidation: { ran: false, episodes: 0, promoted: 0, queued: 0 },
+          rem: { ran: true, samples: 5, kept: 0, pruned: 5, errors: {} },
+        },
+        fragments: [],
+      }),
+    );
+    const r = wake(v, cfg, { now: NOW });
+    assert.match(r.summary, /^slept fine/, 'a clean standalone pass is not "slept badly"');
+    assert.doesNotMatch(r.summary, /badly/);
+  } finally {
+    rmSync(v, { recursive: true, force: true });
+  }
+});
+
+test('wake: one timeout out of many samples reads "slept fine" and reports it', () => {
+  const v = makeVault();
+  try {
+    const cfg = loadConfig(v);
+    buildIndex(v, cfg, { dbPath: join(v, '.circadia', 'index.sqlite') });
+    writeLog(
+      v,
+      makeLog({
+        report: {
+          consolidation: { ran: true, episodes: 3, promoted: 0, queued: 0 },
+          rem: { ran: true, samples: 20, kept: 4, pruned: 16, errors: { 'llm.timeout': 1 } },
+        },
+      }),
+    );
+    const r = wake(v, cfg, { now: NOW });
+    assert.match(r.summary, /^slept fine/);
+    assert.match(r.summary, /llm\.timeout=1/, 'the timeout is reported');
+    assert.doesNotMatch(r.summary, /badly/);
+  } finally {
+    rmSync(v, { recursive: true, force: true });
+  }
+});
+
+test('wake: every sample erroring yields "slept badly"', () => {
   const v = makeVault();
   try {
     const cfg = loadConfig(v);
@@ -170,10 +217,12 @@ test('wake: the report and fragments are fenced; the rules are outside the fence
     const inside = text.slice(open, close);
     assert.match(inside, /both drift until recalibrated/, 'fragments are inside the fence');
     assert.match(inside, /consolidation: ran/, 'the report is inside the fence');
+    assert.ok(!inside.includes(r.summary), 'the summary is outside the fence');
 
     const rulesIdx = text.indexOf('rules:');
     assert.ok(rulesIdx > close, 'the rules sit outside the fence');
     for (const rule of r.rules) assert.ok(text.indexOf(rule) > close, 'each rule is outside the fence');
+    assert.ok(text.indexOf(r.summary) < open, 'the summary sits before the fence, with the rules');
   } finally {
     rmSync(v, { recursive: true, force: true });
   }
@@ -196,6 +245,19 @@ test('wake: a fragment that tries to close the fence is escaped', () => {
     // The escaped form of `<` is built by concatenation so this file never contains the
     // HTML entity literally (some editors decode it back to `<`).
     assert.ok(text.includes('&' + 'lt;/untrusted-data>'), 'the attempt is escaped');
+  } finally {
+    rmSync(v, { recursive: true, force: true });
+  }
+});
+
+test('wake: --json has exactly the RFC key set', () => {
+  const v = makeVault();
+  try {
+    const cfg = loadConfig(v);
+    buildIndex(v, cfg, { dbPath: join(v, '.circadia', 'index.sqlite') });
+    writeLog(v, makeLog());
+    const r = wake(v, cfg, { now: NOW });
+    assert.deepEqual(Object.keys(wakeJson(r)).sort(), ['forgotten', 'fragments', 'night', 'report', 'rules']);
   } finally {
     rmSync(v, { recursive: true, force: true });
   }

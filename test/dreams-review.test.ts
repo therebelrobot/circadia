@@ -76,6 +76,26 @@ test('review: accept writes exactly one by:: user related_to fact', () => {
   }
 });
 
+test('review: accept does not write a duplicate related_to fact', () => {
+  const v = makeVault();
+  try {
+    // note a already has a current related_to:: [[old-laptop]].
+    writeFileSync(
+      join(v, 'entities', 'soil-probe.md'),
+      '---\ntype: entity\nkind: concept\n---\n# Soil Probe\n\n## Facts\n- [related_to:: [[old-laptop]]] [by:: user]\n',
+    );
+    const cfg = loadConfig(v);
+    const c = writeCandidate(v);
+    const d = applyDreamDecision(c, 'a', v, cfg);
+    assert.equal(d.action, 'accepted');
+    const body = readFileSync(join(v, 'entities', 'soil-probe.md'), 'utf8');
+    assert.equal((body.match(/\[related_to:: \[\[old-laptop\]\]\]/g) ?? []).length, 1, 'no duplicate fact');
+    assert.equal(readCandidates(v).find((x) => x.id === c.id)?.state, 'accepted');
+  } finally {
+    rmSync(v, { recursive: true, force: true });
+  }
+});
+
 test('review: reject marks the candidate rejected and writes no fact', () => {
   const v = makeVault();
   try {

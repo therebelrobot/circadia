@@ -132,17 +132,28 @@ function noteTitles(vaultRoot: string, cfg: Config, dbPath: string | undefined, 
   return out;
 }
 
-/** The honest one-line answer to "how did you sleep?" (RFC-0001 "Answering ..."). */
+/**
+ * The honest one-line answer to "how did you sleep?" (RFC-0001 "Answering ...").
+ *
+ * "Slept badly" means the REM pass actually failed, or every sample errored. A standalone
+ * `circadia dream` records consolidation as "did not run" — that is not a failure, so a
+ * clean standalone pass reads "slept fine". A few errors out of many samples are reported
+ * but do not make the night bad.
+ */
 function summarize(report: SleepReport, keptShown: number): string {
   const rem = report.rem;
   if (rem.skipped) return 'slept fine, no dreaming happened';
-  const remFailed = !rem.ran || Object.keys(rem.errors).length > 0;
-  if (remFailed || !report.consolidation.ran) {
-    const errs = Object.entries(rem.errors)
-      .map(([k, v]) => `${k}=${v}`)
-      .join(' ');
-    return errs ? `slept badly (${errs})` : 'slept badly';
-  }
+
+  const errs = Object.entries(rem.errors)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(' ');
+  const errorCount = Object.values(rem.errors).reduce((s, n) => s + n, 0);
+  const allFailed = rem.samples > 0 && errorCount >= rem.samples;
+
+  if (!rem.ran || allFailed) return errs ? `slept badly (${errs})` : 'slept badly';
+
+  // A clean pass, or one with a few errors, is fine; report the errors if any.
+  if (errs) return `slept fine (${errs})`;
   if (keptShown === 0) return 'slept fine, no dreams it remembers';
   return 'slept fine';
 }
@@ -226,13 +237,13 @@ function escapeFence(text: string): string {
 
 /**
  * Render the report and fragments in one fence, with the narration rules outside it. The
- * summary is the report's headline and sits inside the fence with the report.
+ * one-line summary is Circadia's own judgment, not model output, so it sits outside the
+ * fence with the rules.
  */
 export function renderWake(r: WakeResult): string {
   if (!r.recalled || !r.report) return r.message ?? 'nothing left to recall';
 
   const lines: string[] = [];
-  lines.push(r.summary);
   lines.push(`night: ${r.night}`);
   const c = r.report.consolidation;
   lines.push(
@@ -254,5 +265,5 @@ export function renderWake(r: WakeResult): string {
 
   const fence = `<untrusted-data source="dreams">\n${escapeFence(lines.join('\n'))}\n</untrusted-data>`;
   const rules = `rules:\n${r.rules.map((x) => `- ${x}`).join('\n')}`;
-  return `${fence}\n\n${rules}`;
+  return `${r.summary}\n\n${fence}\n\n${rules}`;
 }
