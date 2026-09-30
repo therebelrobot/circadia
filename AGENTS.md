@@ -146,9 +146,9 @@ node bin/circadia.mjs --help
 - Embeddings are implemented (Phase 2) but **off by default** (`embeddings.provider:
   "none"`). Vector seeds are brute-force cosine over stored passage embeddings — fine to
   about 10⁵ passages; beyond that an ANN index would need an ADR for a dependency.
-- `--as-of` is exact for facts but approximate for prose: note creation stands in for
-  system time, because prose edits aren't versioned in the index. Git-backed as-of is
-  Phase 6.
+- `--as-of` is exact for facts and, when the vault is a git repo, for prose too: each hit's
+  passage is re-read from the note at the last commit ≤ T (C17). A note with no commit ≤ T,
+  or a non-git vault, falls back to the current text and the CLI says so.
 - The hipporag triple extractor is not implemented. The example vault ships a
   hand-written triple cache to exercise the path.
 - One-shot recall re-reads edges from SQLite per query. Long-running processes should

@@ -55,12 +55,33 @@ interface FileChange {
   after: string;
 }
 
-/** An episode is unconsolidated when it has no valid `consolidated:` date. */
+/**
+ * Epoch ms of the start of the day AFTER the local calendar date `YYYY-MM-DD`.
+ * Used to compare a file's mtime against a `consolidated:` date without re-selecting an
+ * episode on the same day consolidation stamped it.
+ */
+function endOfLocalDay(date: string): number {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
+  if (!m) return Number.NaN;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + 1).getTime();
+}
+
+/**
+ * An episode is unconsolidated when it has no valid `consolidated:` date, or when the file
+ * was modified after the consolidated day ended (C22).
+ *
+ * Decision (C22): a newer mtime means a manual fix (or C1-style damage), not a new event —
+ * episodes are append-only, so a legitimate new event is a new file. Re-processing re-derives
+ * facts from the corrected text. The comparison is against the END of the consolidated local
+ * day, so the mtime consolidation itself sets on the same day does not re-select the episode
+ * (which would loop forever). See docs/ROADMAP.md Phase 4.
+ */
 function isUnconsolidated(n: ParsedNote): boolean {
   const consolidated = n.frontmatter.consolidated;
   if (!consolidated) return true;
   if (typeof consolidated !== 'string') return true;
-  return Number.isNaN(Date.parse(consolidated));
+  if (Number.isNaN(Date.parse(consolidated))) return true;
+  return n.mtime > endOfLocalDay(consolidated);
 }
 
 export interface ConsolidateOptions {

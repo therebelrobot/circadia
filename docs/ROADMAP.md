@@ -114,7 +114,10 @@ works in TypeScript and uses Mastra as their agent framework.
 - [x] **`circadia consolidate [--dry-run]`**, run nightly by a systemd timer or cron on
       the Pi.
 - [x] **Replay.** Select episodes with no `consolidated:` date, or with a date older than
-      the file's mtime.
+      the file's mtime. A newer mtime means a manual fix (or C1-style damage), not a new
+      event — episodes are append-only, so a legitimate new event is a new file. The
+      comparison is against the end of the consolidated local day, so the mtime
+      consolidation itself sets on the same day does not re-select the episode.
 - [x] **Candidate extraction.**
   - A small local model (llama.cpp) extracts `(subject, predicate, object, valid?)`
     candidates per episode. This is batch entity extraction, the defined role for small
@@ -144,8 +147,10 @@ works in TypeScript and uses Mastra as their agent framework.
   - When the summed `importance` of newly consolidated episodes about an entity passes a
     threshold, (re)write `schemas/<entity>-overview.md` with `derived: true` and
     `sources:`.
-  - Human edits to a schema note are preserved: detect them via git, and diff against the
-    last generated version.
+  - Human edits to a schema note are preserved. The generated body's hash is stored in the
+    note's frontmatter as `generated_hash`; on the next run, a body whose hash differs is
+    treated as human-edited and left alone. This is content-based, so it works without git
+    and catches committed edits (the old `git diff HEAD` check only saw uncommitted ones).
 - [x] **Mark episodes** with `consolidated: YYYY-MM-DD`. This is the only permitted episode
       edit.
 - [x] **One git commit per run**, with a message summarizing promoted, queued, and
@@ -192,7 +197,9 @@ works in TypeScript and uses Mastra as their agent framework.
 ## Phase 6: History and time travel ✅
 
 - [x] **Git-backed as-of for prose.** When the vault is a git repo, `--as-of T` reads each
-      note at the last commit ≤ T instead of current prose.
+      note at the last commit ≤ T instead of current prose. A note with no commit ≤ T, or a
+      vault that is not a git repo, falls back to the current text; the CLI says which
+      happened (`as-of prose: …`). Facts keep their existing exact as-of filtering.
 - [x] **`circadia history <note-id>`**: show all commits for a note.
 - [x] **Access-log compaction.** Roll old events into per-node summaries of count and
       timestamps sufficient for ACT-R's optimized-learning approximation.

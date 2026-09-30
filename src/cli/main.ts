@@ -278,6 +278,8 @@ export async function main(argv: string[]): Promise<number> {
       else if (args.flags.has('context')) console.log(renderForContext(r));
       else {
         console.log(`mode: ${r.modeRequested} → ${r.modeUsed}   keyword: ${r.keywordBackend}   seeds: ${r.seeds.length}`);
+        // C17: say whether as-of prose came from git history or fell back to current text.
+        if (r.asOfProse) console.log(`as-of prose: ${r.asOfProse.reason}`);
         for (const e of r.escalations) console.log(`  escalated ${e.from} → ${e.to}: ${e.reason}`);
         r.hits.forEach((h: RecallHit, i: number) => {
           const c = h.components;

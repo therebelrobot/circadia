@@ -99,6 +99,16 @@ export interface RecallHit {
   trust: Trust;
 }
 
+/**
+ * C17: for an as-of query, whether passage prose was read from git history (the note at
+ * the last commit <= as-of) or fell back to the current text. `reason` is human-readable
+ * so the CLI can say which happened.
+ */
+export interface AsOfProse {
+  fromGit: boolean;
+  reason: string;
+}
+
 export interface RecallResult {
   query: string;
   modeRequested: QueryMode;
@@ -108,4 +118,6 @@ export interface RecallResult {
   hits: RecallHit[];
   seeds: { nodeId: string; score: number; via: string[] }[];
   keywordBackend: 'fts5' | 'bm25-js';
+  /** C17: set only for an as-of query; absent for a now-query. */
+  asOfProse?: AsOfProse;
 }

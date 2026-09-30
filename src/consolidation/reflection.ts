@@ -1,13 +1,19 @@
 // Schema note generation (reflection). Auto-writes schemas/<entity>-overview.md when
-// consolidated episode importance accumulates past a threshold. Detects human edits via git diff.
+// consolidated episode importance accumulates past a threshold.
+//
+// C21: human-edit detection is content-based, not git-based. The generated body's hash is
+// stored in the note's frontmatter as `generated_hash`; on the next run, if the current
+// body's hash differs, a human edited the note and it is left alone. This works without git
+// and catches committed edits, which the old `git diff HEAD` check missed.
 //
 // `renderReflection` is pure (no writes) so `consolidate` can build its in-memory change
 // set for `--dry-run` (C7). `reflect` is the thin I/O wrapper.
 
-import { writeFileSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
 import type { Fact } from '../types.ts';
+import { splitFrontmatter } from '../vault/frontmatter.ts';
 
 export interface ReflectionResult {
   entity: string;
@@ -30,6 +36,17 @@ export interface ReflectionRender {
   hasHumanEdits: boolean;
 }
 
+/** Hash of the generated body (everything after the frontmatter block). */
+function bodyHash(body: string): string {
+  return createHash('sha256').update(body).digest('hex').slice(0, 16);
+}
+
+/** The `generated_hash` recorded in an existing schema note, or null if absent. */
+function readGeneratedHash(raw: string): string | null {
+  const m = /^generated_hash:\s*(\S+)\s*$/m.exec(raw);
+  return m ? m[1] : null;
+}
+
 /**
  * Compute the schema note for an entity, without writing it.
  * Returns null when the summed importance is below the threshold.
@@ -48,57 +65,47 @@ export function renderReflection(
   }
 
   const relPath = `schemas/${entity}-overview.md`;
+  const absPath = join(vaultPath, relPath);
 
-  // Check for human edits via git
-  let hasHumanEdits = false;
-  if (existsSync(join(vaultPath, '.git'))) {
-    try {
-      // C27: the path is a discrete argv element after `--`, so spaces and shell
-      // metacharacters in it are inert (no shell is involved).
-      const diff = execFileSync('git', ['diff', 'HEAD', '--', relPath], {
-        cwd: vaultPath,
-        encoding: 'utf8',
-        timeout: 5000,
-      }).trim();
-      if (diff) {
-        hasHumanEdits = true;
-      }
-    } catch {
-      // Git not available; assume no human edits
-    }
-  }
-
-  if (hasHumanEdits) {
-    return { entity, relPath, content: '', changed: false, hasHumanEdits: true };
-  }
-
-  // Build schema content
   const sources = [...new Set(facts.map((f) => f.src?.target).filter(Boolean))];
 
-  const lines = [
-    `# ${entity}`,
-    '',
-    `---`,
-    `derived: true`,
-    `sources: ${sources.map(s => `[[${s}]]`).join(', ') || 'none'}`,
-    `---`,
-    '',
-    `## Facts`,
-    '',
-  ];
-
+  const bodyLines = [`# ${entity}`, '', `## Facts`, ''];
   for (const f of facts) {
     const obj = f.object.kind === 'link' ? `[[${f.object.link.target}]]` : f.object.value;
-    lines.push(`- ${f.predicate} ${obj}`);
-    lines.push(`  - valid: ${f.valid.from ? formatDate(f.valid.from) : '…'}..${f.valid.to ? formatDate(f.valid.to) : '…'}`);
-    lines.push(`  - by: ${f.by}`);
+    bodyLines.push(`- ${f.predicate} ${obj}`);
+    bodyLines.push(`  - valid: ${f.valid.from ? formatDate(f.valid.from) : '…'}..${f.valid.to ? formatDate(f.valid.to) : '…'}`);
+    bodyLines.push(`  - by: ${f.by}`);
     if (f.supersededAt) {
-      lines.push(`  - superseded: ${formatDate(f.supersededAt)}`);
+      bodyLines.push(`  - superseded: ${formatDate(f.supersededAt)}`);
     }
-    lines.push('');
+    bodyLines.push('');
+  }
+  const body = bodyLines.join('\n');
+  const hash = bodyHash(body);
+
+  // C21: if the note exists and its body no longer matches the hash we generated, a human
+  // edited it — leave it alone. A note with no `generated_hash` was not written by this
+  // mechanism (or predates it), so it is treated as human-authored and also left alone.
+  if (existsSync(absPath)) {
+    const raw = readFileSync(absPath, 'utf8');
+    const recorded = readGeneratedHash(raw);
+    const { frontmatter, body: currentBody } = splitFrontmatter(raw);
+    const current = frontmatter === null ? raw : currentBody;
+    if (recorded === null || bodyHash(current) !== recorded) {
+      return { entity, relPath, content: '', changed: false, hasHumanEdits: true };
+    }
   }
 
-  return { entity, relPath, content: lines.join('\n'), changed: true, hasHumanEdits: false };
+  const content = [
+    '---',
+    'derived: true',
+    `sources: ${sources.map((s) => `[[${s}]]`).join(', ') || 'none'}`,
+    `generated_hash: ${hash}`,
+    '---',
+    body,
+  ].join('\n');
+
+  return { entity, relPath, content, changed: true, hasHumanEdits: false };
 }
 
 /**

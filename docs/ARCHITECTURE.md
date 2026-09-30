@@ -129,7 +129,9 @@ as used by Graphiti/Zep [S16, S17], separates:
 - **system time** (`at::`, `superseded::`): when a fact was believed.
 
 `--as-of T` filters on both. It also hides edges declared by notes created after `T` and
-evaluates ACT-R activation as of `T`.
+evaluates ACT-R activation as of `T`. Prose is exact too: when the vault is a git repo, each
+hit's passage is re-read from the note at the last commit ≤ `T` (C17). A note with no commit
+≤ `T`, or a non-git vault, falls back to the current text and the CLI says so.
 
 ## 9. Components and data flow
 

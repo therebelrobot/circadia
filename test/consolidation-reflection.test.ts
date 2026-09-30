@@ -1,4 +1,4 @@
-import { readFileSync, mkdirSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, describe, before, after } from 'node:test';
 import { reflect } from '../src/consolidation/reflection.ts';
@@ -117,5 +117,44 @@ describe('reflection', () => {
     const content = readFileSync(schemaPath, 'utf8');
 
     if (!content.includes('[[ep-4]]')) throw new Error('Should include source in sources');
+  });
+
+  test('C21: a human edit to the generated body survives a re-run (no git required)', () => {
+    const facts: Fact[] = [
+      {
+        id: 'f-5',
+        predicate: 'runs_on',
+        object: { kind: 'literal', value: 'server-b' },
+        valid: { from: null, to: null },
+        recordedAt: Date.now(),
+        supersededAt: null,
+        by: 'agent',
+        trust: 'medium',
+        conf: 1,
+        src: { target: 'ep-5' },
+        status: 'current',
+        comment: null,
+        line: 0,
+        raw: '',
+      },
+    ];
+
+    // First generation records a content hash in the frontmatter.
+    const first = reflect(testVault, 'human-edit-entity', facts, 1);
+    if (!first?.changed) throw new Error('Should generate schema note');
+    const schemaPath = join(testVault, 'schemas', 'human-edit-entity-overview.md');
+    const generated = readFileSync(schemaPath, 'utf8');
+    if (!generated.includes('generated_hash:')) throw new Error('Should record generated_hash');
+
+    // A human edits the body (the test vault is not a git repo, so this proves the
+    // detection works without git).
+    writeFileSync(schemaPath, generated.replace('## Facts', '## Facts\n\nHuman note: keep this.'));
+
+    // Re-running with the same facts must not overwrite the human edit.
+    const second = reflect(testVault, 'human-edit-entity', facts, 1);
+    if (second?.changed !== false) throw new Error('Should not regenerate over a human edit');
+    if (second?.hasHumanEdits !== true) throw new Error('Should report human edits');
+    const after = readFileSync(schemaPath, 'utf8');
+    if (!after.includes('Human note: keep this.')) throw new Error('Human edit must survive');
   });
 });

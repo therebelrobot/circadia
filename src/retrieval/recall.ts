@@ -11,8 +11,10 @@
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { Config } from '../config.ts';
-import type { GraphMode, QueryMode, RecallHit, RecallResult, Trust } from '../types.ts';
+import type { AsOfProse, GraphMode, QueryMode, RecallHit, RecallResult, Trust } from '../types.ts';
 import { getMeta, openIndex } from '../index/db.ts';
+import { getNoteCommitAtTime, isGitRepo, readFileAtCommit } from '../vault/git.ts';
+import { parseNote } from '../vault/parse.ts';
 import { bm25Search, ftsSearch, type KeywordHit } from './keyword.ts';
 import { findCandidateTriples, filterTriplesWithLLM, extractSeeds, HttpTripleVerifier, type TripleVerifier } from './recognition-memory.ts';
 import { MODE_ORIGINS } from './modes.ts';
@@ -261,6 +263,56 @@ function runRung(
   return { hits: out, margin };
 }
 
+/**
+ * C17: replace each hit's prose with the note's text at the last commit <= `asOf`.
+ *
+ * The index stores the CURRENT passage text (it is derived from the working tree), so an
+ * as-of query would otherwise return today's prose. Here we re-read the note at the commit
+ * that was HEAD at `asOf`, re-parse it, and map the hit's passage id onto the historical
+ * passage. Passage ids are `<noteId>#<n>`, so a passage that did not exist at that commit
+ * (or a note with no commit <= asOf) keeps the current text — the documented fallback.
+ *
+ * Facts are unaffected: their as-of filtering happens on the fact edges, and the `#facts`
+ * passage is re-rendered from the same commit for consistency.
+ */
+function applyAsOfProse(vaultRoot: string, cfg: Config, hits: RecallHit[], asOf: number): AsOfProse {
+  if (!isGitRepo(vaultRoot)) {
+    return { fromGit: false, reason: 'vault is not a git repository; using current prose' };
+  }
+  // One git read + parse per note, not per hit.
+  const byPath = new Map<string, ReturnType<typeof parseNote> | null>();
+  let replaced = 0;
+  let missing = 0;
+  for (const h of hits) {
+    let note = byPath.get(h.path);
+    if (note === undefined) {
+      const commit = getNoteCommitAtTime(vaultRoot, h.path, asOf);
+      const raw = commit ? readFileAtCommit(vaultRoot, h.path, commit) : null;
+      note = raw === null ? null : parseNote(h.path, raw, 0, cfg);
+      byPath.set(h.path, note);
+    }
+    const p = note?.passages.find((x) => x.id === h.passageId);
+    if (!p) {
+      missing++;
+      continue;
+    }
+    h.text = p.text;
+    h.heading = p.heading;
+    h.title = note!.title;
+    replaced++;
+  }
+  if (replaced === 0) {
+    return { fromGit: false, reason: 'no commit at or before as-of; using current prose' };
+  }
+  return {
+    fromGit: true,
+    reason:
+      missing > 0
+        ? `prose read from git history for ${replaced} passage(s); ${missing} had no commit at or before as-of`
+        : `prose read from git history for ${replaced} passage(s)`,
+  };
+}
+
 export async function recall(vaultRoot: string, cfg: Config, query: string, opts: RecallOptions = {}): Promise<RecallResult> {
   const now = opts.now ?? Date.now();
   const asOf = opts.asOf ?? null;
@@ -375,6 +427,12 @@ export async function recall(vaultRoot: string, cfg: Config, query: string, opts
       escalations.push({ from: modeUsed, to: ladder[i + 1], reason: reasons.join('; ') });
     }
 
+    // C17: an as-of query renders prose from the note at the last commit <= asOf. This runs
+    // after ranking (scores are computed from the current index) and before logging, so the
+    // access log still records the passage id, not the historical text.
+    const asOfProse =
+      asOf !== null && result.hits.length > 0 ? applyAsOfProse(vaultRoot, cfg, result.hits, asOf) : undefined;
+
     if (opts.logAccess ?? cfg.retrieval.logAccess) {
       const q = queryHash(query);
       appendAccess(
@@ -392,6 +450,7 @@ export async function recall(vaultRoot: string, cfg: Config, query: string, opts
       hits: result.hits,
       seeds: [...fused.entries()].map(([nodeId, v]) => ({ nodeId, score: v.score, via: v.via })).sort((a, b) => b.score - a.score),
       keywordBackend: backend,
+      asOfProse,
     };
   } finally {
     db.close();
