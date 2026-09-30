@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/circadia"><img alt="npm" src="https://img.shields.io/npm/v/circadia?color=22E9FF&labelColor=0B2140"></a>
-  <img alt="node >= 22.18" src="https://img.shields.io/badge/node-%E2%89%A5%2022.18-22E9FF?labelColor=0B2140">
+  <img alt="node &gt;= 22.18" src="https://img.shields.io/badge/node-%E2%89%A5%2022.18-22E9FF?labelColor=0B2140">
   <img alt="zero runtime dependencies" src="https://img.shields.io/badge/runtime%20deps-0-22E9FF?labelColor=0B2140">
   <img alt="license: Unlicense" src="https://img.shields.io/badge/license-Unlicense-22E9FF?labelColor=0B2140">
 </p>
