@@ -414,10 +414,12 @@ async function emitSynonymEdges(dbPath: string, config: Config): Promise<void> {
     const threshold = config.graph.hipporag.synonymThreshold;
     const maxEdges = config.graph.hipporag.maxSynonymEdges;
 
-    // Get all phrase nodes with embeddings
+    // Get all phrase nodes with embeddings. `embedding` must be selected: the
+    // map below reads it, and omitting it made this path crash (or, with no
+    // phrase embeddings, silently emit nothing).
     const phrases = db
       .prepare(
-        `SELECT id, text FROM nodes
+        `SELECT id, text, embedding FROM nodes
          WHERE kind = 'phrase' AND embedding IS NOT NULL
          ORDER BY id`,
       )
@@ -425,18 +427,38 @@ async function emitSynonymEdges(dbPath: string, config: Config): Promise<void> {
 
     if (phrases.length < 2) return;
 
-    // Convert embeddings to Float32Array and compute similarities
+    // Convert embeddings to Float32Array and compute similarities. The stored
+    // BLOB is raw float32 bytes; reinterpret them (as recall.ts does) rather than
+    // copying byte values into the array, which would corrupt every cosine.
     const phraseEmbeddings = phrases.map((p) => ({
       id: p.id,
       text: p.text,
-      embedding: new Float32Array(Buffer.from(p.embedding.buffer, p.embedding.byteOffset, p.embedding.byteLength)),
+      embedding: new Float32Array(new Uint8Array(p.embedding).buffer),
     }));
+
+    // C12: a phrase's trust is the minimum trust of the passages it came from
+    // (the passages that mention it via `triple`/`mentions` edges). A phrase with
+    // no passages, or an unknown trust, defaults to `low` — the safest value — so
+    // a synonym edge can never launder low-trust content past `retrieval.trustFloor`.
+    const phraseTrust = new Map<string, Trust>();
+    for (const r of db
+      .prepare(
+        `SELECT e.dst AS phrase, n.trust AS trust
+         FROM edges e JOIN nodes n ON n.id = e.src
+         WHERE e.origin = 'triple' AND e.type = 'mentions' AND e.dst IS NOT NULL`,
+      )
+      .all() as { phrase: string; trust: string | null }[]) {
+      const t = (r.trust ?? 'low') as Trust;
+      const cur = phraseTrust.get(r.phrase);
+      if (cur === undefined || TRUST_RANK[t] < TRUST_RANK[cur]) phraseTrust.set(r.phrase, t);
+    }
+    const trustOf = (id: string): Trust => phraseTrust.get(id) ?? 'low';
 
     // Track edge pairs to avoid duplicates
     const edgePairs = new Set<string>();
     const emitEdge = db.prepare(
       `INSERT OR REPLACE INTO edges (src, dst, origin, type, weight, recorded_at, trust, declared_in)
-       VALUES (?, ?, 'synonym', 'similar', ?, ?, 'medium', NULL)`,
+       VALUES (?, ?, 'synonym', 'similar', ?, ?, ?, NULL)`,
     );
 
     // Compare all pairs (brute-force is fine for typical phrase counts < 1k)
@@ -451,7 +473,11 @@ async function emitSynonymEdges(dbPath: string, config: Config): Promise<void> {
           const pairKey = [a.id, b.id].sort().join('\0');
           if (!edgePairs.has(pairKey)) {
             edgePairs.add(pairKey);
-            emitEdge.run(a.id, b.id, sim, now);
+            // C12: the edge is only as trustworthy as its least-trusted endpoint.
+            const ta = trustOf(a.id);
+            const tb = trustOf(b.id);
+            const trust = TRUST_RANK[ta] <= TRUST_RANK[tb] ? ta : tb;
+            emitEdge.run(a.id, b.id, sim, now, trust);
             if (edgePairs.size >= maxEdges) break;
           }
         }
