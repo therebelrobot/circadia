@@ -58,6 +58,8 @@ vault with no triples behaves like `typed`.
 
 ## 2. The `auto` ladder
 
+<p align="center"><img src="media/ladder.gif" alt="Animated diagram: three stacked planes (wikilink, typed, hipporag) hold the same notes with more links each. A query on the bottom plane climbs one rung when the result is weak and stops when one hit clearly wins." width="100%"></p>
+
 `graph.query.auto.ladder` defaults to `["wikilink", "typed", "hipporag"]`. The idea is to
 start cheap and escalate only when the result looks weak.
 
@@ -82,6 +84,8 @@ prints them. Tune thresholds against your own vault. These defaults were checked
 the example vault.
 
 ## 3. Pipeline
+
+<p align="center"><img src="media/recall.gif" alt="Animated diagram: a question lights two seed nodes; activation spreads outward along links; the top passages move into a stack labelled as the model's context." width="100%"></p>
 
 1. **Cues.**
    - Keyword: FTS5 `bm25()` over `title`, `heading`, and `text`, weighted 2 : 1.5 : 1.

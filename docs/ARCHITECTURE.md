@@ -12,6 +12,9 @@ content held in the neocortex. A partial cue activates the index, which reactiva
 whole cortical pattern ("pattern completion"). New information can be integrated by
 changing only the index. HippoRAG turned this into a retrieval system for LLMs. [S1–S4]
 
+
+<p align="center"><img src="media/vault-index.gif" alt="Animated diagram: markdown notes on a floor with index nodes above them, dashed pointers dropping to each note. The index is erased and redrawn from the notes." width="100%"></p>
+
 **Decision.**
 
 | brain | Circadia | where |
@@ -39,6 +42,8 @@ offline and during sleep. [S5]
 Agents write episodes, not facts.
 
 ## 3. Prior knowledge gates consolidation
+
+<p align="center"><img src="media/sleep.gif" alt="Animated diagram: episode cards pass through a schema-fit gate and become facts on a note; an untrusted, dashed card stops at the gate and drops into a review tray." width="100%"></p>
 
 **Finding: schema-accelerated consolidation** (Tse et al. 2007; van Kesteren et al. 2012).
 Information that fits an existing schema consolidates much faster. The brain effectively
@@ -122,6 +127,8 @@ See [`SECURITY.md`](SECURITY.md).
 
 ## 8. Time is two-dimensional
 
+<p align="center"><img src="media/bi-temporal.gif" alt="Animated chart: world time runs left to right, system time runs back. 'runs_on old-laptop' is struck through when 'runs_on pi-cluster' replaces it; an --as-of pin at July reads old-laptop, then at now reads pi-cluster." width="100%"></p>
+
 Not a neuroscience finding, but necessary for correct memory. The **bi-temporal** model,
 as used by Graphiti/Zep [S16, S17], separates:
 
@@ -158,6 +165,8 @@ query ──▶ cues (FTS5|BM25 + entity names) ─▶ RRF seeds
 ```
 
 ## 10. Sleep has two phases: consolidation and recombination
+
+<p align="center"><img src="media/dream.gif" alt="Animated diagram: a dashed arc links a recently active note to a distant, older one. Labels: 'a candidate link, never a fact' and 'only you can promote it, in review'. The arc fades." width="100%"></p>
 
 **Findings.** Slow-wave (NREM) sleep replays recent experience and groups it into schemas;
 REM sleep, with hippocampus and cortex less coupled, recombines across those schemas. [D1–D8]

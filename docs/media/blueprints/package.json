@@ -1,0 +1,24 @@
+{
+  "name": "circadia-blueprints",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Looping blueprint explainer GIFs for the Circadia README and docs (Remotion).",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render",
+    "still": "remotion still",
+    "gifs": "bash scripts/render-gifs.sh"
+  },
+  "dependencies": {
+    "@fontsource/architects-daughter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@remotion/cli": "4.0.531",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "remotion": "4.0.531"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "typescript": "^7.0.2"
+  }
+}

@@ -6,3 +6,5 @@ node_modules/
 **/.circadia/index.sqlite*
 # generated eval fixture (rebuild with `npm run eval`)
 eval/.fixture/
+# publish-time JS build (ADR-0012)
+dist/

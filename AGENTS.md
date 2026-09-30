@@ -42,7 +42,11 @@ node bin/circadia.mjs --help
    `@modelcontextprotocol/sdk` (dev-only, for MCP conformance tests — see ADR-0008). If
    you believe another dependency is truly needed, write an ADR in `docs/decisions/`
    arguing for it and stop for human review.
-2. **TypeScript that Node can run with type stripping.** No build step. That means:
+2. **TypeScript that Node can run with type stripping.** No build step for development:
+   the CLI, tests and scripts run `src/*.ts` directly. The one exception is publish time
+   (ADR-0012): `prepack` emits plain JS to `dist/` because Node won't strip types under
+   `node_modules`, and `bin/circadia.mjs` uses `dist/` only when installed there. Never
+   import from `dist/`, and never commit it. That means:
    - Import with `.ts` extensions (`import { x } from './y.ts'`).
    - Use `import type` for type-only imports; `verbatimModuleSyntax` is on.
    - No `enum`, no `namespace`, no constructor parameter properties, no decorators.
@@ -110,6 +114,8 @@ node bin/circadia.mjs --help
 | `src/mcp/` | MCP server (stdio) | contract in its README |
 | `src/eval/` | eval runner, metrics, ablations, baseline, tuning, adapters, dream sweep | strictly read-only; determinism contract in ADR-0010 |
 | `eval/` | fixture generator, query set, committed baseline | `npm run eval`; `eval/.fixture/` is generated and gitignored |
+| `bin/circadia.mjs`, `tsconfig.build.json` | launcher and publish-time build | the launcher runs `src/` from a clone and `dist/` only when installed under `node_modules` (ADR-0012); `test/build.test.ts` guards it |
+| `docs/media/` | README and docs GIFs, plus their Remotion source in `blueprints/` | not shipped to npm; its own `package.json`, outside the root tests and typecheck; regenerate with `npm run gifs` there |
 
 ## 6. How to make a change
 

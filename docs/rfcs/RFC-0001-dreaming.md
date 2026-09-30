@@ -7,6 +7,8 @@ Status: implemented (Stages 1–5). Stage 5 sweep flat on the Phase 7 fixture; d
 
 ## Summary
 
+<p align="center"><img src="../media/dream.gif" alt="Animated diagram: a dashed candidate link between a recently active note and a distant older note, which only a human can promote; it fades after it is read." width="100%"></p>
+
 Circadia's night has one phase today. `circadia consolidate` is the NREM half of sleep: it
 replays episodes into facts through the schema-fit gate. This RFC adds the REM half:
 

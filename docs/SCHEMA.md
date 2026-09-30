@@ -129,6 +129,9 @@ so every field is queryable in Obsidian, and fields are delimited unambiguously.
 - ~~[runs_on:: [[old-laptop]]] [valid:: 2026-07..2026-08-11]~~ [at:: 2026-07-02] [superseded:: 2026-08-11] [by:: user] ^f-1a7q
 ```
 
+
+<p align="center"><img src="media/bi-temporal.gif" alt="Animated chart of one fact changing: world time (valid::) runs left to right, system time (at::, superseded::) runs back; the old fact is struck through and kept." width="100%"></p>
+
 ### 4.1 Grammar
 
 ```

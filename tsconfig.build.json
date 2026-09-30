@@ -1,0 +1,15 @@
+{
+  // Publish-time only (ADR-0012). Development and tests still run src/*.ts directly
+  // with Node's type stripping; this emits plain JS to dist/ because Node refuses to
+  // strip types for files under node_modules, which is where npx and -g installs live.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "rewriteRelativeImportExtensions": true,
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": ["src/**/*.ts"]
+}
