@@ -2,9 +2,10 @@
 // hardcoded '.circadia' path literal. See src/config.ts.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { STATE_DIR, CONFIG_FILENAME, loadConfig } from '../src/config.ts';
 import { consolidate } from '../src/consolidation/consolidate.ts';
 
@@ -22,19 +23,16 @@ test('consolidate writes its pending file under STATE_DIR', async () => {
 });
 
 test('no source file constructs a literal .circadia path', () => {
-  const files = [
-    'src/consolidation/consolidate.ts',
-    'src/cli/review.ts',
-    'src/extract/triples.ts',
-    'src/cli/watch.ts',
-    'src/cli/main.ts',
-    'src/dreams/candidates.ts',
-    'src/dreams/log.ts',
-    'src/dreams/rem.ts',
-    'src/dreams/gitignore.ts',
-  ];
-  for (const f of files) {
-    const src = readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
-    assert.ok(!src.includes("'.circadia'"), `${f} must use STATE_DIR, not a literal '.circadia'`);
+  // Scan src/ recursively rather than a hardcoded list, so a new module cannot slip
+  // past the guard. `src/config.ts` is the one place the literal is defined.
+  const allowed = new Set(['src/config.ts']);
+  const srcDir = fileURLToPath(new URL('../src', import.meta.url));
+  const offenders: string[] = [];
+  for (const rel of readdirSync(srcDir, { recursive: true }) as string[]) {
+    if (!rel.endsWith('.ts')) continue;
+    const relPosix = `src/${rel.split(sep).join('/')}`;
+    if (allowed.has(relPosix)) continue;
+    if (readFileSync(join(srcDir, rel), 'utf8').includes("'.circadia'")) offenders.push(relPosix);
   }
+  assert.deepEqual(offenders, [], `these files must use STATE_DIR, not a literal '.circadia': ${offenders.join(', ')}`);
 });

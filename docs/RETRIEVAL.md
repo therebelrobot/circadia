@@ -39,6 +39,13 @@ value matches.
 | `typed` | + `fact` (note → object, bi-temporal), `provenance` (note → `src` episode) | parse only |
 | `hipporag` | + `triple` (passage → phrase, phrase → phrase), `synonym` (phrase → note it names) | LLM extraction, cached |
 
+`dream` edges are not built per note. The indexer rebuilds them from
+`.circadia/dreams/candidates.jsonl` on every index (RFC-0001 "Dream edges"): one row per
+open or endorsed candidate, `type: 'association'`, `trust: low`, `weight = salience`,
+`recorded_at` = the night. At the default `graph.originWeights.dream: 0` they are in the
+index and in no PageRank graph. `typed` and `hipporag` traverse them; `wikilink` does not
+(it stays "links you wrote"), and `relate` excludes them in every mode.
+
 `circadia stats` shows how many notes landed in each mode. Each note row in the index
 records `extraction_mode` and `extraction_why`, the rule that chose it.
 
@@ -285,7 +292,7 @@ automatically:
 | `mode:wikilink` / `mode:typed` / `mode:hipporag` | each mode alone |
 | `weights:activation=0` | the ACT-R activation term |
 | `weights:importance=0` | the importance term |
-| `origin:<mode>:<origin>=0` | one edge origin (e.g. `origin:typed:fact=0`) within a mode |
+| `origin:<mode>:<origin>=0` | one edge origin (e.g. `origin:typed:fact=0`) within a mode. `origin:typed:dream=0` and `origin:hipporag:dream=0` appear automatically because the set is driven by `MODE_ORIGINS` |
 
 Ablations are built in memory from `DEFAULT_CONFIG` via `deepMerge`; nothing is written to
 the vault or to the defaults.

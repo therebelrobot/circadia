@@ -76,7 +76,11 @@ export function relate(
   if (!a) throw new Error(`"${from}" does not resolve to a note (no matching id, alias, or title)`);
   if (!b) throw new Error(`"${to}" does not resolve to a note (no matching id, alias, or title)`);
 
-  const origins = [...MODE_ORIGINS[mode]];
+  // `relate` finds paths by BFS and ignores weights, so a path through an unconfirmed
+  // dream presented as "how these notes are connected" is exactly the leak the design
+  // prevents (RFC-0001 "Dream edges"). Exclude `dream` always, in every mode. An
+  // accepted association becomes a `fact` edge and shows up here normally.
+  const origins = MODE_ORIGINS[mode].filter((o) => o !== 'dream');
   const ph = origins.map(() => '?').join(',');
   const rows = db
     .prepare(

@@ -14,6 +14,8 @@ import { DEFAULT_TRUST } from '../vault/facts.ts';
 import { parseNote } from '../vault/parse.ts';
 import { walkVault } from '../vault/walk.ts';
 import { normKey, slugify } from '../vault/util.ts';
+import { parseInstant } from '../vault/time.ts';
+import { readCandidates } from '../dreams/candidates.ts';
 import { extractionModeFor, MODE_RANK } from '../extract/scope.ts';
 import { loadTriples, passageHash } from '../extract/triples.ts';
 import { createEmbeddingsClient, NullEmbeddingsClient, type EmbeddingsClient, cosineSimilarity } from '../retrieval/embeddings.ts';
@@ -405,6 +407,29 @@ function emitTriples(ctx: IndexCtx, vaultRoot: string, noteIds: Set<string>): vo
 }
 
 /**
+ * Emit `dream` edges from the candidate queue (RFC-0001 "Dream edges"). Rebuilt from
+ * scratch on every index, like synonym edges: the candidate file is the source, and
+ * INSERT has no unique key to collide on, so without the delete each run would
+ * accumulate duplicates. Only open and endorsed candidates produce an edge; expired,
+ * rejected, dismissed and accepted ones do not (an accepted one is a `fact` edge now).
+ *
+ * At the default `graph.originWeights.dream: 0`, `addEdge` drops these from every
+ * PageRank graph, so they change no ranking. `relate` excludes them always.
+ */
+function emitDreamEdges(ctx: IndexCtx, vaultRoot: string): void {
+  ctx.db.prepare(`DELETE FROM edges WHERE origin = 'dream'`).run();
+  for (const c of readCandidates(vaultRoot)) {
+    if (c.state !== 'open' && c.state !== 'endorsed') continue;
+    emitEdge(ctx, c.a, c.b, 'dream', 'association', {
+      weight: c.salience,
+      trust: 'low',
+      recordedAt: parseInstant(c.night),
+      declaredIn: null,
+    });
+  }
+}
+
+/**
  * Emit synonym edges between phrases based on embedding similarity (Phase 5, HippoRAG).
  * Requires passage embeddings to be already loaded in the database.
  */
@@ -522,6 +547,7 @@ export function buildIndex(vaultRoot: string, config: Config, opts: { dbPath?: s
     for (const n of notes) insertNoteRows(ctx, n);
     for (const n of notes) emitNoteEdges(ctx, n);
     emitTriples(ctx, vaultRoot, new Set(notes.map((n) => n.id)));
+    emitDreamEdges(ctx, vaultRoot);
 
     // Check if vault is a git repo for Phase 6 (git-backed as-of)
     const isRepo = (() => {
@@ -781,6 +807,10 @@ export function incrementalIndex(vaultRoot: string, config: Config, opts: { dbPa
       }
       emitTriples(ctx, vaultRoot, changedHipporag);
     }
+
+    // 5b. rebuild dream edges from the candidate queue. Cheap, and the candidate file
+    //     is the source, so a full rebuild keeps the index reproducible (ADR-0011).
+    emitDreamEdges(ctx, vaultRoot);
 
     // 6. drop placeholder nodes no longer referenced by any edge
     db.exec(`DELETE FROM nodes WHERE kind = 'placeholder' AND id NOT IN (SELECT dst FROM edges WHERE dst IS NOT NULL)`);

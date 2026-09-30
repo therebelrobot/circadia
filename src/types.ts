@@ -15,7 +15,8 @@ export type EdgeOrigin =
   | 'fact' // note -> note/literal via typed fact line
   | 'provenance' // fact subject note -> source episode (src::)
   | 'triple' // phrase -> phrase, LLM-extracted (hipporag)
-  | 'synonym'; // phrase <-> phrase, embedding similarity (hipporag)
+  | 'synonym' // phrase <-> phrase, embedding similarity (hipporag)
+  | 'dream'; // note <-> note, unconfirmed REM association (RFC-0001); weight 0 by default
 
 export type FrontmatterValue = string | number | boolean | null | FrontmatterValue[];
 export type Frontmatter = Record<string, FrontmatterValue>;

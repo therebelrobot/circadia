@@ -209,6 +209,10 @@ export const DEFAULT_CONFIG: Config = {
       provenance: 0.5,
       triple: 1.0,
       synonym: 0.5,
+      // RFC-0001: dream edges ship at weight 0. `addEdge` drops weight <= 0, so at the
+      // default the edges are in the index and in no PageRank graph. Turning them on is
+      // a separate, measured decision (Stage 5).
+      dream: 0,
     },
     damping: 0.5,
     maxIterations: 100,

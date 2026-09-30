@@ -99,7 +99,7 @@ node bin/circadia.mjs --help
 | `src/extract/scope.ts` | per-note extraction mode | precedence: frontmatter > first scope rule > default |
 | `src/extract/triples.ts` | hipporag triple cache + `TripleExtractor` contract | Phase 5 implements an extractor |
 | `src/index/db.ts` | SQLite schema, FTS5 probe | bump `INDEX_SCHEMA_VERSION` on schema changes |
-| `src/index/indexer.ts` | full rebuild + incremental update + `embedPassages` | `buildIndex` (full) and `incrementalIndex` (diffs the `files` table) stay synchronous; `embedPassages` is the async follow-up |
+| `src/index/indexer.ts` | full rebuild + incremental update + `embedPassages` + dream-edge emission | `buildIndex` (full) and `incrementalIndex` (diffs the `files` table) stay synchronous; `embedPassages` is the async follow-up. `emitDreamEdges()` rebuilds `dream` edges from `.circadia/dreams/candidates.jsonl` on every index (RFC-0001 Stage 4) |
 | `src/retrieval/*` | keyword, PPR, ACT-R, modes, recall, embeddings, relate, timeline, graph cache | `recall.ts` is the orchestrator; `graph-cache.ts` owns edge loading/filtering (`loadGraph`) shared by recall and the cache |
 | `src/cli/main.ts` | CLI | `main(argv)` is async and returns an exit code, so it's testable (`await main(...)`) |
 | `src/cli/watch.ts` | `watch` command | reindexes on change; embeds best-effort after each reindex |

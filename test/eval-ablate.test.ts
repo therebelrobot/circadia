@@ -31,7 +31,8 @@ test('an origin variant actually zeroes the weight and fixes the mode', () => {
 });
 
 test('a synthetic origin produces a new variant (no rework)', () => {
-  const origins = { ...MODE_ORIGINS, typed: [...MODE_ORIGINS.typed, 'dream'] };
+  // `dream` is now a real origin, so use a name that cannot collide with one.
+  const origins = { ...MODE_ORIGINS, typed: [...MODE_ORIGINS.typed, 'synthetic-origin'] };
   const names = buildAblations(DEFAULT_CONFIG, origins).map((a) => a.name);
-  assert.ok(names.includes('origin:typed:dream=0'), 'a new origin is picked up automatically');
+  assert.ok(names.includes('origin:typed:synthetic-origin=0'), 'a new origin is picked up automatically');
 });

@@ -441,6 +441,11 @@ export function generateFixture(outDir: string): void {
   // access log: pinned timestamps, copied from the committed fixture
   write('.circadia/access.jsonl', readFileSync(join(HERE, 'access.fixture.jsonl'), 'utf8'));
 
+  // dream candidates: the committed true/decoy source, copied verbatim (RFC-0001
+  // "Evaluation → Edges"). The indexer builds `dream` edges from this file; at the
+  // default weight 0 they change no ranking, so it measures the mechanism, not the model.
+  write('.circadia/dreams/candidates.jsonl', readFileSync(join(HERE, 'dreams.fixture.jsonl'), 'utf8'));
+
   // hipporag triple cache for the deep notes. The content hash must match the
   // passage text exactly, so parse each note the same way the indexer does.
   const cfg = loadConfig(outDir);

@@ -52,7 +52,7 @@ test('fixture generation is byte-identical across two runs', () => {
   const hb = treeHash(b);
   assert.deepEqual([...ha.keys()].sort(), [...hb.keys()].sort(), 'same file set');
   for (const [rel, hash] of ha) assert.equal(hb.get(rel), hash, `content differs: ${rel}`);
-  assert.equal(ha.size, 299 + 1 + 1 + 8 + 1, '299 notes + config + access log + 8 triple files + marker');
+  assert.equal(ha.size, 299 + 1 + 1 + 8 + 1 + 1, '299 notes + config + access log + 8 triple files + marker + dream candidates');
 });
 
 test('generation refuses a non-empty directory without the marker', () => {
@@ -217,8 +217,9 @@ test('deep multi-hop pairs are connected only through triple/synonym edges', () 
       return Infinity;
     };
 
-    const all = buildAdj([]);
-    const noTriples = buildAdj(['triple', 'synonym']);
+    // `dream` is excluded: a planted candidate must not make its own pair look close.
+    const all = buildAdj(['dream']);
+    const noTriples = buildAdj(['triple', 'synonym', 'dream']);
     let checked = 0;
     for (const q of readQueries()) {
       if (!q.kind.startsWith('multi-hop') || !q.seed || !(q.seed in DEEP_TRIPLES)) continue;
@@ -251,7 +252,8 @@ test('remote-association pairs are the required graph distance apart', () => {
       (adj.get(a) ?? adj.set(a, new Set()).get(a)!).add(b);
       (adj.get(b) ?? adj.set(b, new Set()).get(b)!).add(a);
     };
-    for (const e of db.prepare(`SELECT src, dst FROM edges WHERE dst IS NOT NULL`).all() as { src: string; dst: string }[]) {
+    // `dream` is excluded: a planted candidate must not make its own pair look 1 hop apart.
+    for (const e of db.prepare(`SELECT src, dst FROM edges WHERE dst IS NOT NULL AND origin != 'dream'`).all() as { src: string; dst: string }[]) {
       const a = nodeToNote.get(e.src);
       const b = nodeToNote.get(e.dst);
       if (a && b) add(a, b);

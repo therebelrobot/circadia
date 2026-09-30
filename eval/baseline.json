@@ -1,5 +1,5 @@
 {
-  "fixtureHash": "d6f61f137821047924fd95f6e75fd67ec3f86d122278c349f030f55d41c5a5c3",
+  "fixtureHash": "e5a77b1ae114673b79333514c647989fde59a98080f9654b9fc0a904f749bf42",
   "config": {
     "vault": {
       "factsHeading": "Facts",
@@ -51,7 +51,8 @@
         "fact": 1.5,
         "provenance": 0.5,
         "triple": 1,
-        "synonym": 0.5
+        "synonym": 0.5,
+        "dream": 0
       },
       "damping": 0.5,
       "maxIterations": 100,
@@ -72,6 +73,17 @@
       "trustFloor": "low",
       "includeSuperseded": false,
       "logAccess": true
+    },
+    "dreaming": {
+      "enabled": false,
+      "samplesPerNight": 20,
+      "minHops": 2,
+      "recentDays": 7,
+      "noiseShare": 0.25,
+      "trustFloor": "medium",
+      "recallFragments": 3,
+      "logTtlHours": 12,
+      "candidateTtlNights": 14
     },
     "mcp": {
       "logAccess": true

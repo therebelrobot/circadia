@@ -32,7 +32,7 @@ load.
 | `graph.query.auto.minTopMargin` | `0.05` | escalate when `(s1−s2)/s1` is below this |
 | `graph.query.auto.minSeeds` | `2` | escalate when fewer seeds were found |
 | `graph.query.auto.multiEntityThreshold` | `2` | start one rung up when the cue names this many entities |
-| `graph.originWeights` | contains 1, link 1, fact 1.5, provenance 0.5, triple 1, synonym 0.5 | multiplier per edge origin |
+| `graph.originWeights` | contains 1, link 1, fact 1.5, provenance 0.5, triple 1, synonym 0.5, dream 0 | multiplier per edge origin. `dream` defaults to **0**: `addEdge` drops weight ≤ 0, so unconfirmed REM associations are in the index and in no PageRank graph. Turning them on is a separate, measured decision (RFC-0001 Stage 5) |
 | `graph.damping` | `0.5` | PageRank damping d (HippoRAG uses 0.5); must be in (0, 1) |
 | `graph.maxIterations` | `100` | power-iteration cap |
 | `graph.tolerance` | `1e-8` | L1 convergence threshold |

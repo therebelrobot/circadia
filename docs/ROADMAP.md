@@ -284,7 +284,7 @@ RFC-0001. Contract in `src/dreams/README.md`; decision in ADR-0011.
 - [x] **Stage 3 — Candidates, wake, review.** `circadia wake [--json]`, MCP `wake`,
       `endorse_dream`, `dismiss_dream`, the dreams section in `circadia review`, and
       candidate expiry.
-- [ ] **Stage 4 — Dream edges at weight 0.** `EdgeOrigin` gains `'dream'`, `MODE_ORIGINS`,
+- [x] **Stage 4 — Dream edges at weight 0.** `EdgeOrigin` gains `'dream'`, `MODE_ORIGINS`,
       `graph.originWeights.dream: 0`, the indexer's dream-edge emission, `relate` exclusion,
       the committed `eval/dreams.fixture.jsonl`, and a baseline refresh.
 - [ ] **Stage 5 — Measure, then decide.** `circadia eval --dream-sweep` over
