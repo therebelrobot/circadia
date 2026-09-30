@@ -18,7 +18,7 @@ without breaking its invariants. Read it fully before editing anything.
 ## 2. Commands
 
 ```bash
-npm test                  # node:test, ~8s. 205 tests.
+npm test                  # node:test, ~8s. 206 tests.
 npm run typecheck         # tsc --noEmit, strict + erasableSyntaxOnly
 npm run example:index     # index examples/vault (incremental; --full for a full rebuild)
 node bin/circadia.mjs watch --vault examples/vault   # reindex on change (Ctrl-C to stop)
@@ -201,4 +201,6 @@ every change.
 
 - Name the issue IDs in the commit message. Commit when done. Say "committed, not pushed"
   unless you were told to push.
+- Never amend, rebase, or force-push a commit that has already been pushed; make a new
+  commit instead.
 - Don't commit new untracked files unless asked; list them in the report instead.

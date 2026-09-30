@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { CONFIG_FILENAME, DEFAULT_CONFIG, loadConfig } from '../src/config.ts';
 import { writeEpisodes } from '../src/episodes/episode.ts';
 import type { Segment } from '../src/episodes/segment.ts';
+import { buildIndex } from '../src/index/indexer.ts';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(REPO, 'bin', 'circadia.mjs');
@@ -244,4 +245,52 @@ test('a remembered episode lands in the local-date folder, not the UTC-date fold
   } finally {
     mock.timers.reset();
   }
+});
+
+// Phase 2 adjacency cache: a long-running server must pick up an external reindex. The
+// cache is keyed on the index's `built_at`, so a rebuild invalidates it without a restart.
+// The new note is reachable ONLY through the graph (its text does not contain the query
+// token), so a stale cache would miss it.
+test('a running server picks up an external reindex (graph cache invalidation)', async () => {
+  const vault = makeVault();
+  const cfg = loadConfig(vault);
+  // alpha links to gamma; gamma does not exist yet, so the link is a placeholder.
+  writeFileSync(
+    join(vault, 'entities', 'alpha.md'),
+    '---\ntype: entity\nkind: tool\n---\n# Alpha\n\nThe alpha widget. See [[gamma]].\n',
+  );
+  writeFileSync(join(vault, 'entities', 'beta.md'), '---\ntype: entity\nkind: tool\n---\n# Beta\n\nThe beta widget.\n');
+  buildIndex(vault, cfg);
+
+  const h = spawnServer(vault);
+  h.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }) + '\n');
+  await h.waitForJsonLines(1);
+
+  const recall = async (harness: Harness, id: number): Promise<string> => {
+    harness.write(
+      JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'recall', arguments: { query: 'alpha' } } }) + '\n',
+    );
+    const lines = await harness.waitForJsonLines(id);
+    const res = JSON.parse(lines[id - 1]);
+    return (res.result as { content: { text: string }[] }).content[0].text;
+  };
+
+  const first = await recall(h, 2);
+  assert.ok(first.includes('alpha widget'), 'the seed note is returned');
+  assert.ok(!first.includes('gamma widget'), 'gamma is not in the vault yet');
+
+  // Externally add gamma and reindex. The delay guarantees a new `built_at`.
+  await delay(5);
+  writeFileSync(join(vault, 'entities', 'gamma.md'), '---\ntype: entity\nkind: tool\n---\n# Gamma\n\nThe gamma widget.\n');
+  buildIndex(vault, cfg);
+
+  const second = await recall(h, 3);
+  assert.ok(second.includes('gamma widget'), 'the running server must see the reindexed graph');
+
+  // A fresh server on the same vault returns the same thing.
+  const fresh = spawnServer(vault);
+  fresh.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }) + '\n');
+  await fresh.waitForJsonLines(1);
+  const freshText = await recall(fresh, 2);
+  assert.ok(freshText.includes('gamma widget'), 'a fresh server sees gamma too');
 });
