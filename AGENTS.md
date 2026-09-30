@@ -18,7 +18,7 @@ without breaking its invariants. Read it fully before editing anything.
 ## 2. Commands
 
 ```bash
-npm test                  # node:test, ~2s. 62 tests at handoff.
+npm test                  # node:test, ~8s. 205 tests.
 npm run typecheck         # tsc --noEmit, strict + erasableSyntaxOnly
 npm run example:index     # index examples/vault (incremental; --full for a full rebuild)
 node bin/circadia.mjs watch --vault examples/vault   # reindex on change (Ctrl-C to stop)
@@ -152,6 +152,53 @@ node bin/circadia.mjs --help
   or a non-git vault, falls back to the current text and the CLI says so.
 - The hipporag triple extractor is not implemented. The example vault ships a
   hand-written triple cache to exercise the path.
-- One-shot recall re-reads edges from SQLite per query. Long-running processes should
-  pass a `graphCache` (`createGraphCache(db)`) to `recall()`; it caches per
-  (mode, asOf) and self-invalidates when the index's `built_at` meta changes.
+- One-shot recall re-reads edges from SQLite per query. Long-running processes pass a
+  `graphCache` (`createGraphCache(db)`) to `recall()`; it caches per (mode, asOf) and
+  self-invalidates when the index's `built_at` meta changes. The MCP server does this.
+
+## 10. Working rules for agents
+
+These came from real failures during remediation (`docs/remediation.md` §4). They apply to
+every change.
+
+**Verification**
+
+- Report only what you verified by running it. For each issue ID say "fixed" (and name the
+  test that proves it), "partial" (say what's missing), or "not started". Never summarize as
+  "resolved".
+- A claim like "idempotent" or "safe" must state its exact scope.
+
+**Data safety**
+
+- Never run a mutating command (`consolidate`, `review`, `index --full`, migrations) against
+  anything tracked in the repo, including `examples/vault/`. Copy it to a temp directory.
+- Before committing, run `git status` and `git diff --stat`. If anything changed that you
+  didn't intend, stop and explain.
+
+**Scope**
+
+- Don't modify or revert code outside the issue IDs you were given. If earlier work looks
+  wrong, report it; don't undo it.
+
+**Tests**
+
+- Take expected values from the spec (`docs/SCHEMA.md`, the ROADMAP acceptance criteria),
+  not from what the code currently outputs.
+- Assert effects on disk: file contents, lint results, which fact is current. Checking which
+  episodes were *selected* missed a regression that reverted facts.
+- Each fix gets a test that fails before the fix, and the report must say so.
+
+**Semantics**
+
+- For a new config key or default, choose the value that can't lose or misstate data for a
+  user who never sets it, and say what that user gets. `cardinality: single` as the default
+  struck out correct facts.
+- Name what each written value means: world time (`valid::`) vs system time (`at::`,
+  `superseded::`, `consolidated:`), plus trust and provenance.
+- Never trust mtime as evidence of an edit. Copies, checkouts and restores all change it.
+
+**Commits**
+
+- Name the issue IDs in the commit message. Commit when done. Say "committed, not pushed"
+  unless you were told to push.
+- Don't commit new untracked files unless asked; list them in the report instead.
