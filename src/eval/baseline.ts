@@ -1,26 +1,20 @@
 // Baseline capture and diffing (Phase 7, Step 7).
 //
-// A baseline records the fixture hash, the config, and per-query hits + metrics
-// plus aggregates. Absolute paths and wall-clock timestamps are stripped so a
-// baseline is portable and diffable across machines.
+// A baseline records the fixture hash, the config, per-query hits + metrics,
+// aggregates, and per-forced-mode aggregates. Absolute paths and wall-clock
+// timestamps are stripped so a baseline is portable and diffable across machines.
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { EvalAggregate, EvalMetrics, EvalReport } from './types.ts';
-
-export interface BaselineHit {
-  passageId: string;
-  rank: number;
-  score: number;
-  trust: string;
-}
 
 export interface BaselineQuery {
   id: string;
   kind: string;
   split: string;
   modeUsed: string;
-  hits: BaselineHit[];
+  /** passage ids in rank order (the ranking is what a diff cares about). */
+  hits: string[];
   metrics: EvalMetrics;
 }
 
@@ -29,8 +23,12 @@ export interface Baseline {
   config: unknown;
   queries: BaselineQuery[];
   aggregates: EvalAggregate[];
+  /** forced-mode aggregates, keyed by mode (wikilink/typed/hipporag). */
+  modes: Record<string, EvalAggregate[]>;
   trustViolations: number;
   absentViolations: number;
+  orderViolations: number;
+  vacuousAbsences: number;
   failed: boolean;
 }
 
@@ -59,7 +57,7 @@ function sanitize(value: unknown): unknown {
 }
 
 /** Project a report onto the portable baseline shape. */
-export function toBaseline(report: EvalReport): Baseline {
+export function toBaseline(report: EvalReport, modes: Record<string, EvalAggregate[]> = {}): Baseline {
   return {
     fixtureHash: report.fixtureHash,
     config: sanitize(report.config),
@@ -68,19 +66,22 @@ export function toBaseline(report: EvalReport): Baseline {
       kind: r.kind,
       split: r.split,
       modeUsed: r.modeUsed,
-      hits: r.hits.map((h) => ({ passageId: h.passageId, rank: h.rank, score: h.score, trust: h.trust })),
+      hits: r.hits.map((h) => h.passageId),
       metrics: r.metrics,
     })),
     aggregates: report.aggregates,
+    modes,
     trustViolations: report.trustViolations,
     absentViolations: report.absentViolations,
+    orderViolations: report.orderViolations,
+    vacuousAbsences: report.vacuousAbsences,
     failed: report.failed,
   };
 }
 
-export function writeBaseline(path: string, report: EvalReport): void {
+export function writeBaseline(path: string, report: EvalReport, modes: Record<string, EvalAggregate[]> = {}): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(toBaseline(report), null, 2) + '\n');
+  writeFileSync(path, JSON.stringify(toBaseline(report, modes), null, 2) + '\n');
 }
 
 export function readBaseline(path: string): Baseline {
@@ -101,8 +102,8 @@ export function diffBaseline(a: Baseline, b: Baseline): BaselineDelta[] {
       continue;
     }
     if (qa.modeUsed !== qb.modeUsed) deltas.push({ queryId: qa.id, field: 'modeUsed', from: qa.modeUsed, to: qb.modeUsed });
-    const ha = qa.hits.map((h) => h.passageId).join(',');
-    const hb = qb.hits.map((h) => h.passageId).join(',');
+    const ha = qa.hits.join(',');
+    const hb = qb.hits.join(',');
     if (ha !== hb) deltas.push({ queryId: qa.id, field: 'hits', from: ha, to: hb });
     if (JSON.stringify(qa.metrics) !== JSON.stringify(qb.metrics)) {
       deltas.push({ queryId: qa.id, field: 'metrics', from: qa.metrics, to: qb.metrics });
@@ -112,6 +113,15 @@ export function diffBaseline(a: Baseline, b: Baseline): BaselineDelta[] {
     if (!a.queries.some((q) => q.id === qb.id)) {
       deltas.push({ queryId: qb.id, field: 'presence', from: 'absent', to: 'present' });
     }
+  }
+  if (JSON.stringify(a.aggregates) !== JSON.stringify(b.aggregates)) {
+    deltas.push({ queryId: '*', field: 'aggregates', from: a.aggregates, to: b.aggregates });
+  }
+  if (JSON.stringify(a.modes) !== JSON.stringify(b.modes)) {
+    deltas.push({ queryId: '*', field: 'modes', from: a.modes, to: b.modes });
+  }
+  for (const field of ['trustViolations', 'absentViolations', 'orderViolations', 'vacuousAbsences'] as const) {
+    if (a[field] !== b[field]) deltas.push({ queryId: '*', field, from: a[field], to: b[field] });
   }
   return deltas;
 }

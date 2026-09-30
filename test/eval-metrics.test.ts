@@ -44,6 +44,32 @@ test('metricsFor produces the full k-keyed block', () => {
   assert.equal(m.mrr, 0.5);
 });
 
+test('any-of groups count once, at the rank of the first member', () => {
+  const h = ['a', 'b', 'c', 'd'].map((passageId) => ({ passageId }));
+  const groups = [['b', 'c'], ['d']];
+  assert.equal(recallAtK(h, groups, 1), 0); // neither group in top-1
+  assert.equal(recallAtK(h, groups, 2), 0.5); // [b,c] first at rank 2
+  assert.equal(recallAtK(h, groups, 3), 0.5); // still only [b,c]
+  assert.equal(recallAtK(h, groups, 4), 1); // [d] at rank 4
+  assert.equal(mrr(h, groups), 0.5); // first group at rank 2
+  assert.equal(precisionAtK(h, groups, 2), 0.5);
+});
+
+test('a group with two members present counts once', () => {
+  const h = ['a', 'b', 'c'].map((passageId) => ({ passageId }));
+  const groups = [['a', 'b']];
+  assert.equal(recallAtK(h, groups, 3), 1); // one group, found
+  assert.equal(precisionAtK(h, groups, 3), 1 / 3); // one group / k
+  assert.equal(mrr(h, groups), 1);
+});
+
+test('plain string ids and any-of groups mix', () => {
+  const h = ['a', 'b', 'c'].map((passageId) => ({ passageId }));
+  const groups = ['a', ['b', 'c']];
+  assert.equal(recallAtK(h, groups, 1), 0.5);
+  assert.equal(recallAtK(h, groups, 2), 1);
+});
+
 function result(over: Partial<EvalQueryResult>): EvalQueryResult {
   return {
     id: 'q',
@@ -55,16 +81,19 @@ function result(over: Partial<EvalQueryResult>): EvalQueryResult {
     hits: [],
     metrics: { recallAtK: { '5': 0 }, precisionAtK: { '5': 0 }, mrr: 0 },
     absentViolations: 0,
+    orderViolations: 0,
     trustViolations: 0,
+    vacuousAbsences: 0,
     ...over,
   };
 }
 
-test('groupKey: mode, kind, split, escalation', () => {
+test('groupKey: mode, kind, split, kind-split, escalation', () => {
   const r = result({ modeUsed: 'hipporag', kind: 'multi-hop', split: 'holdout' });
   assert.equal(groupKey(r, 'mode'), 'hipporag');
   assert.equal(groupKey(r, 'kind'), 'multi-hop');
   assert.equal(groupKey(r, 'split'), 'holdout');
+  assert.equal(groupKey(r, 'kind-split'), 'multi-hop:holdout');
   assert.equal(groupKey(r, 'escalation'), 'none');
   const esc = result({ escalations: [{ from: 'wikilink', to: 'typed', reason: 'x' }] });
   assert.equal(groupKey(esc, 'escalation'), 'wikilink->typed');

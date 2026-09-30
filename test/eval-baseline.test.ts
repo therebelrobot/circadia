@@ -5,10 +5,11 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { generateFixture } from '../eval/generate-fixture.ts';
-import { loadConfig } from '../src/config.ts';
+import { deepMerge, loadConfig } from '../src/config.ts';
 import { buildReport, runEval } from '../src/eval/run.ts';
+import { aggregate } from '../src/eval/metrics.ts';
 import { diffBaseline, readBaseline, toBaseline, type Baseline } from '../src/eval/baseline.ts';
-import type { EvalQuery } from '../src/eval/types.ts';
+import type { EvalAggregate, EvalQuery } from '../src/eval/types.ts';
 
 const EVAL_DIR = resolve(import.meta.dirname, '..', 'eval');
 const BASELINE_PATH = join(EVAL_DIR, 'baseline.json');
@@ -21,12 +22,26 @@ function readQueries(): EvalQuery[] {
     .map((l) => JSON.parse(l) as EvalQuery);
 }
 
+/** Run auto + each forced mode against one index build, and project to a baseline. */
+async function freshBaseline(dir: string): Promise<Baseline> {
+  const cfg = loadConfig(dir);
+  const queries = readQueries();
+  const dbPath = join(tmp, 'baseline.sqlite');
+  const auto = await runEval(dir, queries, { config: cfg, dbPath });
+  const report = buildReport(dir, cfg, auto);
+  const modes: Record<string, EvalAggregate[]> = {};
+  for (const mode of ['wikilink', 'typed', 'hipporag'] as const) {
+    const modeCfg = deepMerge(cfg, { graph: { query: { mode } } });
+    const results = await runEval(dir, queries, { config: modeCfg, dbPath, reuseIndex: true });
+    modes[mode] = [...aggregate(results, 'kind'), ...aggregate(results, 'kind-split')];
+  }
+  return toBaseline(report, modes);
+}
+
 test('the committed baseline matches a fresh run (zero deltas)', async () => {
   const dir = join(tmp, 'vault');
   generateFixture(dir);
-  const cfg = loadConfig(dir);
-  const results = await runEval(dir, readQueries(), { config: cfg });
-  const fresh = toBaseline(buildReport(dir, cfg, results));
+  const fresh = await freshBaseline(dir);
   const committed = readBaseline(BASELINE_PATH);
   assert.deepEqual(diffBaseline(committed, fresh), [], 'committed baseline is stale');
   assert.deepEqual(diffBaseline(fresh, fresh), [], 'identical reports have zero deltas');
@@ -35,12 +50,19 @@ test('the committed baseline matches a fresh run (zero deltas)', async () => {
 test('changed hits produce a non-zero delta', () => {
   const base = readBaseline(BASELINE_PATH);
   const changed: Baseline = JSON.parse(JSON.stringify(base)) as Baseline;
-  const q = changed.queries.find((x) => x.id === 'q-single-hop-pi');
+  const q = changed.queries.find((x) => x.id === 'q-sh-pi-cluster');
   assert.ok(q && q.hits.length > 0, 'query has hits');
-  q.hits[0].passageId = 'something-else#0';
+  q.hits[0] = 'something-else#0';
   const deltas = diffBaseline(base, changed);
   assert.ok(deltas.length > 0, 'a changed hit is a delta');
-  assert.ok(deltas.some((d) => d.queryId === 'q-single-hop-pi' && d.field === 'hits'));
+  assert.ok(deltas.some((d) => d.queryId === 'q-sh-pi-cluster' && d.field === 'hits'));
+});
+
+test('the baseline records the known preference ordering failure', () => {
+  const base = readBaseline(BASELINE_PATH);
+  assert.equal(base.orderViolations, 1, 'q-pref-sam: coffee outranks tea at baseline');
+  assert.equal(base.trustViolations, 0);
+  assert.equal(base.failed, false, 'ordering is not a hard gate');
 });
 
 test('the baseline contains no absolute paths or timestamps', () => {

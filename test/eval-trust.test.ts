@@ -46,11 +46,34 @@ test('a deliberately planted violation makes the run fail', () => {
     hits: [{ passageId: CLIP, noteId: '2026-09-10-web-clipping', score: 1, rank: 1, trust: 'low' }],
     metrics: { recallAtK: {}, precisionAtK: {}, mrr: 0 },
     absentViolations: 0,
+    orderViolations: 0,
     trustViolations: countTrustViolations([{ trust: 'low' }], 'medium'),
+    vacuousAbsences: 0,
   };
   const report = buildReport(tmp, loadConfig(join(tmp, 'vault')), [planted]);
   assert.equal(report.trustViolations, 1);
   assert.equal(report.failed, true, 'a single trust violation fails the run');
+});
+
+test('absence and ordering violations do not fail the run on their own', () => {
+  const base: EvalQueryResult = {
+    id: 'x',
+    query: 'x',
+    kind: 'temporal',
+    split: 'dev',
+    modeUsed: 'typed',
+    escalations: [],
+    hits: [],
+    metrics: { recallAtK: {}, precisionAtK: {}, mrr: 0 },
+    absentViolations: 1,
+    orderViolations: 1,
+    trustViolations: 0,
+    vacuousAbsences: 0,
+  };
+  const report = buildReport(tmp, loadConfig(join(tmp, 'vault')), [base]);
+  assert.equal(report.absentViolations, 1);
+  assert.equal(report.orderViolations, 1);
+  assert.equal(report.failed, false, 'only trust is a hard gate');
 });
 
 test('a non-allowlisted override key is rejected', async () => {

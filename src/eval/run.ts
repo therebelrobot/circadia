@@ -10,11 +10,12 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { Config } from '../config.ts';
 import { deepMerge, loadConfig } from '../config.ts';
-import { buildIndex } from '../index/indexer.ts';
+import { buildIndex, embedPassages } from '../index/indexer.ts';
 import { recall } from '../retrieval/recall.ts';
 import { TRUST_RANK } from '../retrieval/graph-cache.ts';
 import { parseInstant } from '../vault/time.ts';
 import type { Trust } from '../types.ts';
+import { TrigramEmbeddingsClient } from './trigram-embeddings.ts';
 import { DEFAULT_KS, aggregate, metricsFor } from './metrics.ts';
 import type { EvalHit, EvalQuery, EvalQueryResult, EvalReport } from './types.ts';
 
@@ -32,11 +33,22 @@ export interface RunEvalOptions {
   /** config to run with; defaults to `loadConfig(fixtureDir)`. */
   config?: Config;
   /** k values for the metric block. */
-  ks?: readonly number[];
+  k?: readonly number[];
   /** run only this split (tuning reads `dev`; the holdout is never read by tuning). */
   split?: 'dev' | 'holdout';
   /** reuse an existing index instead of building one in a temp dir. */
   dbPath?: string;
+  /**
+   * Dense seeds for the run. `trigram` (default) embeds passages and phrases
+   * with the deterministic lexical client, so vector seeds and synonym edges
+   * exist. `none` leaves the index text-only (the personal-vault tier B).
+   */
+  embeddings?: 'trigram' | 'none';
+  /**
+   * Reuse an existing index at `dbPath` instead of building one. Used to run
+   * several configs (e.g. forced modes) against one build.
+   */
+  reuseIndex?: boolean;
 }
 
 /** Expand dotted override keys (`retrieval.trustFloor`) into nested objects. */
@@ -59,6 +71,25 @@ function expandOverrides(overrides: Record<string, unknown>): Record<string, unk
 export function countTrustViolations(hits: readonly { trust: Trust }[], floor: Trust): number {
   let n = 0;
   for (const h of hits) if (TRUST_RANK[h.trust] < TRUST_RANK[floor]) n++;
+  return n;
+}
+
+/**
+ * `expect_before` violations: for each `[a, b]`, `a` must rank above `b`, or `b`
+ * must be absent. A missing `a` with a present `b` is a violation.
+ */
+export function countOrderViolations(
+  hits: readonly { passageId: string }[],
+  expectBefore: readonly (readonly [string, string])[],
+): number {
+  const rank = new Map(hits.map((h, i) => [h.passageId, i + 1]));
+  let n = 0;
+  for (const [a, b] of expectBefore) {
+    const rb = rank.get(b);
+    if (rb === undefined) continue; // b absent -> constraint satisfied
+    const ra = rank.get(a);
+    if (ra === undefined || ra > rb) n++;
+  }
   return n;
 }
 
@@ -128,7 +159,9 @@ async function runQuery(
     hits,
     metrics: metricsFor(hits, q.expected_passages, ks),
     absentViolations: hits.filter((h) => absent.has(h.passageId)).length,
+    orderViolations: countOrderViolations(hits, q.expect_before ?? []),
     trustViolations: countTrustViolations(hits, cfg.retrieval.trustFloor),
+    vacuousAbsences: 0,
   };
 }
 
@@ -142,25 +175,44 @@ export async function runEval(
   opts: RunEvalOptions = {},
 ): Promise<EvalQueryResult[]> {
   const baseCfg = opts.config ?? loadConfig(fixtureDir);
-  const ks = opts.ks ?? DEFAULT_KS;
+  const ks = opts.k ?? DEFAULT_KS;
   const selected = opts.split ? queries.filter((q) => q.split === opts.split) : queries;
 
   const tmpDir = opts.dbPath ? null : mkdtempSync(join(tmpdir(), 'circadia-eval-'));
   const dbPath = opts.dbPath ?? join(tmpDir as string, 'index.sqlite');
   try {
-    buildIndex(fixtureDir, baseCfg, { dbPath });
+    if (!opts.reuseIndex) {
+      buildIndex(fixtureDir, baseCfg, { dbPath });
+      if ((opts.embeddings ?? 'trigram') === 'trigram') {
+        await embedPassages(dbPath, baseCfg, new TrigramEmbeddingsClient());
+      }
+    }
     const results: EvalQueryResult[] = [];
     for (const q of selected) results.push(await runQuery(fixtureDir, baseCfg, q, dbPath, ks));
+
+    // An absence check is only meaningful if the paired query actually retrieves
+    // the passage. Mark the ones that prove nothing as vacuous.
+    const byId = new Map(results.map((r) => [r.id, r]));
+    for (const r of results) {
+      const q = selected.find((x) => x.id === r.id);
+      if (!q?.expect_absent || !q.paired_with) continue;
+      const paired = byId.get(q.paired_with);
+      if (!paired) continue;
+      const pairedHits = new Set(paired.hits.map((h) => h.passageId));
+      r.vacuousAbsences = q.expect_absent.filter((p) => !pairedHits.has(p)).length;
+    }
     return results;
   } finally {
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 
-/** Assemble a report from results: aggregates plus the hard-gate totals. */
+/** Assemble a report from results: aggregates plus the violation totals. */
 export function buildReport(fixtureDir: string, config: Config, results: readonly EvalQueryResult[]): EvalReport {
   const trustViolations = results.reduce((n, r) => n + r.trustViolations, 0);
   const absentViolations = results.reduce((n, r) => n + r.absentViolations, 0);
+  const orderViolations = results.reduce((n, r) => n + r.orderViolations, 0);
+  const vacuousAbsences = results.reduce((n, r) => n + r.vacuousAbsences, 0);
   return {
     fixtureHash: fixtureHash(fixtureDir),
     config,
@@ -168,11 +220,16 @@ export function buildReport(fixtureDir: string, config: Config, results: readonl
     aggregates: [
       ...aggregate(results, 'mode'),
       ...aggregate(results, 'kind'),
+      ...aggregate(results, 'kind-split'),
       ...aggregate(results, 'escalation'),
       ...aggregate(results, 'split'),
     ],
     trustViolations,
     absentViolations,
-    failed: trustViolations > 0 || absentViolations > 0,
+    orderViolations,
+    vacuousAbsences,
+    // The hard gate is trust only. Absence and ordering are reported and diffed
+    // against the baseline, but they do not fail the run on their own.
+    failed: trustViolations > 0,
   };
 }

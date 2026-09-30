@@ -1,10 +1,15 @@
 // Pure retrieval metrics (Phase 7). No I/O, no config, no clock — so the
 // expected values in tests come from the metric definitions, not from the code.
 //
+// Gold is a list of GROUPS. A group is a passage id, or an array of ids meaning
+// "any of these counts". A group counts once, at the rank of its first member.
+// This is what lets a multi-hop query accept either the answer-bearing `#facts`
+// passage or the target entity's `#0` passage without double-counting.
+//
 // Trust is deliberately NOT a metric here: a trust failure is a hard gate
 // (a violation count), never averaged into recall. See run.ts.
 
-import type { EvalAggregate, EvalQueryResult } from './types.ts';
+import type { EvalAggregate, EvalQueryResult, ExpectedGroup } from './types.ts';
 
 /** k values reported by default. */
 export const DEFAULT_KS: readonly number[] = [1, 3, 5, 10];
@@ -14,46 +19,59 @@ export interface ScorableHit {
   passageId: string;
 }
 
-/**
- * Recall@k = |expected ∩ top-k| / |expected|.
- * An empty expected set scores 0 (there is nothing to recall).
- */
-export function recallAtK(hits: readonly ScorableHit[], expected: readonly string[], k: number): number {
-  if (expected.length === 0) return 0;
-  const top = new Set(hits.slice(0, Math.max(0, k)).map((h) => h.passageId));
-  let found = 0;
-  for (const e of expected) if (top.has(e)) found++;
-  return found / expected.length;
+/** Normalize gold into groups of ids. A plain string is a single-member group. */
+export function normalizeExpected(expected: readonly ExpectedGroup[]): string[][] {
+  return expected.map((e) => (typeof e === 'string' ? [e] : [...e]));
 }
 
 /**
- * Precision@k = |expected ∩ top-k| / k.
+ * The 1-based rank of each group's first member in `hits`, or Infinity when the
+ * group is not retrieved. A group with no members is Infinity.
+ */
+export function groupRanks(hits: readonly ScorableHit[], expected: readonly ExpectedGroup[]): number[] {
+  const groups = normalizeExpected(expected);
+  return groups.map((g) => {
+    if (g.length === 0) return Infinity;
+    const set = new Set(g);
+    for (let i = 0; i < hits.length; i++) if (set.has(hits[i].passageId)) return i + 1;
+    return Infinity;
+  });
+}
+
+/**
+ * Recall@k = (# groups whose first member is in the top-k) / (# groups).
+ * An empty gold set scores 0 (there is nothing to recall).
+ */
+export function recallAtK(hits: readonly ScorableHit[], expected: readonly ExpectedGroup[], k: number): number {
+  const ranks = groupRanks(hits, expected);
+  if (ranks.length === 0) return 0;
+  return ranks.filter((r) => r <= k).length / ranks.length;
+}
+
+/**
+ * Precision@k = (# groups whose first member is in the top-k) / k.
  * k <= 0 scores 0.
  */
-export function precisionAtK(hits: readonly ScorableHit[], expected: readonly string[], k: number): number {
+export function precisionAtK(hits: readonly ScorableHit[], expected: readonly ExpectedGroup[], k: number): number {
   if (k <= 0) return 0;
-  const exp = new Set(expected);
-  let found = 0;
-  for (const h of hits.slice(0, k)) if (exp.has(h.passageId)) found++;
-  return found / k;
+  const ranks = groupRanks(hits, expected);
+  return ranks.filter((r) => r <= k).length / k;
 }
 
 /**
- * Mean reciprocal rank = 1 / rank of the first relevant hit, else 0.
+ * Mean reciprocal rank = 1 / rank of the first relevant group, else 0.
  * Rank is 1-based.
  */
-export function mrr(hits: readonly ScorableHit[], expected: readonly string[]): number {
-  const exp = new Set(expected);
-  for (let i = 0; i < hits.length; i++) {
-    if (exp.has(hits[i].passageId)) return 1 / (i + 1);
-  }
-  return 0;
+export function mrr(hits: readonly ScorableHit[], expected: readonly ExpectedGroup[]): number {
+  const ranks = groupRanks(hits, expected);
+  const best = Math.min(...ranks);
+  return Number.isFinite(best) ? 1 / best : 0;
 }
 
 /** Compute the full metric block for one query's hits. */
 export function metricsFor(
   hits: readonly ScorableHit[],
-  expected: readonly string[],
+  expected: readonly ExpectedGroup[],
   ks: readonly number[] = DEFAULT_KS,
 ): { recallAtK: Record<string, number>; precisionAtK: Record<string, number>; mrr: number } {
   const recall: Record<string, number> = {};
@@ -65,7 +83,7 @@ export function metricsFor(
   return { recallAtK: recall, precisionAtK: precision, mrr: mrr(hits, expected) };
 }
 
-export type EvalGroupBy = 'mode' | 'kind' | 'escalation' | 'split';
+export type EvalGroupBy = 'mode' | 'kind' | 'escalation' | 'split' | 'kind-split';
 
 /** The grouping key for a result under a given `groupBy`. */
 export function groupKey(r: EvalQueryResult, groupBy: EvalGroupBy): string {
@@ -76,6 +94,8 @@ export function groupKey(r: EvalQueryResult, groupBy: EvalGroupBy): string {
       return r.kind;
     case 'split':
       return r.split;
+    case 'kind-split':
+      return `${r.kind}:${r.split}`;
     case 'escalation':
       return r.escalations.length > 0 ? r.escalations.map((e) => `${e.from}->${e.to}`).join(',') : 'none';
   }

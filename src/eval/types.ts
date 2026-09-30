@@ -27,6 +27,12 @@ export type EvalSplit = 'dev' | 'holdout';
  */
 export type TemporalAxis = 'world' | 'system';
 
+/**
+ * A gold group: a passage id, or an array of ids meaning "any of these counts".
+ * A group counts once, at the rank of its first member (see metrics.ts).
+ */
+export type ExpectedGroup = string | string[];
+
 /** One line of `eval/queries.jsonl`. */
 export interface EvalQuery {
   id: string;
@@ -35,10 +41,29 @@ export interface EvalQuery {
   /** ISO date/datetime; parsed with the vault's own time parser. */
   as_of?: string;
   temporal_axis?: TemporalAxis;
-  /** passage ids that must be retrieved (e.g. `projects/alpha/overview#0`). */
-  expected_passages: string[];
+  /**
+   * Gold groups. A plain string is a single-member group; an array is an
+   * any-of group. A group counts once, at the rank of its first member.
+   */
+  expected_passages: ExpectedGroup[];
   /** passage ids that must NOT be retrieved (trust / temporal-absence checks). */
   expect_absent?: string[];
+  /**
+   * Ordering constraints: `[a, b]` means `a` must rank above `b`, or `b` must be
+   * absent. Reported as `orderViolations`; not a hard gate.
+   */
+  expect_before?: [string, string][];
+  /**
+   * For an `expect_absent` check: the id of a query whose results must retrieve
+   * the absent passage. If the paired query does not retrieve it, the absence
+   * check is `vacuous` (it proves nothing) and is counted separately.
+   */
+  paired_with?: string;
+  /**
+   * The note the query is expected to seed. Used by fixture tests to prove a
+   * path exists (or does not) between the seed and the target.
+   */
+  seed?: string;
   split: EvalSplit;
   /**
    * Config overrides for this query. The runner allowlists the keys (see
@@ -76,8 +101,12 @@ export interface EvalQueryResult {
   metrics: EvalMetrics;
   /** hits whose passage id is in `expect_absent` (should be 0). */
   absentViolations: number;
+  /** `expect_before` pairs violated (should be 0). */
+  orderViolations: number;
   /** trust-gate violations: a low-trust passage returned under a higher floor. */
   trustViolations: number;
+  /** `expect_absent` checks whose paired query did not retrieve the passage. */
+  vacuousAbsences: number;
 }
 
 /** Aggregated metrics for one group of results. */
@@ -89,16 +118,20 @@ export interface EvalAggregate {
   mrr: number;
 }
 
-/** The whole run. `failed` is true when any hard gate (trust) was violated. */
+/** The whole run. `failed` is true only on a trust-gate violation. */
 export interface EvalReport {
   fixtureHash: string;
   config: Config;
   results: EvalQueryResult[];
   aggregates: EvalAggregate[];
-  /** total trust-gate violations across all queries. */
+  /** total trust-gate violations across all queries (the hard gate). */
   trustViolations: number;
   /** total expect_absent violations across all queries. */
   absentViolations: number;
+  /** total expect_before violations across all queries. */
+  orderViolations: number;
+  /** total expect_absent checks that proved nothing (paired query missed). */
+  vacuousAbsences: number;
   failed: boolean;
 }
 

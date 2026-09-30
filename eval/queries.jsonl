@@ -1,14 +1,52 @@
-{"id":"q-single-hop-pi","query":"pi cluster local compute","kind":"single-hop","expected_passages":["pi-cluster#0"],"split":"dev"}
-{"id":"q-single-hop-soil","query":"soil moisture sensing","kind":"single-hop","expected_passages":["soil-moisture#0"],"split":"dev"}
-{"id":"q-single-hop-hipporag","query":"capacitive sensor","kind":"single-hop","expected_passages":["soil-moisture#0"],"split":"dev"}
-{"id":"q-multi-hop-pref","query":"what does the maintainer of the alpha project prefer","kind":"multi-hop","expected_passages":["tea#0"],"split":"dev"}
-{"id":"q-multi-hop-tool","query":"which tool does the beta project run on","kind":"multi-hop","expected_passages":["greenhouse-controller#0"],"split":"dev"}
-{"id":"q-temporal-world-early","query":"what does the alpha project run on","kind":"temporal","temporal_axis":"world","as_of":"2026-03-01","expected_passages":["pi-cluster#0"],"expect_absent":["old-laptop#0"],"split":"dev"}
-{"id":"q-temporal-world-late","query":"what does the alpha project run on","kind":"temporal","temporal_axis":"world","as_of":"2026-08-01","expected_passages":["old-laptop#0"],"expect_absent":["pi-cluster#0"],"split":"dev"}
-{"id":"q-temporal-system-early","query":"what does the beta project run on","kind":"temporal","temporal_axis":"system","as_of":"2026-05-01","expected_passages":["beta-overview#0"],"expect_absent":["greenhouse-controller#0"],"split":"dev"}
-{"id":"q-temporal-system-late","query":"what does the beta project run on","kind":"temporal","temporal_axis":"system","as_of":"2026-09-15","expected_passages":["greenhouse-controller#0"],"split":"dev"}
-{"id":"q-preference-tea","query":"what does sam prefer","kind":"preference","expected_passages":["tea#0"],"expect_absent":["coffee#0"],"split":"dev"}
-{"id":"q-remote-2hop","query":"alpha topic","kind":"remote-association-2hop","expected_passages":["beta-topic#0"],"split":"dev"}
-{"id":"q-remote-3hop","query":"gamma topic","kind":"remote-association-3hop","expected_passages":["delta-topic#0"],"split":"dev"}
+{"id":"q-sh-pi-cluster","query":"pi cluster","kind":"single-hop","expected_passages":["pi-cluster#0"],"split":"dev"}
+{"id":"q-sh-old-laptop","query":"old laptop","kind":"single-hop","expected_passages":["old-laptop#0"],"split":"holdout"}
+{"id":"q-sh-greenhouse-controller","query":"greenhouse controller","kind":"single-hop","expected_passages":["greenhouse-controller#0"],"split":"dev"}
+{"id":"q-sh-field-gateway","query":"field gateway","kind":"single-hop","expected_passages":["field-gateway#0"],"split":"dev"}
+{"id":"q-sh-relay-tower","query":"relay tower","kind":"single-hop","expected_passages":["relay-tower#0"],"split":"holdout"}
+{"id":"q-sh-solar-inverter","query":"solar inverter","kind":"single-hop","expected_passages":["solar-inverter#0"],"split":"dev"}
+{"id":"q-sh-sensor-calibration","query":"sensor calibration","kind":"single-hop","expected_passages":["sensor-calibration#0"],"split":"dev"}
+{"id":"q-sh-probe-aging","query":"probe aging","kind":"single-hop","expected_passages":["probe-aging#0"],"split":"dev"}
+{"id":"q-scoped-alpha","query":"orchard sensor","kind":"single-hop","expected_passages":["alpha-overview#0"],"config_overrides":{"scope":"projects/alpha"},"split":"dev"}
+{"id":"q-scoped-beta","query":"greenhouse automation","kind":"single-hop","expected_passages":["beta-overview#0"],"config_overrides":{"scope":"projects/beta"},"split":"holdout"}
+{"id":"q-mh-pref","query":"what does the maintainer of the alpha project prefer","kind":"multi-hop","expected_passages":["tea#0"],"seed":"alpha-overview","split":"dev"}
+{"id":"q-mh-tool","query":"which tool does the beta project run on","kind":"multi-hop","expected_passages":["greenhouse-controller#0"],"seed":"beta-overview","split":"dev"}
+{"id":"q-mh-gamma","query":"what does the maintainer of the gamma project prefer","kind":"multi-hop","expected_passages":["astrolabe#0"],"seed":"gamma-overview","split":"holdout"}
+{"id":"q-mh-alpha-tool","query":"what does the alpha project run on","kind":"multi-hop","expected_passages":["old-laptop#0"],"seed":"alpha-overview","split":"dev"}
+{"id":"q-mh-deep-1","query":"sensor calibration","kind":"multi-hop","expected_passages":["probe-aging#0"],"seed":"sensor-calibration","config_overrides":{"scope":"tag:deep"},"split":"dev"}
+{"id":"q-mh-deep-2","query":"gateway firmware","kind":"multi-hop","expected_passages":["duty-cycle#0"],"seed":"gateway-firmware","config_overrides":{"scope":"tag:deep"},"split":"holdout"}
+{"id":"q-mh-deep-3","query":"soil chemistry","kind":"multi-hop","expected_passages":["nutrient-runoff#0"],"seed":"soil-chemistry","config_overrides":{"scope":"tag:deep"},"split":"dev"}
+{"id":"q-mh-deep-4","query":"canopy light","kind":"multi-hop","expected_passages":["leaf-wetness#0"],"seed":"canopy-light","config_overrides":{"scope":"tag:deep"},"split":"dev"}
+{"id":"q-t-world-alpha-early","query":"what does the alpha project run on","kind":"temporal","temporal_axis":"world","as_of":"2026-03-01","expected_passages":["pi-cluster#0"],"expect_absent":["old-laptop#0"],"paired_with":"q-t-world-alpha-late","config_overrides":{"scope":"tag:alpha"},"split":"dev"}
+{"id":"q-t-world-alpha-late","query":"what does the alpha project run on","kind":"temporal","temporal_axis":"world","as_of":"2026-08-01","expected_passages":["old-laptop#0"],"expect_absent":["pi-cluster#0"],"paired_with":"q-t-world-alpha-early","config_overrides":{"scope":"tag:alpha"},"split":"holdout"}
+{"id":"q-t-world-gamma-early","query":"what does the gamma project run on","kind":"temporal","temporal_axis":"world","as_of":"2026-04-01","expected_passages":["field-gateway#0"],"expect_absent":["relay-tower#0"],"paired_with":"q-t-world-gamma-late","config_overrides":{"scope":"tag:gamma"},"split":"dev"}
+{"id":"q-t-world-gamma-late","query":"what does the gamma project run on","kind":"temporal","temporal_axis":"world","as_of":"2026-08-01","expected_passages":["relay-tower#0"],"expect_absent":["field-gateway#0"],"paired_with":"q-t-world-gamma-early","config_overrides":{"scope":"tag:gamma"},"split":"dev"}
+{"id":"q-t-system-beta-early","query":"what does the beta project run on","kind":"temporal","temporal_axis":"system","as_of":"2026-05-01","expected_passages":["beta-overview#0"],"expect_absent":["greenhouse-controller#0"],"paired_with":"q-t-system-beta-late","config_overrides":{"scope":"tag:beta"},"split":"dev"}
+{"id":"q-t-system-beta-late","query":"what does the beta project run on","kind":"temporal","temporal_axis":"system","as_of":"2026-09-15","expected_passages":["greenhouse-controller#0"],"paired_with":"q-t-system-beta-early","config_overrides":{"scope":"tag:beta"},"split":"dev"}
+{"id":"q-t-system-delta-early","query":"what does the delta project run on","kind":"temporal","temporal_axis":"system","as_of":"2026-06-01","expected_passages":["delta-overview#0"],"expect_absent":["solar-inverter#0"],"paired_with":"q-t-system-delta-late","config_overrides":{"scope":"tag:delta"},"split":"holdout"}
+{"id":"q-t-system-delta-late","query":"what does the delta project run on","kind":"temporal","temporal_axis":"system","as_of":"2026-10-15","expected_passages":["solar-inverter#0"],"paired_with":"q-t-system-delta-early","config_overrides":{"scope":"tag:delta"},"split":"dev"}
+{"id":"q-pref-sam","query":"what does sam prefer to drink","kind":"preference","expected_passages":["tea#0"],"expect_before":[["tea#0","coffee#0"]],"split":"dev"}
+{"id":"q-pref-ada","query":"what does ada prefer","kind":"preference","expected_passages":["kettle#0"],"split":"dev"}
+{"id":"q-pref-bo","query":"what does bo prefer","kind":"preference","expected_passages":["lantern#0"],"split":"dev"}
+{"id":"q-pref-cy","query":"what does cy prefer","kind":"preference","expected_passages":["compass#0"],"split":"holdout"}
+{"id":"q-pref-dee","query":"what does dee prefer","kind":"preference","expected_passages":["abacus#0"],"split":"dev"}
+{"id":"q-pref-eli","query":"what does eli prefer","kind":"preference","expected_passages":["harmonica#0"],"split":"dev"}
+{"id":"q-pref-fay","query":"what does fay prefer","kind":"preference","expected_passages":["telescope#0"],"split":"holdout"}
+{"id":"q-pref-gus","query":"what does gus prefer","kind":"preference","expected_passages":["kayak#0"],"split":"dev"}
+{"id":"q-r2-0","query":"electrode drift","kind":"remote-association-2hop","expected_passages":["aquifer-salinity#0"],"seed":"electrode-drift","split":"dev"}
+{"id":"q-r2-1","query":"water budgeting","kind":"remote-association-2hop","expected_passages":["turbine-gearbox#0"],"seed":"water-budgeting","split":"dev"}
+{"id":"q-r2-2","query":"radio duty","kind":"remote-association-2hop","expected_passages":["pipeline-corrosion#0"],"seed":"radio-duty","split":"holdout"}
+{"id":"q-r2-3","query":"firmware branch","kind":"remote-association-2hop","expected_passages":["beacon-ranging#0"],"seed":"firmware-branch","split":"dev"}
+{"id":"q-r2-4","query":"telemetry failure","kind":"remote-association-2hop","expected_passages":["compost-nitrogen#0"],"seed":"telemetry-failure","split":"dev"}
+{"id":"q-r2-5","query":"long range telemetry","kind":"remote-association-2hop","expected_passages":["orchard-pruning#0"],"seed":"long-range-telemetry","split":"holdout"}
+{"id":"q-r2-6","query":"canopy shade","kind":"remote-association-2hop","expected_passages":["greenhouse-ventilation#0"],"seed":"canopy-shade","split":"dev"}
+{"id":"q-r2-7","query":"orchard canopy","kind":"remote-association-2hop","expected_passages":["reservoir-sediment#0"],"seed":"orchard-canopy","split":"dev"}
+{"id":"q-r3-0","query":"weathervane anemometer","kind":"remote-association-3hop","expected_passages":["lighthouse-foghorn#0"],"seed":"weathervane-anemometer","split":"dev"}
+{"id":"q-r3-1","query":"barometer hygrometer","kind":"remote-association-3hop","expected_passages":["buoy-mooring#0"],"seed":"barometer-hygrometer","split":"dev"}
+{"id":"q-r3-2","query":"thermistor photodiode","kind":"remote-association-3hop","expected_passages":["harbor-dredging#0"],"seed":"thermistor-photodiode","split":"holdout"}
+{"id":"q-r3-3","query":"actuator solenoid","kind":"remote-association-3hop","expected_passages":["pier-pilings#0"],"seed":"actuator-solenoid","split":"dev"}
+{"id":"q-r3-4","query":"manifold gasket","kind":"remote-association-3hop","expected_passages":["ferry-schedule#0"],"seed":"manifold-gasket","split":"dev"}
+{"id":"q-r3-5","query":"bearing coupling","kind":"remote-association-3hop","expected_passages":["tide-almanac#0"],"seed":"bearing-coupling","split":"holdout"}
+{"id":"q-r3-6","query":"flywheel governor","kind":"remote-association-3hop","expected_passages":["current-rip#0"],"seed":"flywheel-governor","split":"dev"}
+{"id":"q-r3-7","query":"throttle carburetor","kind":"remote-association-3hop","expected_passages":["shoal-sounding#0"],"seed":"throttle-carburetor","split":"dev"}
 {"id":"q-trust-medium","query":"drip irrigation timing","kind":"trust","expected_passages":[],"expect_absent":["2026-09-10-web-clipping#0"],"config_overrides":{"retrieval.trustFloor":"medium"},"split":"dev"}
 {"id":"q-trust-low","query":"drip irrigation timing","kind":"trust","expected_passages":["2026-09-10-web-clipping#0"],"split":"holdout"}

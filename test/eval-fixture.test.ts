@@ -6,11 +6,11 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { generateFixture } from '../eval/generate-fixture.ts';
+import { generateFixture, DEEP_TRIPLES } from '../eval/generate-fixture.ts';
 import { loadConfig } from '../src/config.ts';
 import { buildIndex } from '../src/index/indexer.ts';
 import { openIndex } from '../src/index/db.ts';
-import type { EvalQuery } from '../src/eval/types.ts';
+import type { EvalQuery, ExpectedGroup } from '../src/eval/types.ts';
 
 const EVAL_DIR = resolve(import.meta.dirname, '..', 'eval');
 const tmp = mkdtempSync(join(tmpdir(), 'circadia-eval-fixture-'));
@@ -39,6 +39,10 @@ function readQueries(): EvalQuery[] {
     .map((l) => JSON.parse(l) as EvalQuery);
 }
 
+function flatExpected(groups: ExpectedGroup[]): string[] {
+  return groups.flatMap((g) => (typeof g === 'string' ? [g] : g));
+}
+
 test('fixture generation is byte-identical across two runs', () => {
   const a = join(tmp, 'a');
   const b = join(tmp, 'b');
@@ -48,7 +52,7 @@ test('fixture generation is byte-identical across two runs', () => {
   const hb = treeHash(b);
   assert.deepEqual([...ha.keys()].sort(), [...hb.keys()].sort(), 'same file set');
   for (const [rel, hash] of ha) assert.equal(hb.get(rel), hash, `content differs: ${rel}`);
-  assert.equal(ha.size, 300 + 1 + 1 + 1, '300 notes + config + access log + triples');
+  assert.equal(ha.size, 299 + 1 + 1 + 8, '299 notes + config + access log + 8 triple files');
 });
 
 test('fixture contains at least one note of each required shape', () => {
@@ -56,8 +60,8 @@ test('fixture contains at least one note of each required shape', () => {
   generateFixture(dir);
   const read = (rel: string): string => readFileSync(join(dir, rel), 'utf8');
 
-  // three scoped projects
-  for (const p of ['alpha', 'beta', 'gamma']) {
+  // four scoped projects
+  for (const p of ['alpha', 'beta', 'gamma', 'delta']) {
     assert.ok(statSync(join(dir, 'projects', p)).isDirectory(), `project ${p} exists`);
   }
   // backdated + late-recorded facts: world time and system time diverge
@@ -72,16 +76,22 @@ test('fixture contains at least one note of each required shape', () => {
   assert.match(clip, /type: episode/);
   assert.match(clip, /by: web/);
   // remote-association 2-hop: two notes share a neighbour, no direct edge
-  assert.match(read('entities/concepts/alpha-topic.md'), /\[\[shared-hub\]\]/);
-  assert.match(read('entities/concepts/beta-topic.md'), /\[\[shared-hub\]\]/);
+  assert.match(read('entities/concepts/electrode-drift.md'), /\[\[loam-porosity\]\]/);
+  assert.match(read('entities/concepts/aquifer-salinity.md'), /\[\[loam-porosity\]\]/);
   // remote-association 3-hop chain
-  assert.match(read('entities/concepts/gamma-topic.md'), /\[\[hop-one\]\]/);
-  assert.match(read('entities/concepts/hop-one.md'), /\[\[hop-two\]\]/);
-  assert.match(read('entities/concepts/hop-two.md'), /\[\[delta-topic\]\]/);
+  assert.match(read('entities/concepts/weathervane-anemometer.md'), /\[\[sprocket-ratchet\]\]/);
+  assert.match(read('entities/concepts/sprocket-ratchet.md'), /\[\[windlass-anchor\]\]/);
+  assert.match(read('entities/concepts/windlass-anchor.md'), /\[\[lighthouse-foghorn\]\]/);
   // prefers:: facts with by:: user, including one superseded
   const sam = read('entities/people/sam.md');
   assert.match(sam, /\[prefers:: \[\[tea\]\]\] \[by:: user\]/);
   assert.match(sam, /~~\[prefers:: \[\[coffee\]\]\]~~ \[superseded:: 2026-05-01\] \[by:: user\]/);
+  // 8 deep notes, each with a committed triple cache
+  assert.equal(Object.keys(DEEP_TRIPLES).length, 8);
+  for (const id of Object.keys(DEEP_TRIPLES)) {
+    assert.match(read(`entities/concepts/${id}.md`), /tags: \[deep\]/);
+    assert.ok(statSync(join(dir, '.circadia', 'triples', `${id}.jsonl`)).isFile(), `${id} triple cache`);
+  }
 });
 
 test('every expected_passages id exists in the built index', () => {
@@ -96,13 +106,113 @@ test('every expected_passages id exists in the built index', () => {
       (db.prepare(`SELECT id FROM nodes WHERE kind = 'passage'`).all() as { id: string }[]).map((r) => r.id),
     );
     for (const q of readQueries()) {
-      for (const p of q.expected_passages) {
+      for (const p of flatExpected(q.expected_passages)) {
         assert.ok(ids.has(p), `query ${q.id}: expected passage ${p} is not in the index`);
       }
       for (const p of q.expect_absent ?? []) {
         assert.ok(ids.has(p), `query ${q.id}: expect_absent passage ${p} is not in the index`);
       }
     }
+  } finally {
+    db.close();
+  }
+});
+
+test('remote-association queries share no content token with their target', () => {
+  const dir = join(tmp, 'tokens');
+  generateFixture(dir);
+  const cfg = loadConfig(dir);
+  const dbPath = join(tmp, 'tokens.sqlite');
+  buildIndex(dir, cfg, { dbPath });
+  const { db } = openIndex(dbPath);
+  try {
+    const text = new Map(
+      (db.prepare(`SELECT id, text FROM nodes WHERE kind = 'passage'`).all() as { id: string; text: string }[]).map(
+        (r) => [r.id, r.text],
+      ),
+    );
+    const stop = new Set([
+      'what', 'does', 'the', 'and', 'for', 'with', 'from', 'into', 'over', 'this', 'that',
+      'these', 'those', 'here', 'noted', 'concept', 'tracked', 'field', 'log', 'recorded',
+    ]);
+    const tokens = (s: string): Set<string> =>
+      new Set(s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !stop.has(w)));
+    for (const q of readQueries()) {
+      if (!q.kind.startsWith('remote-association')) continue;
+      const target = flatExpected(q.expected_passages)[0];
+      const targetText = text.get(target);
+      assert.ok(targetText, `query ${q.id}: target ${target} has text`);
+      const shared = [...tokens(q.query)].filter((t) => tokens(targetText).has(t));
+      assert.deepEqual(shared, [], `query ${q.id}: query and target share tokens ${shared.join(', ')}`);
+    }
+  } finally {
+    db.close();
+  }
+});
+
+test('deep multi-hop pairs are connected only through triple/synonym edges', () => {
+  const dir = join(tmp, 'deep');
+  generateFixture(dir);
+  const cfg = loadConfig(dir);
+  const dbPath = join(tmp, 'deep.sqlite');
+  buildIndex(dir, cfg, { dbPath });
+  const { db } = openIndex(dbPath);
+  try {
+    const nodeToNote = new Map<string, string>();
+    for (const r of db.prepare(`SELECT id, kind, note_id FROM nodes`).all() as { id: string; kind: string; note_id: string | null }[]) {
+      nodeToNote.set(r.id, r.kind === 'passage' && r.note_id ? r.note_id : r.id);
+    }
+    const buildAdj = (excludeOrigins: string[]): Map<string, Set<string>> => {
+      const adj = new Map<string, Set<string>>();
+      const add = (a: string, b: string): void => {
+        if (a === b) return;
+        (adj.get(a) ?? adj.set(a, new Set()).get(a)!).add(b);
+        (adj.get(b) ?? adj.set(b, new Set()).get(b)!).add(a);
+      };
+      const ph = excludeOrigins.map(() => '?').join(',');
+      const rows = db
+        .prepare(`SELECT src, dst FROM edges WHERE dst IS NOT NULL AND origin NOT IN (${ph})`)
+        .all(...excludeOrigins) as { src: string; dst: string }[];
+      for (const e of rows) {
+        const a = nodeToNote.get(e.src);
+        const b = nodeToNote.get(e.dst);
+        if (a && b) add(a, b);
+      }
+      return adj;
+    };
+    const hops = (adj: Map<string, Set<string>>, from: string, to: string): number => {
+      if (from === to) return 0;
+      const seen = new Set([from]);
+      let frontier = [from];
+      let d = 0;
+      while (frontier.length > 0) {
+        d++;
+        const next: string[] = [];
+        for (const n of frontier) {
+          for (const m of adj.get(n) ?? []) {
+            if (m === to) return d;
+            if (!seen.has(m)) {
+              seen.add(m);
+              next.push(m);
+            }
+          }
+        }
+        frontier = next;
+      }
+      return Infinity;
+    };
+
+    const all = buildAdj([]);
+    const noTriples = buildAdj(['triple', 'synonym']);
+    let checked = 0;
+    for (const q of readQueries()) {
+      if (q.kind !== 'multi-hop' || !q.seed || !(q.seed in DEEP_TRIPLES)) continue;
+      const target = flatExpected(q.expected_passages)[0].split('#')[0];
+      assert.ok(Number.isFinite(hops(all, q.seed, target)), `query ${q.id}: seed and target are connected`);
+      assert.equal(hops(noTriples, q.seed, target), Infinity, `query ${q.id}: a non-triple path exists`);
+      checked++;
+    }
+    assert.ok(checked >= 4, `expected at least 4 deep multi-hop queries, found ${checked}`);
   } finally {
     db.close();
   }
@@ -116,8 +226,6 @@ test('remote-association pairs are the required graph distance apart', () => {
   buildIndex(dir, cfg, { dbPath });
   const { db } = openIndex(dbPath);
   try {
-    // note-level graph over ALL edge origins: map each node to its owning note,
-    // drop self-loops (contains edges collapse to note -> note).
     const nodeToNote = new Map<string, string>();
     for (const r of db.prepare(`SELECT id, kind, note_id FROM nodes`).all() as { id: string; kind: string; note_id: string | null }[]) {
       nodeToNote.set(r.id, r.kind === 'passage' && r.note_id ? r.note_id : r.id);
@@ -154,8 +262,15 @@ test('remote-association pairs are the required graph distance apart', () => {
       }
       return Infinity;
     };
-    assert.equal(hops('alpha-topic', 'beta-topic'), 2, '2-hop pair shares exactly one neighbour');
-    assert.ok(hops('gamma-topic', 'delta-topic') >= 3, '3-hop pair is at least 3 hops apart');
+    for (const q of readQueries()) {
+      if (!q.seed) continue;
+      const target = flatExpected(q.expected_passages)[0].split('#')[0];
+      if (q.kind === 'remote-association-2hop') {
+        assert.equal(hops(q.seed, target), 2, `query ${q.id}: 2-hop pair`);
+      } else if (q.kind === 'remote-association-3hop') {
+        assert.ok(hops(q.seed, target) >= 3, `query ${q.id}: 3-hop pair`);
+      }
+    }
   } finally {
     db.close();
   }
