@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { generateFixture } from '../eval/generate-fixture.ts';
+import { generateFixture, remote2hop, remote3hop } from '../eval/generate-fixture.ts';
 import { deepMerge, loadConfig } from '../src/config.ts';
 import { buildIndex } from '../src/index/indexer.ts';
 import { openIndex } from '../src/index/db.ts';
@@ -50,6 +50,39 @@ async function freshBaseline(dir: string): Promise<Baseline> {
 function relateShape(r: RelateResult): { found: boolean; paths: string[][] } {
   return { found: r.found, paths: r.paths.map((p) => p.nodes) };
 }
+
+test('the fixture does not leak true/decoy through salience or hops', () => {
+  // The committed source is the fixture's candidate file. A true candidate is one whose
+  // pair is a planted remote-association pair; the distinction comes from the generator's
+  // knowledge (remote2hop/remote3hop), never from a candidate field.
+  const recs = readFileSync(join(EVAL_DIR, 'dreams.fixture.jsonl'), 'utf8')
+    .split('\n')
+    .filter((l) => l.trim())
+    .map((l) => JSON.parse(l) as { a: string; b: string; salience: number; hops: number });
+  const trueKeys = new Set<string>();
+  for (let i = 0; i < 8; i++) {
+    const two = remote2hop(i);
+    trueKeys.add(`${two.seed}\0${two.target}`);
+    const three = remote3hop(i);
+    trueKeys.add(`${three.seed}\0${three.target}`);
+  }
+  const isTrue = (r: { a: string; b: string }): boolean =>
+    trueKeys.has(`${r.a}\0${r.b}`) || trueKeys.has(`${r.b}\0${r.a}`);
+  const trueRecs = recs.filter(isTrue);
+  const decoyRecs = recs.filter((r) => !isTrue(r));
+  assert.equal(trueRecs.length, 16, '16 true candidates');
+  assert.equal(decoyRecs.length, 16, '16 decoy candidates');
+
+  // The true/decoy distinction must not be inferable from salience or any other field.
+  // salience becomes the edge weight, so a higher true salience would measure "the
+  // heavier link wins" rather than the mechanism; hops would leak the same split.
+  const values = (rs: typeof recs, f: (r: (typeof recs)[number]) => number): number[] =>
+    [...new Set(rs.map(f))].sort((a, b) => a - b);
+  assert.deepEqual(values(trueRecs, (r) => r.salience), values(decoyRecs, (r) => r.salience), 'salience sets are identical');
+  assert.deepEqual(values(trueRecs, (r) => r.hops), values(decoyRecs, (r) => r.hops), 'hops sets are identical');
+  assert.equal(new Set(recs.map((r) => r.salience)).size, 1, 'one salience value for every candidate');
+  assert.equal(new Set(recs.map((r) => r.hops)).size, 1, 'one hops value for every candidate');
+});
 
 test('the fixture plants one dream edge per true and decoy candidate', () => {
   const dir = join(tmp, 'vault');
