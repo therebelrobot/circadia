@@ -73,7 +73,7 @@ async function handleToolsList(_vaultRoot: string, _cfg: Awaited<ReturnType<type
         properties: {
           text: { type: 'string' },
           session: { type: 'string' },
-          by: { type: 'string', enum: ['user', 'agent', 'tool', 'web'] },
+          by: { type: 'string', enum: ['agent', 'tool', 'web'] },
           source: { type: 'string', enum: ['chat', 'tool', 'import'] },
         },
         required: ['text'],
@@ -114,7 +114,7 @@ async function handleToolsList(_vaultRoot: string, _cfg: Awaited<ReturnType<type
   return { jsonrpc: '2.0', id: null, result: { tools } };
 }
 
-async function handleToolsCall(
+export async function handleToolsCall(
   vaultRoot: string,
   cfg: Awaited<ReturnType<typeof loadConfig>>,
   method: string,
@@ -141,15 +141,31 @@ async function handleToolsCall(
     }
 
     if (method === 'remember' && params && 'text' in params && typeof params.text === 'string') {
+      // C4/P0: an MCP caller may not claim to be the user. An agent that read a hostile
+      // page must not be able to mint a `by: user` episode — that would skip the
+      // untrusted-source queue and could supersede existing facts. Default to `agent`;
+      // refuse `user` outright. Human-authored episodes come from editing the vault or
+      // the CLI, never from this tool.
+      if (params.by === 'user') {
+        return {
+          jsonrpc: '2.0',
+          id: null,
+          error: {
+            code: -32602,
+            message: 'remember: by "user" is not allowed over MCP; use "agent", "tool", or "web"',
+          },
+        };
+      }
+      const by = (params.by as SourceKind | undefined) ?? 'agent';
       const segModule = await import('../episodes/segment.ts');
       const epModule = await import('../episodes/episode.ts');
       const segs = segModule.segmentText(params.text, {
-        by: params.by as SourceKind | undefined,
+        by,
         source: params.source as SourceKind | undefined,
       });
       const result = await epModule.writeEpisodes(vaultRoot, cfg, segs, {
         session: params.session as string | undefined,
-        by: params.by as SourceKind | undefined,
+        by,
         source: params.source as SourceKind | undefined,
       });
       const text = 'Wrote ' + result.episodes.length + ' episode(s): ' + result.episodes.map((e: { path: string; title: string; boundary: string }) => e.path).join(', ');

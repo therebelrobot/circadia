@@ -11,7 +11,7 @@ import { existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync } from 
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { STATE_DIR } from '../config.ts';
-import { chatComplete } from '../llm/chat.ts';
+import { chatComplete, fenceData } from '../llm/chat.ts';
 
 export interface CachedTriple {
   passageId: string;
@@ -148,9 +148,7 @@ For each (subject, predicate, object) triple:
 
 Return ONLY a JSON object of the form {"triples": [{"subject": "...", "predicate": "...", "object": "...", "conf": 0.0-1.0}]}.
 
-<passage-data>
-${passage.text}
-</passage-data>`;
+${fenceData(passage.text, 'passage-data')}`;
 
     const raw = await chatComplete({
       endpoint: this.endpoint,

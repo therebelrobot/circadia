@@ -27,7 +27,10 @@ export async function writeEpisodes(
     source?: SourceKind;
   },
 ): Promise<EpisodeResult> {
-  const { by = 'user', source = 'chat', session } = opts;
+  // Fail-safe default: an unset `by` becomes `agent`, not `user`. A `by: user` episode
+  // skips the untrusted-source queue and can supersede facts, so it must never be the
+  // default for a programmatic writer. Human-authored episodes set `by` explicitly.
+  const { by = 'agent', source = 'chat', session } = opts;
   const now = new Date();
   const year = String(now.getUTCFullYear());
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');

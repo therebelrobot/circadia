@@ -120,6 +120,29 @@ export async function chatComplete(opts: ChatOptions): Promise<string> {
   return content;
 }
 
+/**
+ * Wrap `text` in a data fence, neutralizing any attempt by the text to close the fence
+ * early. Mirrors `renderForContext`'s `<untrusted-data>` handling (AGENTS.md §4): every
+ * `<tag` / `</tag` occurrence inside the text has its `<` replaced with the escaped
+ * form, so the only real delimiters are the ones this function adds. Without this, a
+ * pasted note containing `</episode-data>` would put attacker text outside the fence.
+ */
+export function fenceData(text: string, tag: string): string {
+  const pattern = new RegExp(`<\\/?\\s*${escapeRegExp(tag)}`, 'gi');
+  const escaped = text.replace(pattern, (m) => m.replace('<', LT));
+  return `<${tag}>\n${escaped}\n</${tag}>`;
+}
+
+/**
+ * The escaped form of `<`. Built by concatenation so this source file never contains the
+ * HTML entity literally (some editors decode it back to `<`).
+ */
+const LT = '&' + 'lt;';
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /** Pull `choices[0].message.content` out of an unknown JSON value, or null if absent. */
 function extractContent(data: unknown): string | null {
   if (typeof data !== 'object' || data === null) return null;

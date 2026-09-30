@@ -8,7 +8,7 @@
 import type { Config } from '../config.ts';
 import type { ParsedNote, SourceKind, Trust } from '../types.ts';
 import { DEFAULT_TRUST } from '../vault/facts.ts';
-import { chatComplete } from '../llm/chat.ts';
+import { chatComplete, fenceData } from '../llm/chat.ts';
 
 export interface Candidate {
   subject: string;
@@ -65,9 +65,7 @@ ${predicateLine}
 
 Output JSON only, no other text.
 
-<episode-data>
-${text}
-</episode-data>`;
+${fenceData(text, 'episode-data')}`;
 
   const content = await chatComplete({
     endpoint: cfg.extraction.endpoint,
