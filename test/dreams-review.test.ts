@@ -15,7 +15,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../src/config.ts';
 import { applyDreamDecision } from '../src/cli/review.ts';
-import { candidatesPath, readCandidates, type DreamCandidate } from '../src/dreams/candidates.ts';
+import { candidatesPath, readCandidates, transitionCandidate, type DreamCandidate } from '../src/dreams/candidates.ts';
 
 // Pin the timezone so the evening-accept test is deterministic: 2026-09-30T01:30:00Z is
 // 2026-09-29 21:30 in America/New_York, so the local calendar date differs from the UTC date.
@@ -126,6 +126,38 @@ test('review CLI: accepting a dream writes the fact and marks it accepted', () =
     const body = readFileSync(join(v, 'entities', 'soil-probe.md'), 'utf8');
     assert.equal((body.match(/\[related_to:: \[\[old-laptop\]\]\]/g) ?? []).length, 1);
     assert.equal(readCandidates(v).find((x) => x.id === 'd-2026-09-29-abc123')?.state, 'accepted');
+  } finally {
+    rmSync(v, { recursive: true, force: true });
+  }
+});
+
+test('candidates: the first endorse resets expiry; later ones do not extend it', () => {
+  const v = makeVault();
+  try {
+    writeCandidate(v, { expires: '2026-10-01' });
+    const r1 = transitionCandidate(v, 'd-2026-09-29-abc123', 'endorse', { today: '2026-09-30', ttlNights: 14 });
+    assert.equal(r1.ok, true);
+    assert.equal(r1.candidate?.expires, '2026-10-14', 'the first endorse resets expiry');
+    assert.equal(r1.candidate?.by, 'agent');
+
+    const r2 = transitionCandidate(v, 'd-2026-09-29-abc123', 'endorse', { today: '2026-10-05', ttlNights: 14 });
+    assert.equal(r2.ok, true);
+    assert.equal(r2.candidate?.expires, '2026-10-14', 'a later endorse does not extend it');
+  } finally {
+    rmSync(v, { recursive: true, force: true });
+  }
+});
+
+test('candidates: an endorsement note is truncated to 280 characters', () => {
+  const v = makeVault();
+  try {
+    writeCandidate(v);
+    const r = transitionCandidate(v, 'd-2026-09-29-abc123', 'endorse', {
+      note: 'x'.repeat(400),
+      today: '2026-09-30',
+      ttlNights: 14,
+    });
+    assert.equal(r.candidate?.note?.length, 280);
   } finally {
     rmSync(v, { recursive: true, force: true });
   }
