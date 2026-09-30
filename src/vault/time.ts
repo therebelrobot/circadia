@@ -81,3 +81,17 @@ export function localDateString(d: Date = new Date()): string {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
+
+/**
+ * System time for a fact's `at::` / `superseded::` field: the epoch ms of the LOCAL
+ * calendar date, so `formatFact` (which renders UTC) stamps the operator's date rather
+ * than tomorrow's. Use this instead of `Date.now()` anywhere a date is written to a note.
+ *
+ * `formatFact` renders `new Date(ms).toISOString().slice(0, 10)`, so the value must be
+ * the UTC midnight of the local date — which is exactly what `parseInstant(localDateString)`
+ * produces. Passing a raw `Date.now()` would render the UTC date and shift an evening run
+ * in a negative-offset timezone onto the next day.
+ */
+export function systemDateNow(now: number = Date.now()): number {
+  return parseInstant(localDateString(new Date(now))) ?? now;
+}

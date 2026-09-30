@@ -5,11 +5,12 @@
 // the assertions check effects on disk (file contents, rejected.jsonl, lint), not counts.
 // The accept test is the "fails before" test: against the pre-fix review.ts the fact is
 // never written, so the on-disk assertion fails.
-import { test, describe } from 'node:test';
+import { test, describe, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CONFIG_FILENAME, STATE_DIR, loadConfig } from '../src/config.ts';
 import { applyReviewDecision } from '../src/cli/review.ts';
 import { candidateKey, rejectedPath, type PendingRecord } from '../src/consolidation/pending.ts';
@@ -165,5 +166,61 @@ describe('review (C9)', () => {
     assert.equal(d.action, 'reprompt');
     assert.ok(d.keep, 'the candidate is not dropped');
     assert.equal(d.keep.key, rec.key);
+  });
+
+  test('accept stamps the local calendar date for at:: and superseded::, not UTC', () => {
+    const prevTz = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    // 2026-09-30T01:00:00Z is 2026-09-29 21:00 in America/New_York (UTC-4): the UTC date
+    // is already tomorrow, so a raw Date.now() would stamp 2026-09-30.
+    const now = Date.parse('2026-09-30T01:00:00Z');
+    mock.timers.enable({ apis: ['Date'], now });
+    try {
+      assert.equal(new Date(now).getHours(), 21, 'TZ=America/New_York must be active');
+
+      // No conflict: at:: is the local date.
+      const v = makeVault();
+      const cfg = loadConfig(v);
+      const d = applyReviewDecision(record(), 'a', v, cfg);
+      assert.equal(d.action, 'accepted');
+      const body = readFileSync(join(v, 'entities', 'tools', 'pi-cluster.md'), 'utf8');
+      assert.match(body, /\[at:: 2026-09-29\]/, 'at:: is the local date, not the UTC date');
+
+      // Contradiction: superseded:: is the local date too.
+      const v2 = makeVault();
+      writeFileSync(
+        join(v2, 'entities', 'tools', 'pi-cluster.md'),
+        '---\ntype: entity\nkind: tool\n---\n# Pi cluster\n\n## Facts\n- [runs_on:: [[old-host]]] [by:: user]\n',
+      );
+      const cfg2 = loadConfig(v2);
+      applyReviewDecision(record({ object: '[[orchard-sensors]]' }), 'a', v2, cfg2);
+      const body2 = readFileSync(join(v2, 'entities', 'tools', 'pi-cluster.md'), 'utf8');
+      assert.match(body2, /\[superseded:: 2026-09-29\]/, 'superseded:: is the local date, not the UTC date');
+    } finally {
+      mock.timers.reset();
+      if (prevTz === undefined) delete process.env.TZ;
+      else process.env.TZ = prevTz;
+    }
+  });
+
+  test('guard: only time.ts and non-date callers use Date.now()', () => {
+    // A date written to a note must go through systemDateNow() (local calendar date), not
+    // Date.now() (which formatFact renders as UTC). This fails if a new file starts
+    // stamping Date.now() directly.
+    const allowed = new Set([
+      'src/vault/time.ts', // the helper itself
+      'src/index/indexer.ts', // built_at meta (system time, not a note date)
+      'src/retrieval/recall.ts', // activation "now"
+      'src/consolidation/consolidate.ts', // now + ?? fallbacks; note dates use systemDateNow
+    ]);
+    const srcDir = fileURLToPath(new URL('../src', import.meta.url));
+    const offenders: string[] = [];
+    for (const rel of readdirSync(srcDir, { recursive: true }) as string[]) {
+      if (!rel.endsWith('.ts')) continue;
+      const relPosix = `src/${rel.split(sep).join('/')}`;
+      if (allowed.has(relPosix)) continue;
+      if (readFileSync(join(srcDir, rel), 'utf8').includes('Date.now()')) offenders.push(relPosix);
+    }
+    assert.deepEqual(offenders, [], `these files stamp Date.now() directly: ${offenders.join(', ')}`);
   });
 });

@@ -16,7 +16,7 @@ import { STATE_DIR, type Config } from '../config.ts';
 import type { ParsedNote, Fact } from '../types.ts';
 import { parseVault } from '../index/indexer.ts';
 import { setConsolidatedDate, hasFencedFrontmatter } from '../vault/episode-mark.ts';
-import { localDateString, parseInstant } from '../vault/time.ts';
+import { localDateString, systemDateNow } from '../vault/time.ts';
 import { asWikiLink, shortHash } from '../vault/util.ts';
 import { appendFactLine, type WritableFact } from '../vault/fact-write.ts';
 import { unifiedDiff } from '../vault/diff.ts';
@@ -149,8 +149,11 @@ export async function consolidate(
     }
   }
 
-  const today = localDateString();
-  const todayMs = parseInstant(today);
+  // System time for `at::`/`superseded::` is the LOCAL calendar date (systemDateNow), so
+  // an evening run in a negative-offset timezone does not stamp tomorrow's UTC date.
+  const now = Date.now();
+  const today = localDateString(new Date(now));
+  const todayMs = systemDateNow(now);
   const newPending: PendingRecord[] = [];
 
   for (const c of allCandidates) {
@@ -179,7 +182,7 @@ export async function consolidate(
 
     // World time is when the claim was made (the episode's `started`), not the run date.
     // `at::` and `superseded::` keep the run date (system time).
-    const validAt = noteById.get(c.episodeId)?.created ?? todayMs ?? Date.now();
+    const validAt = noteById.get(c.episodeId)?.created ?? todayMs;
 
     if (decision.action === 'promote' && subjectRef) {
       const fact = buildFact(c, subjectRef.id, objectRef?.id ?? null, todayMs, validAt);
@@ -189,7 +192,7 @@ export async function consolidate(
       promoted++;
       trackFact(entityFacts, subjectRef.path, fact);
     } else if (decision.action === 'supersede' && subjectRef) {
-      const supersededAt = todayMs ?? Date.now();
+      const supersededAt = todayMs;
       const newFact = buildFact(c, subjectRef.id, objectRef?.id ?? null, supersededAt, validAt);
       let changed = false;
       stage(subjectRef.path, (raw) => {

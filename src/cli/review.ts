@@ -18,6 +18,7 @@ import { applySupersede } from '../consolidation/supersede.ts';
 import { isSingleValued } from '../consolidation/schema.ts';
 import { asWikiLink, shortHash } from '../vault/util.ts';
 import { DEFAULT_TRUST } from '../vault/facts.ts';
+import { systemDateNow } from '../vault/time.ts';
 import type { Fact } from '../types.ts';
 import {
   appendRecords,
@@ -122,7 +123,9 @@ export function applyReviewDecision(
   const objLink = asWikiLink(record.object);
   const objectRef = objLink ? resolver.resolve(objLink.target) : null;
 
-  const now = Date.now();
+  // System time for `at::`/`superseded::` is the LOCAL calendar date (systemDateNow), so
+  // an evening accept in a negative-offset timezone does not stamp tomorrow's UTC date.
+  const now = systemDateNow();
   const episodeNote = notes.find((n) => n.id === record.episode);
   const validFrom = episodeNote?.created ?? now;
 
@@ -216,10 +219,41 @@ export async function review(vault: string): Promise<{ promoted: number; rejecte
     output: process.stdout,
   });
 
-  const question = (prompt: string): Promise<string> =>
-    new Promise((resolve) => {
-      rl.question(prompt, (answer) => resolve(answer.trim()));
+  // Buffer lines that arrive before the next prompt is listening, so scripted input
+  // (`printf 'a\nr\n' | circadia review`) is not dropped. readline emits every buffered
+  // line in one tick; without a queue the later ones have no listener and are lost.
+  const EOF = '\u0000eof';
+  const buffered: string[] = [];
+  let waiting: ((line: string) => void) | null = null;
+  let closed = false;
+
+  rl.on('line', (line) => {
+    const value = line.trim();
+    if (waiting) {
+      const resolve = waiting;
+      waiting = null;
+      resolve(value);
+    } else {
+      buffered.push(value);
+    }
+  });
+  rl.on('close', () => {
+    closed = true;
+    if (waiting) {
+      const resolve = waiting;
+      waiting = null;
+      resolve(EOF);
+    }
+  });
+
+  const question = (prompt: string): Promise<string> => {
+    if (closed) return Promise.resolve(EOF);
+    process.stdout.write(prompt);
+    if (buffered.length > 0) return Promise.resolve(buffered.shift()!);
+    return new Promise((resolve) => {
+      waiting = resolve;
     });
+  };
 
   console.log(`\nReviewing ${records.length} pending candidate(s):\n`);
 
@@ -234,12 +268,21 @@ export async function review(vault: string): Promise<{ promoted: number; rejecte
     // Unknown input re-prompts rather than dropping the candidate (C9).
     for (; ;) {
       const choice = await question('  accept (a), reject (r), or edit (e)? ');
+      if (choice === EOF) {
+        // Input ended (scripted input ran out): keep the candidate and stop.
+        kept.push(c);
+        break;
+      }
 
       let edit: ReviewEdit | undefined;
       if (normalizeReviewChoice(choice) === 'edit') {
         const newSubject = await question(`    new subject [${c.subject}]: `);
         const newPredicate = await question(`    new predicate [${c.predicate}]: `);
         const newObject = await question(`    new object [${c.object}]: `);
+        if (newSubject === EOF || newPredicate === EOF || newObject === EOF) {
+          kept.push(c);
+          break;
+        }
         edit = { subject: newSubject, predicate: newPredicate, object: newObject };
       }
 
@@ -269,7 +312,6 @@ export async function review(vault: string): Promise<{ promoted: number; rejecte
     unlinkSync(pending);
   }
 
-  console.log(`\nReview complete: ${promoted} promoted, ${rejected} rejected, ${edited} edited`);
-
+  // The summary is printed by the CLI (main.ts); printing it here too duplicated it.
   return { promoted, rejected, edited };
 }
