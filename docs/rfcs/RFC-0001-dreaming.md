@@ -3,7 +3,8 @@
 > *Do Androids Dream of Electric Sheep?*
 > — Philip K. Dick, 1968
 
-Status: proposed · 2026-09-30 · written against `31dc3a8` (Phase 7 complete)
+Status: proposed · 2026-09-30 · written against `31dc3a8` (Phase 7 complete) · revised after
+architecture review (decisions in [Appendix A](#appendix-a-review-decisions))
 
 ## Summary
 
@@ -81,15 +82,24 @@ it as ground truth.
 
 ### The REM pass
 
-`circadia dream [--dry-run]` runs the pass; `circadia consolidate --dream` runs
-consolidation and then the pass, which is what the nightly timer should call. The pass
-reads the index and the access log, and writes only under `.circadia/dreams/`.
+`circadia dream [--dry-run | --sample-only]` runs the pass; `circadia consolidate --dream`
+runs consolidation, then its commit, then the pass. That combined command is what the
+nightly timer should call. The pass reads the index and the access log, and writes only
+under `.circadia/dreams/`.
+
+- The explicit `circadia dream` command always runs; typing it is consent.
+  `consolidate --dream` runs the pass only when `dreaming.enabled` is true, so the timer
+  can stay installed while the feature is toggled in config.
+- With `extraction.provider: none`, the pass is skipped with a clear message. The sleep
+  report records it, and `wake` reports that no dreaming happened.
+- With no index, the pass errors the same way `recall` does.
 
 1. **Recent side.** The notes with the highest ACT-R activation over the last
    `dreaming.recentDays`, computed read-only from `access.jsonl` (the same code recall
    uses, with `logAccess: false`). Notes below `dreaming.trustFloor` are skipped.
 2. **Remote side.** For each recent note, a partner at least `dreaming.minHops` away over
-   every edge origin the index has, chosen with probability weighted toward low
+   every edge origin except `dream` (a dream must not make its own pair look close),
+   chosen with probability weighted toward low
    personalized-PageRank mass from the recent note. A `dreaming.noiseShare` of partners
    are uniformly random older notes (D5). Pairs already connected by an open or dismissed
    candidate are skipped.
@@ -109,8 +119,14 @@ reads the index and the access log, and writes only under `.circadia/dreams/`.
 4. **Ground.** `quote_a` and `quote_b` must each appear verbatim (after whitespace
    normalization) in the passage they cite, be at least 12 characters, and differ from
    each other. Anything else is pruned.
-5. **Score.** `salience = hopsNorm × confidence × activationNorm`, each in [0, 1], so a
-   surprising link about something current rises to the top.
+5. **Score.** `salience = hopsNorm × confidence × activationNorm`, so a surprising link
+   about something current rises to the top. Each factor is in [0, 1]:
+   - `hopsNorm = min(hops, 6) / 6`, where unreachable counts as 6;
+   - `confidence` is the model's value, clamped;
+   - `activationNorm` is min-max over that night's recent side, or 1 when there is a
+     single note.
+
+   The noise sample count is `round(samplesPerNight × noiseShare)`.
 6. **Record.** Every sample becomes a fragment in the night's log, kept or pruned. Kept
    fragments are appended to `candidates.jsonl`.
 
@@ -121,7 +137,11 @@ a re-run. Candidate ids are `d-<night>-<hash(a, b)>`, and a re-run skips any id 
 present, so re-running a night appends nothing new. The seed is recorded in the log.
 
 **Dry run.** `--dry-run` builds the same log and candidate lines in memory, prints them,
-and writes nothing, following consolidation's staged change set (C7).
+and writes nothing, following consolidation's staged change set (C7). It does call the
+model; "dry" means no writes, not no calls. `--sample-only` prints the sampled pairs and
+makes no model calls, for tuning the sampler for free. A re-run of a night samples the
+same pairs, but the model may answer differently. Candidate ids make that harmless, and
+the log records the model id and seed.
 
 **Failure.** A model timeout or a malformed response prunes that sample with the error
 class recorded. If every sample fails, or the endpoint is down, the sleep report says
@@ -164,13 +184,31 @@ the keyboard.
 
 **What the agent sees.** The MCP `wake` tool, or `circadia wake [--json]`, returns the
 sleep report and the top `dreaming.recallFragments` kept fragments by salience, reduced to
-note titles and gist. Quotes, scores and pruned fragments stay out. The whole payload is
-fenced through the same `<untrusted-data>` path `renderForContext()` uses for low-trust
-hits.
+note titles and gist. Quotes, scores and pruned fragments stay out. The `--json` shape is:
 
-**Forgetting.** `wake` renames the log to a temporary name before reading, so two sessions
-can't both read it, then deletes it. An unread log is deleted after `dreaming.logTtlHours`
-by the next `dream` or `wake` call. Candidates outlive the log until they expire.
+```json
+{"night":"2026-09-29",
+ "report":{"consolidation":{"ran":true,"episodes":12,"promoted":3,"queued":2},
+           "rem":{"ran":true,"samples":20,"kept":4,"pruned":16,"errors":{"timeout":1}}},
+ "fragments":[{"id":"d-2026-09-29-5f3a","a":"Soil Probe","b":"Old Laptop","gist":"both drift until recalibrated"}],
+ "forgotten":3,
+ "rules":["..."]}
+```
+
+- `forgotten` counts kept fragments not shown, so "there was another, but it's gone" is
+  true rather than invented.
+- The report and fragments are fenced together in one
+  `<untrusted-data source="dreams">` block, with tags inside escaped as
+  `renderForContext()` does.
+- The narration `rules` sit outside the fence: they are Circadia's instructions, not
+  model output.
+- With `recallFragments: 0`, `wake` returns the report only.
+
+**Forgetting.** `wake` renames the log to `<night>.json.reading-<pid>-<random>` before
+reading, so two sessions can't both read it, then deletes the temp file in a `finally`.
+An unread log is deleted after `dreaming.logTtlHours` by the next `dream` or `wake` call.
+`logTtlHours: 0` turns the TTL off: the log is then deleted only by reading it.
+Candidates outlive the log until they expire.
 
 **Answering "how did you sleep?"**
 
@@ -197,16 +235,20 @@ reading hostile text could otherwise mint trusted memories. Dream confirmation f
 same rule.
 
 - **MCP `endorse_dream(id, note?)`.** The agent relays that the user liked a fragment. It
-  sets the candidate's state to `endorsed` with `by: agent`, which sorts it first in review
-  and extends its expiry once. It writes nothing in the vault.
+  sets the candidate's state to `endorsed` with `by: agent`, which sorts it first in review.
+  The first endorsement resets expiry to `candidateTtlNights` from that day; later ones
+  don't extend it. `note` is optional free text of at most 280 characters, stored on the
+  candidate and shown fenced in review. It writes nothing in the vault.
 - **MCP `dismiss_dream(id)`.** Closes a candidate. Removing is always safe to delegate.
 - **`circadia review`** gains a "dreams" section after the fact queue: open and endorsed
   candidates with both quotes shown. **Accept** writes `[related_to:: [[b]]] [by:: user]`
-  to note `a` through the shared fact writer (`src/vault/fact-write.ts`), the same way
+  to note `a` (`a` is always the recent side, `b` the remote side) through the shared
+  fact writer (`src/vault/fact-write.ts`), the same way
   review writes an accepted fact today (C9). **Reject** marks the candidate `rejected`, so
   the pair isn't proposed again. Unknown input re-prompts.
 
-`related_to` must be in `predicates.defs`. If it isn't, review says so and offers to add
+`related_to` must be in `predicates.defs`. `circadia init` already defines it, with
+cardinality `many` and no inverse. If a vault lacks it, review says so and offers to add
 it. An accepted association is then an ordinary user fact, visible to every mode as a
 `fact` edge. It no longer depends on dream edges at all.
 
@@ -233,8 +275,13 @@ out of git. Committing it would put every dream in the vault's history forever a
 the forgetting.
 
 - `circadia init` adds `.circadia/dreams/` to the `.gitignore` it writes.
-- For existing vaults, the pass checks `git check-ignore .circadia/dreams/` when the vault
-  is a git repo, and refuses to run with a one-line fix if the path isn't ignored.
+- For existing vaults, when the vault is a git repo, the pass runs
+  `git check-ignore -q .circadia/dreams/candidates.jsonl` (via `execFileSync`, argv
+  array). The check works whether or not the file exists.
+  - Exit 0: ignored, so the pass runs. Exit 1: not ignored, so the pass refuses with a
+    one-line fix. Exit 128 or any other error: the pass refuses and says so.
+  - It also refuses if `git ls-files .circadia/dreams` lists anything, because tracked
+    files aren't protected by `.gitignore`.
 - The consolidation commit already stages only the paths its run wrote (C8), so
   `consolidate --dream` never sweeps dream files into it.
 
@@ -243,8 +290,10 @@ the forgetting.
 The indexer builds edges with origin `dream` from open and endorsed candidates, the way it
 builds `triple` edges from the triple cache:
 
-- one undirected edge between the two notes, `weight = salience`, `trust: low`,
-  `declared_in` null, `recorded_at` = the night;
+- one row per candidate: `src = a`, `dst = b`, `type: 'association'`,
+  `weight = salience`, `trust: low`, `declared_in` null, `recorded_at` = the night.
+  `loadGraph` already treats rows as undirected. As-of queries see a dream edge only
+  after its night;
 - expired, rejected, dismissed and accepted candidates produce no edge. An accepted one is
   a `fact` edge now.
 
@@ -255,7 +304,25 @@ Code changes:
   you wrote";
 - `graph.originWeights.dream` defaults to **0**.
 
-At weight 0 the edges exist and change nothing. Because `buildAblations` is driven by
+The indexer rebuilds all `dream` edges from the candidate file on every `index` and
+incremental run, the way synonym edges are rebuilt; it's cheap. No DDL change is needed,
+so `INDEX_SCHEMA_VERSION` isn't bumped.
+
+**Weight 0 means absent, by construction.** `addEdge` in `src/retrieval/ppr.ts` drops any
+edge with weight ≤ 0, so at the default the edges are in the index and in no PageRank
+graph. Other things that don't use PageRank need explicit handling:
+
+- **`relate` excludes `dream` always.** `relate` finds paths by BFS over
+  `MODE_ORIGINS[mode]` and ignores weights. A path through an unconfirmed dream,
+  presented as "how these notes are connected", is exactly the leak this design
+  prevents. An accepted association becomes a `fact` edge and shows up in `relate`
+  normally.
+- **Scope.** A dream edge with an endpoint outside the recall scope is dropped, like any
+  edge (T4).
+- **Hop distances** computed by the pass and by the eval fixture tests exclude `dream`.
+  Otherwise a planted 3-hop candidate would make its pair 1 hop apart.
+
+Because `buildAblations` is driven by
 `MODE_ORIGINS`, `origin:typed:dream=0` and `origin:hipporag:dream=0` appear in the
 ablation report with no eval code changes (Phase 7 tested this exact case).
 
@@ -271,12 +338,12 @@ Stage 5 passes (see open questions).
 | --- | --- | --- |
 | `dreaming.enabled` | `false` | `consolidate --dream` runs the pass only when true |
 | `dreaming.samplesPerNight` | `20` | Model calls per night |
-| `dreaming.minHops` | `3` | Minimum graph distance between a pair |
+| `dreaming.minHops` | `2` | Minimum graph distance between a pair, over non-dream origins. Phase 7 shows 2-hop pairs are unreachable today too |
 | `dreaming.recentDays` | `7` | Window for the recent side |
 | `dreaming.noiseShare` | `0.25` | Share of random older partners |
-| `dreaming.trustFloor` | `"medium"` | Notes below this are never sampled |
+| `dreaming.trustFloor` | `"medium"` | Sampling floor: notes below this are never sampled. Distinct from `retrieval.trustFloor`, the traversal floor |
 | `dreaming.recallFragments` | `3` | Fragments shown by `wake` |
-| `dreaming.logTtlHours` | `12` | Unread log lifetime |
+| `dreaming.logTtlHours` | `12` | Unread log lifetime; `0` turns the TTL off |
 | `dreaming.candidateTtlNights` | `14` | Candidate lifetime |
 | `graph.originWeights.dream` | `0` | Dream edge weight in PageRank |
 
@@ -287,9 +354,9 @@ Each key needs a default in `DEFAULT_CONFIG`, a check in `validateConfig`, and a
 
 | Surface | Added |
 | --- | --- |
-| CLI | `circadia dream [--dry-run]`, `circadia wake [--json]`, `consolidate --dream`, a dreams section in `review` |
+| CLI | `circadia dream [--dry-run \| --sample-only]`, `circadia wake [--json]`, `consolidate --dream`, a dreams section in `review`, `circadia eval --dream-sweep` |
 | MCP | `wake`, `endorse_dream`, `dismiss_dream` (added to [`src/mcp/README.md`](../../src/mcp/README.md)) |
-| Code | `src/dreams/` (`rem.ts`, `log.ts`, `candidates.ts`, `wake.ts`, `README.md` contract); indexer builds `dream` edges |
+| Code | `src/dreams/` (`rem.ts`, `log.ts`, `candidates.ts`, `wake.ts`, `gitignore.ts`, `README.md` contract); a shared `src/util/rng.ts` extracted from the two LCG copies; indexer builds `dream` edges; `relate` excludes them |
 | Docs | ADR-0011; CONFIG, SCHEMA (the `related_to` predicate note), SECURITY, ARCHITECTURE and README brain-map rows; AGENTS.md §4 and §5 |
 
 ## Safety
@@ -331,7 +398,8 @@ graph, help recall without hurting anything else?).
 - **decoy candidates**, the same number, joining unrelated notes with plausible gists.
 
 Planting the true pairs makes remote recall easy by construction, so this measures the
-mechanism, not the model. Phase 7's rule applies: no fixture or label change may make a
+mechanism, not the model. `eval/dreams.fixture.jsonl` is the committed source; the
+generator copies it into the fixture. The sweep runs with `circadia eval --dream-sweep`. Phase 7's rule applies: no fixture or label change may make a
 failing query pass; the numbers get recorded either way. Report, per forced mode and in
 `auto`, for `originWeights.dream` ∈ {0, 0.25, 0.5, 1}:
 
@@ -371,9 +439,13 @@ Dreaming becomes **Phase 8** on the roadmap. Each stage is one PR with its gate.
      after 20:00.
 4. **Dream edges at weight 0.** Indexer support, `MODE_ORIGINS`, the fixture's true and
    decoy candidates, and a baseline refresh.
-   - *Gate:* `index` rebuilds identical edges from the candidate file; expiry removes
-     them; the Phase 7 baseline shows **0 deltas** at weight 0; the `dream` ablations
-     appear in `--ablate` output.
+   - *Gate:* `index` rebuilds identical edges from the candidate file, and expiry
+     removes them. At weight 0 the Phase 7 baseline shows **0 deltas in hits, metrics
+     and aggregates**; the fixture hash and config change and are refreshed. `relate`
+     output is unchanged. The `dream` ablations appear in `--ablate` output. The fixture
+     distance tests still pass with `dream` excluded.
+   - The `EdgeOrigin`, `MODE_ORIGINS` and `originWeights.dream` changes land in this
+     stage, not earlier, so every retrieval-facing change ships under this gate.
 5. **Measure, then decide.** Run the weight sweep in Evaluation.
    - *Turn on* (set a non-zero default) only if, at some weight, remote-association
      recall@5 rises on **both** dev and holdout, and no kind regresses on either split in
@@ -417,3 +489,44 @@ These extend [docs/SOURCES.md](../SOURCES.md) as a new D-series.
 | D13 | Lin et al. (2025), [Sleep-time Compute: Beyond Inference Scaling at Test-time](https://arxiv.org/abs/2504.13171) | LLM agents computing offline |
 | — | Philip K. Dick (1968), *Do Androids Dream of Electric Sheep?*; Isaac Asimov (1986), "Robot Dreams" | Epigraph and framing only |
 | — | Circadia [EVAL](../EVAL.md), [baseline](../../eval/baseline.json), [ROADMAP](../ROADMAP.md), [SECURITY](../SECURITY.md), [ADR-0006](../decisions/ADR-0006-triple-candidates-always-queue.md), [ADR-0010](../decisions/ADR-0010-eval-harness-determinism.md) | The foundation this extends |
+
+## Appendix A: review decisions
+
+Answers to the architecture review's open questions, numbered as in the review. Where a
+decision changed the design, the body above is already updated.
+
+| # | Decision |
+| --- | --- |
+| 1 | `a` = recent side, `b` = remote side |
+| 2–3 | `related_to` is `many` with no inverse; state it in SCHEMA.md |
+| 4 | `circadia dream` always runs; `consolidate --dream` needs `dreaming.enabled` |
+| 5 | `extraction.provider: none` skips the pass; the report says so |
+| 6–7 | Normalizations as in step 5; noise count is `round(samplesPerNight × noiseShare)` |
+| 8 | `minHops` default is 2, measured without `dream` edges |
+| 9 | `benchmarks/generate-vault.ts` has the same LCG (seed 42). Extract `src/util/rng.ts` and have both import it; the eval fixture hash must not change |
+| 10 | `check-ignore -q` on the candidate file path, plus `ls-files`; exit codes as in Data model; test 0, 1, 128 and a tracked file |
+| 11 | Temp name `<night>.json.reading-<pid>-<random>`, deleted in `finally`; the concurrency test spawns two processes |
+| 12 | Expiry is evaluated on read and on write; `expired` is set lazily |
+| 13–14 | First endorse resets expiry once; `note` is fenced free text, 280 characters max |
+| 15–16 | One fence around report and fragments; rules outside it; `--json` shape as in Wake recall |
+| 17–18 | `type: 'association'`; one row `src = a`, `dst = b` |
+| 19 | `relate` excludes `dream` always |
+| 20–21 | No `INDEX_SCHEMA_VERSION` bump; dream edges are rebuilt on every index |
+| 22 | `--dry-run` calls the model; `--sample-only` doesn't |
+| 23 | Different model output on a re-run is acceptable; ids keep candidates idempotent |
+| 24 | No index means an error, as in `recall` |
+| 25 | The pass runs after the consolidation commit, including when the commit is refused |
+| 26 | Two floors, named "sampling" and "traversal" in CONFIG.md; defaults `medium` and `low` |
+| 27 | Intended: `recorded_at` = the night governs as-of |
+| 28 | Rename the synthetic origin in `test/eval-ablate.test.ts` (e.g. `synthetic-origin`) |
+| 29 | Prefer making the `STATE_DIR` and `Date.now()` guard tests scan `src/` recursively; extending the lists is acceptable |
+| 30 | `circadia eval --dream-sweep` |
+| 31 | "0 deltas" means hits, metrics and aggregates; fixture hash and config are refreshed |
+| 32 | Two files: committed source in `eval/`, copied by the generator |
+| 33 | Intended: scope drops out-of-scope dream edges |
+| 34 | Confirmed: the trust gate reads `nodes`, unaffected |
+| 35 | `recallFragments: 0` returns the report only |
+| 36 | `logTtlHours: 0` turns the TTL off |
+| 37 | No `--as-of` for the pass |
+| 38 | Confirmed: `includeSuperseded` doesn't affect dream edges |
+| 39–40 | No session id; the pass never logs access, so `mcp.logAccess` is irrelevant |

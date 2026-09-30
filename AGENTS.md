@@ -63,6 +63,8 @@ node bin/circadia.mjs --help
   is the vault itself, `.circadia/access.jsonl`, `.circadia/triples/` (a cache of LLM
   output), and `.circadia/consolidated.json` (each episode's body hash at the last
   consolidation, so re-selection is content-based rather than mtime-based — C22).
+  `.circadia/dreams/` (the REM log and candidate queue) is non-derivable but **disposable**
+  and never committed to git; losing it loses nothing the user asked to keep (ADR-0011).
 - **Episodes are append-only.** Code never edits an episode body. The one exception:
   consolidation may set the `consolidated:` frontmatter field.
 - **Facts are never deleted.** A changed fact is struck through
@@ -101,6 +103,7 @@ node bin/circadia.mjs --help
 | `src/cli/watch.ts` | `watch` command | reindexes on change; embeds best-effort after each reindex |
 | `benchmarks/` | synthetic vault generator + benchmark runner | `npm run benchmark`; results in `docs/PERFORMANCE.md` |
 | `src/consolidation/` | episode replay → candidate extraction → schema-fit gate → promote/queue/supersede | `schema.ts` `evaluateGate` is pure (facts are read in `consolidate.ts`); untrusted sources and triple candidates always queue (ADR-0006) |
+| `src/dreams/` | REM pass → candidate associations → read-once wake recall | writes only under `.circadia/dreams/`; never writes the vault; dream edges ship at weight 0 (ADR-0011); contract in its README |
 | `src/mcp/` | MCP server (stdio) | contract in its README |
 | `src/eval/` | eval runner, metrics, ablations, baseline, tuning, adapters | strictly read-only; determinism contract in ADR-0010 |
 | `eval/` | fixture generator, query set, committed baseline | `npm run eval`; `eval/.fixture/` is generated and gitignored |

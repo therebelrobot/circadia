@@ -267,6 +267,56 @@ works in TypeScript and uses Mastra as their agent framework.
 
 ---
 
+## Phase 8: Dreaming (REM pass and wake recall)
+
+RFC-0001. Contract in `src/dreams/README.md`; decision in ADR-0011.
+
+**Deliverables**
+
+- [ ] **Stage 1 — ADR and contract.** ADR-0011 (disposable state category, gitignore
+      enforcement, the `dream` origin at weight 0, why confirmation is CLI-only),
+      `src/dreams/README.md`, and the brain-map rows.
+- [ ] **Stage 2 — REM pass, dry run.** `circadia dream [--dry-run | --sample-only]` and
+      `consolidate --dream`: recent side by ACT-R activation, remote side by PPR-weighted
+      sampling over non-dream origins, proposal through the extraction model, grounding,
+      scoring, and the night's log. Shared `src/util/rng.ts` extracted from the two LCG
+      copies. `circadia init` adds `.circadia/dreams/` to `.gitignore`.
+- [ ] **Stage 3 — Candidates, wake, review.** `circadia wake [--json]`, MCP `wake`,
+      `endorse_dream`, `dismiss_dream`, the dreams section in `circadia review`, and
+      candidate expiry.
+- [ ] **Stage 4 — Dream edges at weight 0.** `EdgeOrigin` gains `'dream'`, `MODE_ORIGINS`,
+      `graph.originWeights.dream: 0`, the indexer's dream-edge emission, `relate` exclusion,
+      the committed `eval/dreams.fixture.jsonl`, and a baseline refresh.
+- [ ] **Stage 5 — Measure, then decide.** `circadia eval --dream-sweep` over
+      `originWeights.dream` ∈ {0, 0.25, 0.5, 1}. Report-only; turning dreams on is a human
+      decision.
+
+**Acceptance**
+
+- Stage 2 gate: the pass writes nothing outside `.circadia/dreams/`, never appends to
+  `access.jsonl`, never samples below `dreaming.trustFloor`, and refuses to run when the
+  path isn't git-ignored. Re-running a night is a no-op; every recorded-response case is
+  handled.
+- Stage 3 gate: `wake` deletes the log and a second call reports nothing left; two
+  concurrent `wake` calls return the log once; a failed-pass fixture yields "slept badly";
+  MCP tools never write under the vault's note folders; review accept writes exactly one
+  `by:: user` `related_to` fact; timezone test in `America/New_York` after 20:00.
+- Stage 4 gate: `index` rebuilds identical edges from the candidate file and expiry removes
+  them; at weight 0 the Phase 7 baseline shows 0 deltas in hits, metrics and aggregates;
+  `relate` output is unchanged; the `dream` ablations appear in `--ablate` output; the
+  fixture distance tests still pass with `dream` excluded.
+- Stage 5: dreams are turned on only if remote-association recall@5 rises on both dev and
+  holdout, no kind regresses on either split in the decoys-only run, and trust stays at 0.
+  If the sweep is flat, dreams stay at weight 0.
+
+**Notes**
+
+- A user who never sets any `dreaming.*` key gets no dreaming at all
+  (`dreaming.enabled: false`).
+- Dream state is disposable and never committed; see ADR-0011.
+
+---
+
 ## Packaging (can run in parallel from Phase 3)
 
 - [ ] **Multi-arch (amd64 and arm64) container for the MCP server**, published to GHCR via

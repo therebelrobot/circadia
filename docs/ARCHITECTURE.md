@@ -157,7 +157,30 @@ query ──▶ cues (FTS5|BM25 + entity names) ─▶ RRF seeds
                     top-K within token budget ─▶ access log ─▶ render (fenced)
 ```
 
-## 10. Why these technology choices
+## 10. Sleep has two phases: consolidation and recombination
+
+**Findings.** Slow-wave (NREM) sleep replays recent experience and groups it into schemas;
+REM sleep, with hippocampus and cortex less coupled, recombines across those schemas. [D1–D8]
+
+| finding | decision |
+|---|---|
+| NREM replay groups memories into schemas; REM recombines across them (D1) | The REM pass runs after consolidation and samples pairs from different regions of the graph |
+| REM improves remote-association problem solving (D2) | Output is an association between distant notes, never a new fact |
+| Only 1–2% of dream reports replay a waking episode (D3) | Recombination, not replay; faithful replay stays NREM's job |
+| Dreaming about a recent task tracks its overnight consolidation (D4) | The recent side is chosen by ACT-R activation |
+| Dream strangeness may prevent overfitting to the day (D5) | A share of partners are random older notes |
+| REM-active MCH neurons suppress new hippocampal memories (D6) | Read-once log; candidates expire |
+| Dream sleep may weaken spurious patterns (D7) | Ungrounded proposals are pruned, and logged as pruned |
+| Sleep downscales synapses so only what earned it stays strong (D8) | Dream edges start at weight 0 |
+
+**Decision.** `circadia dream` (and `consolidate --dream`) runs a REM pass that pairs
+recently active notes with distant ones and asks the extraction model whether anything
+connects them. The output is a *candidate association* under `.circadia/dreams/`, never a
+fact. A human accepts one in `circadia review`, which writes an ordinary `by:: user` fact.
+Dream edges enter the graph at weight 0 until the eval says they help. See RFC-0001 and
+ADR-0011.
+
+## 11. Why these technology choices
 
 - **SQLite via `node:sqlite`**: zero dependencies, one file, runs on a Raspberry Pi,
   recursive CTEs for path queries. See ADR-0004.

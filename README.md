@@ -40,6 +40,7 @@ The design is grounded in cognitive neuroscience. Each mechanism maps to a findi
 | Source monitoring: false memories are mostly source errors | Every fact records `by::`, `src::`, `trust::`; low-trust recall is fenced as data |
 | Event segmentation | Episodes are cut at topic shifts, not token counts (Phase 3) |
 | Schemas accelerate consolidation | Schema-fit gate: facts that fit known entities merge fast; novel ones need corroboration |
+| Sleep has two phases: NREM replay consolidates, REM recombines across schemas | A REM pass pairs recently active notes with distant ones; output is a candidate association, never a fact (Phase 8) |
 
 ## Status
 
@@ -80,6 +81,11 @@ seed filter, and triple promotion path to consolidation.
 
 **Phase 6:** Git-backed as-of for prose, `circadia history` for note history, and
 access-log compaction for ACT-R activation.
+
+**Phase 8 (in progress):** Dreaming — a REM pass that pairs recently active notes with
+distant ones and records candidate associations under `.circadia/dreams/`, a read-once
+`wake` recall, human confirmation in `circadia review`, and `dream` edges that ship at
+weight 0 until the eval says they help. See [`docs/rfcs/RFC-0001-dreaming.md`](docs/rfcs/RFC-0001-dreaming.md).
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for details.
 
@@ -167,6 +173,7 @@ src/
   cli/main.ts              CLI
   mcp/                     Phase 3 — contract only
   consolidation/           Phase 4 — contract only
+  dreams/                  Phase 8 — REM pass, wake recall, dream edges
 templates/                 Obsidian note templates (copied into vaults by `init`)
 examples/vault/            fictional vault exercising every feature
 test/                      node:test suites

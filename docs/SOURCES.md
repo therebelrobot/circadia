@@ -1,7 +1,7 @@
 # Sources
 
-Everything this design draws on, grouped by role. IDs `S1`–`S18` are cited from
-`ARCHITECTURE.md`. The benchmark numbers quoted in the landscape section are
+Everything this design draws on, grouped by role. IDs `S1`–`S18` and `D1`–`D13` are cited
+from `ARCHITECTURE.md`. The benchmark numbers quoted in the landscape section are
 **vendor-reported** and rarely comparable across systems. See the methodology caveats in L14
 and L15.
 
@@ -27,6 +27,24 @@ and L15.
 | S16 | Rasmussen et al., *Zep: A Temporal Knowledge Graph Architecture for Agent Memory* — https://arxiv.org/html/2501.13956v1 · Zep blog on bi-temporal edges — https://blog.getzep.com/beyond-static-knowledge-graphs/ | bi-temporal fact model; invalidation instead of deletion |
 | S17 | *Agent Memory Systems and Knowledge Graphs: Letta, Mem0, Graphiti, and Cognee* — https://codepointer.substack.com/p/agent-memory-systems-and-knowledge · Graphiti temporal model — https://www.mintlify.com/getzep/graphiti/concepts/temporal-model | Graphiti's `valid_at` / `invalid_at` / `expired_at` semantics |
 | S18 | Node.js issue #56951, *Add SQLite FTS5 Extension* — https://github.com/nodejs/node/issues/56951 · openclaw #20987, *node:sqlite compiled without FTS5* — https://github.com/openclaw/openclaw/issues/20987 | FTS5 probe + BM25 fallback |
+
+## Dreaming (REM) → design
+
+| id | source | used for |
+|---|---|---|
+| D1 | Lewis, Knoblich & Poe (2018), *How Memory Replay in Sleep Boosts Creative Problem-Solving*, Trends in Cognitive Sciences — https://pubmed.ncbi.nlm.nih.gov/29776467/ | NREM forms schemas, REM recombines across them |
+| D2 | Cai et al. (2009), *REM, not incubation, improves creativity by priming associative networks*, PNAS — https://www.pnas.org/doi/10.1073/pnas.0900271106 | remote associations as REM's output |
+| D3 | Fosse, Fosse, Hobson & Stickgold (2003), *Dreaming and Episodic Memory: A Functional Dissociation?*, J. Cognitive Neuroscience — https://direct.mit.edu/jocn/article-abstract/15/1/1/3724/Dreaming-and-Episodic-Memory-A-Functional | recombination, not replay |
+| D4 | Wamsley et al. (2010), *Dreaming of a Learning Task Is Associated with Enhanced Sleep-Dependent Memory Consolidation*, Current Biology — https://pubmed.ncbi.nlm.nih.gov/20417102/ | sampling recent activity |
+| D5 | Hoel (2021), *The overfitted brain: Dreams evolved to assist generalization*, Patterns — https://www.sciencedirect.com/science/article/pii/S2666389921000647 | noise share |
+| D6 | Izawa et al. (2019), *REM sleep–active MCH neurons are involved in forgetting hippocampus-dependent memories*, Science — https://www.science.org/doi/10.1126/science.aax9238 | read-once log, expiry |
+| D7 | Crick & Mitchison (1983), *The function of dream sleep*, Nature — https://www.nature.com/articles/304111a0 | pruning ungrounded proposals |
+| D8 | Tononi & Cirelli (2014), *Sleep and the Price of Plasticity*, Neuron — https://pmc.ncbi.nlm.nih.gov/articles/PMC3921176/ | dream edges start at weight 0 |
+| D9 | Walker & van der Helm (2009), *Overnight therapy? The role of sleep in emotional brain processing*, Psychological Bulletin — https://pubmed.ncbi.nlm.nih.gov/19702380/ | context; emotional processing not modeled |
+| D10 | Revonsuo (2000), *The reinterpretation of dreams*, Behavioral and Brain Sciences — https://www.cambridge.org/core/journals/behavioral-and-brain-sciences/article/abs/reinterpretation-of-dreams-an-evolutionary-hypothesis-of-the-function-of-dreaming/EE0E7DB39E361540D2DDA79C262EDA7E | context; threat simulation not modeled |
+| D11 | Hinton, Dayan, Frey & Neal (1995), *The "Wake-Sleep" Algorithm for Unsupervised Neural Networks*, Science — https://www.science.org/doi/10.1126/science.7761831 | learning from self-generated samples |
+| D12 | Shin et al. (2017), *Continual Learning with Deep Generative Replay* — https://arxiv.org/abs/1705.08690 | synthesized rehearsal |
+| D13 | Lin et al. (2025), *Sleep-time Compute: Beyond Inference Scaling at Test-time* — https://arxiv.org/abs/2504.13171 | LLM agents computing offline |
 
 ## Agent-memory engineering
 
