@@ -114,8 +114,10 @@ test('C2: promotes a known entity + known predicate and writes the exact fact li
 
     const text = readFileSync(join(v, 'entities/projects/x.md'), 'utf8');
     const today = localDateString();
-    const id = `f-${shortHash('x', 'runs_on', '[[y]]', null)}`;
-    const expected = `- [runs_on:: [[y]]] [at:: ${today}] [by:: agent] [src:: [[2026-09-20-move]]] [trust:: high] [conf:: 0.9] ^${id}`;
+    // World time opens at the episode's `started`; the id hashes that same value.
+    const episodeStartMs = Date.parse('2026-09-20T10:00:00-04:00');
+    const id = `f-${shortHash('x', 'runs_on', '[[y]]', episodeStartMs)}`;
+    const expected = `- [runs_on:: [[y]]] [valid:: 2026-09-20..] [at:: ${today}] [by:: agent] [src:: [[2026-09-20-move]]] [trust:: high] [conf:: 0.9] ^${id}`;
     assert.ok(text.includes(expected), `expected fact line not found.\nwant: ${expected}\ngot:\n${text}`);
   } finally {
     restore();

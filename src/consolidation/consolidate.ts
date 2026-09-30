@@ -95,16 +95,17 @@ export async function consolidate(
 
     const decision = evaluateGate(c, cfg, subjectRef, objectRef, currentFacts);
 
+    // World time is when the claim was made (the episode's `started`), not the run date.
+    // `at::` and `superseded::` keep the run date (system time).
+    const validAt = noteById.get(c.episodeId)?.created ?? todayMs ?? Date.now();
+
     if (decision.action === 'promote' && subjectRef) {
-      const fact = buildFact(c, subjectRef.id, objectRef?.id ?? null, todayMs, null);
+      const fact = buildFact(c, subjectRef.id, objectRef?.id ?? null, todayMs, validAt);
       writeFactToNote(vault, subjectRef.path, fact, { factsHeading: cfg.vault.factsHeading });
       promoted++;
       trackFact(entityFacts, subjectRef.path, fact);
     } else if (decision.action === 'supersede' && subjectRef) {
       const supersededAt = todayMs ?? Date.now();
-      // World time is when the change happened (the episode's `started`), not the run
-      // date. `at::` and `superseded::` keep the run date (system time).
-      const validAt = noteById.get(c.episodeId)?.created ?? supersededAt;
       const newFact = buildFact(c, subjectRef.id, objectRef?.id ?? null, supersededAt, validAt);
       const result = supersede(join(vault, subjectRef.path), { supersededAt, validAt, newFact });
       if (result.changed) {
