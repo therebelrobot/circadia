@@ -328,7 +328,7 @@ RFC-0001. Contract in `src/dreams/README.md`; decision in ADR-0011.
   - `actions/attest-build-provenance` on the index digest;
   - Dependabot for actions;
   - non-root user, read-only root filesystem, and the vault as the only writable mount.
-- [ ] **npm publish with provenance**, if published.
+- [x] **npm publish with provenance**, if published.
 
 ## Open questions
 

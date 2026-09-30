@@ -1,6 +1,6 @@
 # ADR-0012: A publish-time JS build so `npx` and global installs work
 
-**Status:** proposed (2026-09-30)
+**Status:** accepted (2026-09-30)
 
 ## Context
 

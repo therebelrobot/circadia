@@ -1,271 +1,201 @@
-# RFC-0002: How graph and lexical scores combine
+# RFC-0002: Entity-anchored fact expansion
 
-Status: proposed · 2026-09-30 · written against `5308e0e` (RFC-0001 Stage 4)
+Status: proposed · 2026-09-30 · measured against `1bb6a8a` (vector seeds wired into MCP and eval)
+
+Replaces an earlier draft titled "How graph and lexical scores combine". That draft's
+numbers were measured before vector seeds reached the eval, and they don't hold on the
+current baseline (see [History](#history-of-this-rfc)).
 
 ## Summary
 
-Recall today can't surface a passage that is reached only through the graph. The graph
-score is PageRank mass divided by the maximum mass, and the maximum always belongs to the
-seed passages, because they hold the restart mass. A fact target, a multi-hop answer or a
-dream target scores about 0.01 against a seed's 1.0, so it never reaches the top 5,
-whatever its edge weight.
+Recall can't surface a passage that is reached only through the graph. When a query names
+an entity ("what does the alpha project run on"), the answer is one fact edge away. Today,
+that answer ranks 69th to 161st and never reaches the top 5.
 
-This RFC proposes two changes, measured with a prototype against the Phase 7 eval:
+This RFC proposes **entity-anchored fact expansion**. When a hit belongs to a note the query
+names (a cue entity), recall places that note's `#facts` passage next, then the targets of
+its facts that are valid at the query time. It adds one step after ranking, and it doesn't
+change scoring.
 
-1. **Rank fusion.** Rank passages by reciprocal rank fusion (RRF) of two lists: the seed
-   ranking, and the ranking by *propagated* mass (PageRank minus the restart mass each
-   seed injects). This replaces dividing raw PageRank mass by its maximum.
-2. **Fact-target expansion.** When a `#facts` passage is a hit, place the targets of its
-   currently valid fact edges directly after it. Edges are filtered by the same
-   bi-temporal rules the graph uses, and ordered by how well the predicate matches the
-   query.
+Prototyped against the Phase 7 eval at `1bb6a8a`, auto mode (dev / holdout):
 
-On the fixture, together (hipporag mode; auto is the same except where noted):
-
-- **Temporal recall** goes from 0.17 / 0.50 to **1.00 / 1.00** (dev / holdout). Vacuous
-  absence checks drop from **6 to 0** with no absence violations, so the eval can now show
-  that as-of filtering is correct end to end.
-- **Multi-hop** goes from 0.17 / 0.00 to **0.33 / 0.50**. In auto it goes to 0.17 / 0.50:
-  auto stays in wikilink mode for some multi-hop queries, where there are no fact edges to
-  expand.
-- The **tea/coffee ordering failure is fixed** (order violations 1 → 0).
-- **Single-hop and preference stay at 1.00.** Trust violations stay at 0.
-- **The cost:** holdout MRR falls from 0.377 to 0.339 (0.349 in auto) while dev MRR rises.
-  That's a real trade-off and needs a human decision.
-
-It does **not** make remote associations surface: they stay at 0.00 under every variant
-tried. That changes what RFC-0001 should aim for (see
-[Consequences for dreaming](#consequences-for-dreaming)).
-
-## Background: the diagnosis
-
-`runRung()` in `src/retrieval/recall.ts` scores each passage as:
-
-```
-score = w.graph × (ppr(p) / max ppr) + w.activation × activation + w.importance × importance
-```
-
-`personalizedPageRank()` computes `p = (1 − d)·s + d·Wᵀp`. The `(1 − d)·s` term puts half
-the mass (at `damping` 0.5) back on the seeds every iteration, so the maximum is always a
-seed passage. Everything else is divided by that seed's mass.
-
-Evidence from the fixture:
-
-| Query | Target | Target's graph component | Target rank |
-| --- | --- | --- | --- |
-| "which tool does the beta project run on" (typed) | `greenhouse-controller#0`, one fact hop | 0.040 | 69 |
-| "what does the alpha project run on" (typed) | `old-laptop#0`, one fact hop | 0.012 | 161 |
-| "weathervane anemometer", dream edge weight 1 | `lighthouse-foghorn#0`, one dream hop | 0.007 | 143 |
-| same, dream edge weight 50 | same | 0.005 | 148 |
-
-The top hit's graph component is 1.0 in every case. A reached passage's ranking therefore
-falls to activation and importance, which don't know about the query. This explains three
-Phase 7 findings at once:
-
-- raising `originWeights.fact` from 0.5 to 10 changed nothing;
-- coffee outranks tea (tea sits one fact edge from Sam; coffee is an unlinked lexical twin
-  of it); and
-- RFC-0001's dream-weight sweep was completely flat.
-
-A second, smaller cause is **seed crowding.** "What does the alpha project run on" gets
-21 seeds, and every project's `#facts` passage matches "run on" because it contains
-`runs_on`. Those seeds fill the top 5 before any graph-reached passage can compete.
-
-## Experiments
-
-A scratch copy of `src/` added a scoring switch and an expansion switch to `runRung()`.
-Nothing was committed. Every run used the Phase 7 fixture and query set at `5308e0e`,
-through `runEval`. The table shows macro recall@5 over the six unscoped kinds, as the
-tuner defines it.
-
-| Variant | Mode | dev macro | holdout macro | dev MRR | holdout MRR | order | vacuous |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| **v0** current (PPR / max) | auto | 0.389 | 0.417 | 0.373 | 0.377 | 1 | 6 |
-| **v1** 0.5 × seed + 0.5 × propagated, each max-normalized | auto | 0.389 | 0.375 | 0.342 | 0.363 | 1 | — |
-| **v2** RRF(seed rank, propagated rank), k = 60 | auto | 0.389 | 0.417 | 0.373 | 0.325 | **0** | — |
-| **v3** log-scaled PPR | auto | 0.365 | 0.375 | 0.311 | 0.325 | 0 | — |
-| **v4** HippoRAG-style: seeds moved onto notes | auto | 0.317 | 0.333 | 0.241 | 0.322 | 1 | — |
-| v0 + seed limit 5 or 10 | auto | 0.389 | 0.417 | ≈ | ≈ | 1 | — |
-| v0 + expansion | auto | 0.500 | 0.500 | 0.433 | 0.417 | 1 | — |
-| **v2 + expansion (proposed)** | auto | **0.528** | **0.583** | 0.411 | 0.349 | **0** | **0** |
-| **v2 + expansion (proposed)** | hipporag | **0.556** | **0.583** | 0.417 | 0.339 | **0** | **0** |
-
-Per kind, proposed vs current, hipporag mode, recall@5 (dev / holdout):
-
-| Kind | Current | Proposed |
+| | Current | Proposed |
 | --- | --- | --- |
-| single-hop | 1.00 / 1.00 | 1.00 / 1.00 |
-| preference | 1.00 / 1.00 | 1.00 / 1.00 |
-| multi-hop | 0.17 / 0.00 | 0.33 / 0.50 |
-| temporal | 0.17 / 0.50 | 1.00 / 1.00 |
-| remote 2-hop | 0.00 / 0.00 | 0.00 / 0.00 |
-| remote 3-hop | 0.00 / 0.00 | 0.00 / 0.00 |
-| multi-hop-scoped | 1.00 / 1.00 | 1.00 / 1.00 |
-| temporal-scoped | 1.00 / 1.00 | 1.00 / 1.00 |
+| Macro recall@5 (six unscoped kinds) | 0.361 / 0.417 | **0.556 / 0.500** |
+| MRR | 0.328 / 0.443 | **0.368 / 0.465** |
+| Temporal recall@5 | 0.17 / 0.50 | **1.00 / 1.00** |
+| Multi-hop recall@5 | 0.00 / 0.00 | **0.33 / 0.00** (hipporag: 0.50 / 0.00) |
+| Single-hop, preference | 1.00 / 1.00 | 1.00 / 1.00 |
+| Vacuous absence checks | 6 | **0** |
+| Trust / order / missing violations | 0 / 0 / 0 | 0 / 0 / 0 |
+| Absence violations | 1 | 1 (the same known scoped case) |
 
-What the variants show:
+- **No kind regresses**, in any mode, on either split. Forced typed and hipporag also gain
+  single-hop holdout (0.75 → 1.00).
+- **MRR rises on both splits.** The earlier draft's rank-fusion change cost holdout MRR;
+  this one doesn't need it.
+- **Accepted associations now surface.** When RFC-0001's dream associations are accepted
+  into the vault as `related_to` facts, remote-association recall rises from 0 to between
+  0.33 and 0.67 (see [Consequences for dreaming](#consequences-for-dreaming)).
 
-- **No scoring variant alone moves recall@5.** RRF (v2) fixes the ordering failure and
-  lifts reached passages by a lot (the greenhouse controller goes from rank 69 to 31), but
-  seed crowding still keeps them out of the top 5. Rescaling (v1, v3) and HippoRAG-style
-  seeding (v4) are neutral or worse. v4 costs single-hop badly, because the seed passages
-  lose their restart mass.
-- **Expansion is what moves recall,** and it needs RRF to keep the ordering fix. Early
-  versions of expansion took a note's first two fact edges in file order and missed. It
-  works once edges are filtered to those valid at the query time (`asOf`, or now) and
-  ordered by predicate match: "maintainer" picks `maintained_by`.
-- **Expanding from any top-3 hit's note,** not only from `#facts` hits, raised remote
-  recall a little when associations had been accepted as facts (dev typed: 2-hop 0.33,
-  3-hop 0.17), but lost 0.08 macro on holdout. It's rejected.
+## Background
 
-**Honesty about the evidence.** The expansion ordering rule was designed after looking at
-why the dev multi-hop query `q-mh-pref` failed. Holdout agrees (macro 0.417 → 0.583), but
-holdout has only two queries per kind. The personal-vault eval has to confirm this before
-any default changes.
+**Why graph-reached passages lose.** `runRung()` scores
+`w.graph × ppr(p) / max ppr + w.activation × activation + w.importance × importance`.
+The PageRank maximum always belongs to a seed passage, because seeds hold the restart
+mass `(1 − d)·s`. A passage one fact edge from a seed gets a graph component of about
+0.01–0.04 against a seed's 1.0. The seeds, many of them lexical matches for other
+entities ("run on" matches every project's `runs_on` line), then fill the top 5.
+
+**What changed with vector seeds.** Wiring the query embedding into MCP and eval
+(`fd12997`) changed the seed mix.
+- It fixed the tea/coffee ordering failure on its own. The earlier draft needed rank
+  fusion for that.
+- It also moved prose passages (`#0`) above facts passages in the seed ranking.
+
+That second change broke the earlier draft's expansion rule, which fired only on
+`#facts` hits. With `#facts` passages lower, expansion fired from *other* entities' facts
+instead (Cy's and Dee's preferences for a question about Gus) and crowded out the right
+answer.
+
+**The fix is to anchor expansion on the query's subject,** not on whichever facts
+passage ranks highest. `recall()` already computes the query's cue entities
+(`cueEntities()`, the entity seed list). Those name the subject.
 
 ## Proposal
 
-### 1. Rank fusion in `runRung()`
+After ranking, and before the token budget is applied, walk the hits in order. On the
+**first** hit whose note is a cue entity of this query, and only for modes whose origins
+include `fact` (typed, hipporag):
 
-```
-restart(p)    = (1 − d) × seed(p) / Σ seed        (0 for non-seeds)
-propagated(p) = max(0, ppr(p) − restart(p))
-seedRank      = rank of p among passages with seed(p) > 0
-propRank      = rank of p among passages with propagated(p) > 0
-fused(p)      = Σ over the lists p appears in of 1 / (k + rank)
-graph(p)      = fused(p) / max fused                   ← replaces ppr(p) / max ppr
-```
+1. **Insert the note's `#facts` passage** right after the hit, if it has one and it isn't
+   already placed.
+2. **Choose fact edges.** Take the note's `fact` edges that:
+   - pass `edgeAllowed(e, asOf, cfg)`: trust floor, supersession, system time; and
+   - are valid in world time at `asOf ?? now`. For now-queries, `edgeAllowed` keeps
+     ended-but-true history. That's right for traversal, but wrong for "what does X run
+     on now".
+3. **Order them** by how many query tokens match the predicate's parts after light
+   suffix stripping (`maintained_by` matches "maintainer"). Ties keep index order.
+4. **Insert targets.** For up to `retrieval.factExpansion.perHit` targets (default 2),
+   insert the target note's first passage, then its `#facts` passage if present, skipping
+   anything already placed.
+5. **Mark every inserted hit** `via: "fact-expansion"` with the predicate that brought
+   it. `renderForContext()` shows it, so the agent can see why the passage is there.
 
-- `k` defaults to 60, following common RRF practice and the seed fusion that already
-  exists in `recall()`.
-- `score` keeps its shape: `w.graph × graph + w.activation × activation + w.importance ×
-  importance`.
-- `components.graph` changes meaning, from normalized mass to normalized fused rank. Add
-  `components.propagated` (normalized propagated mass) so the old signal stays inspectable.
-- This is a score-component change under AGENTS.md §6.3 and needs an ADR and a
-  RETRIEVAL.md update.
+Each cue entity expands once per query.
 
-### 2. Fact-target expansion
+**Invariants** (each needs a test):
 
-After ranking and before the token budget is applied, walk hits in order. After each hit
-whose passage is a `#facts` passage:
+- Only `fact` edges. **Never** `dream`, `triple`, `synonym` or `link` edges. Expansion
+  follows claims the user or consolidation asserted, not associations.
+- Only passages already in the candidate set are inserted, so the trust floor and the
+  recall scope have already applied.
+- An expired or future fact target is never inserted for an as-of query. The eval's
+  6 → 0 vacuous absences depend on this.
+- No new score component. `components` keeps its current shape. Inserted hits keep their
+  own components; only their position changes.
 
-1. Take its note's `fact` edges that pass `edgeAllowed(e, asOf, cfg)` (trust floor,
-   supersession, system time) **and** are valid in world time at `asOf ?? now`. Today,
-   `edgeAllowed` keeps ended-but-true history for now-queries. That's right for graph
-   traversal, but wrong for "what does X run on now".
-2. Order the edges by the number of query tokens that match the predicate's parts
-   (`maintained_by` → `maintain`, `by`), after light suffix stripping; ties keep index
-   order.
-3. For up to `retrieval.factExpansion.perHit` (default 2) targets, insert the target note's
-   first passage, then its `#facts` passage if one exists. Skip any already placed.
-4. Mark each inserted hit `via: "fact-expansion"`, with the predicate that brought it.
-   `renderForContext()` shows that, so the agent can see why a passage is there.
-
-Rules:
-
-- Only in modes whose origins include `fact` (typed, hipporag).
-- **Never along `dream`, `triple`, `synonym` or `link` edges.** Expansion is for claims the
-  user or consolidation asserted, not for associations.
-- Only passages already in the candidate set are inserted, so trust and scope filters have
-  already applied. A test must prove that an out-of-scope or below-floor target is never
-  inserted.
-
-### Config
+**Config** (in `DEFAULT_CONFIG`, validated, with CONFIG.md rows):
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `retrieval.scoring` | `"ppr-max"` during rollout, `"rrf"` after the decision | Which graph composition `runRung()` uses |
-| `retrieval.rrfK` | `60` | RRF constant |
-| `retrieval.factExpansion.enabled` | `false` during rollout | Fact-target expansion |
-| `retrieval.factExpansion.perHit` | `2` | Targets inserted per `#facts` hit |
+| `retrieval.factExpansion.enabled` | `false` during rollout | Turn expansion on |
+| `retrieval.factExpansion.perHit` | `2` | Fact targets inserted per cue entity |
+
+## Experiments
+
+These came from a scratch copy of `src/` with switches in `runRung()`; nothing was
+committed. They ran against the Phase 7 fixture and query set at `1bb6a8a` through
+`runEval`, with trigram embeddings for passages and queries.
+
+Macro recall@5 over the six unscoped kinds, with MRR in brackets (dev / holdout):
+
+| Variant | auto | typed | hipporag |
+| --- | --- | --- | --- |
+| current | 0.361 / 0.417 (0.328 / 0.443) | 0.361 / 0.375 (0.307 / 0.402) | 0.361 / 0.375 (0.336 / 0.431) |
+| rank fusion (RRF of seed and propagated rank) | 0.417 / 0.417 (0.272 / 0.333) | 0.389 / 0.375 (0.248 / 0.298) | 0.417 / 0.375 (0.272 / 0.327) |
+| RRF + expansion from any `#facts` hit | 0.472 / 0.417 (0.300 / 0.343) | 0.500 / 0.375 (0.280 / 0.299) | 0.500 / 0.375 (0.304 / 0.328) |
+| RRF + entity-anchored expansion | 0.528 / 0.417 (0.318 / 0.352) | 0.528 / 0.417 (0.298 / 0.337) | 0.556 / 0.417 (0.324 / 0.366) |
+| **current scoring + entity-anchored expansion** | **0.556 / 0.500 (0.368 / 0.465)** | **0.583 / 0.500 (0.352 / 0.453)** | **0.583 / 0.500 (0.381 / 0.482)** |
+
+What the table shows:
+
+- **Rank fusion no longer earns its place.** It helps macro recall a little and costs MRR
+  on both splits. Its one clear win in the earlier draft, the tea/coffee ordering, now
+  comes from vector seeds.
+- **Expanding from any `#facts` hit** costs preference recall on dev (1.00 → 0.83),
+  because other people's facts expand.
+- **Entity anchoring is what makes expansion safe.** It is the only variant with no kind
+  regression.
 
 ## Consequences for dreaming
 
-No scoring or expansion variant made a remote-association target reach the top 5. That
-held with true dream edges at any weight, and with the true associations written into the
-vault as accepted `related_to` facts. The top 5 for "weathervane anemometer" belongs to
-passages about the weathervane. That's arguably correct: a user asking about the
-weathervane mostly wants the weathervane.
+RFC-0001 stays as decided: dream edges at weight 0. The flat sweep's cause (restart-mass
+normalization) is unchanged by this RFC, and remote-association recall stays at 0.00 with
+dream edges alone.
 
-So for RFC-0001:
+The path that does work is the one RFC-0001 made the only route into memory: a human
+accepts a dream in `circadia review`, which writes `related_to:: [[b]]` on note `a`. With
+the fixture's true associations written as accepted facts, same fixture, remote recall@5
+(dev / holdout):
 
-- **Stage 5 records a flat sweep and dreams stay at weight 0,** as that RFC already
-  provides.
-- **Top-5 recall is probably the wrong measure for associations.** A better fit may be a
-  separate, labeled channel: recall returns its top k plus up to *n* "associated notes"
-  reached through accepted `related_to` facts (and, if ever turned on, dream edges), each
-  marked with how it was reached. That would get its own eval kind, measured on that
-  channel rather than in competition with direct answers. It would be RFC-0003. It isn't
-  proposed here.
+| | auto | hipporag |
+| --- | --- | --- |
+| Current, accepted facts present | 0.00 / 0.00 (2-hop), 0.00 / 0.00 (3-hop) | same |
+| **Proposed, accepted facts present** | **0.50 / 0.00** (2-hop), **0.33 / 0.50** (3-hop) | **0.67 / 0.50** (2-hop), **0.50 / 0.50** (3-hop) |
 
-## Related finding, out of scope
+Macro recall rises to 0.694 / 0.583 (auto) and 0.778 / 0.667 (hipporag), with no kind
+regressing.
 
-**MCP recall never uses vector seeds.** `src/mcp/server.ts` calls `recall()` without
-`queryEmbedding`, and so does `runEval()`. Only the CLI embeds the query. An agent using
-Circadia over MCP therefore gets keyword and entity seeds only, even with embeddings
-configured, and the eval doesn't measure the dense path at all. This is a bug fix, not a
-design change: embed the query in the MCP handler when `embeddings.provider` is set, and
-let `runEval` embed with the trigram client. It should be fixed before this RFC's
-personal-vault evaluation, or that evaluation measures a path agents don't use.
+That's a mechanism result: the fixture's accepted associations are true by construction.
+But it confirms the design: **dreams earn their place in recall through review, not
+through edge weight.** An associations channel (the earlier draft's "RFC-0003") is no
+longer needed for accepted associations. It stays an option only for *unconfirmed* ones.
 
 ## Rollout
 
-1. **ADR-0012 and flags.** Record the score-component change. Add `retrieval.scoring`,
-   `retrieval.rrfK` and `retrieval.factExpansion.*`, all defaulting to current behavior.
+1. **Flag and config.** Add `retrieval.factExpansion.*`, off by default.
    - *Gate:* the Phase 7 baseline shows 0 deltas.
-2. **Rank fusion behind the flag.** Add the `propagated` component and tests: restart mass
-   is removed; a seed-only passage and a reached-only passage both get a fused score; the
-   tea/coffee ordering holds.
-   `test/integration.test.ts` › "now-queries drop superseded fact edges unless
-   includeSuperseded" asserts on the raw `graph` component. Under fusion it must assert on
-   `components.propagated` instead (the prototype failed that test for exactly this reason).
-   - *Gate:* default-off baseline has 0 deltas; flag-on numbers reported.
-3. **Fact expansion behind the flag.** Tests:
-   - as-of correctness: an expired target is never inserted, and a future target is
-     never inserted;
-   - scope and trust: out-of-scope or below-floor targets are never inserted;
-   - no expansion along dream, triple, synonym or link edges;
-   - `via` marking and rendering;
-   - the per-hit cap.
-   - *Gate:* flag-on eval reproduces this RFC's numbers within noise, and vacuous
-     absences are 0.
-4. **The MCP and eval vector-seed fix** (separate PR, see above).
-5. **Measure on a personal vault, then decide.** Run the private eval with both flags on
-   and off.
+2. **Implement behind the flag.** Code in `runRung()`, or a small `expandFacts()` helper
+   it calls. `recall()` passes `entities` to `runRung()`; the prototype passed them through
+   an environment variable, which the real code must not do. Tests, one per invariant:
+   - fact edges only (a `related_to` target is inserted; a `link`, `triple`, `dream` or
+     `synonym` neighbour is not);
+   - as-of correctness (expired and future targets are never inserted);
+   - trust floor and scope respected;
+   - each cue entity expands once;
+   - the per-hit cap holds;
+   - `via` marking, and how `renderForContext()` shows it.
+   - *Gate:* flag-on eval reproduces this RFC's numbers within noise; vacuous absences
+     are 0; no kind regresses on either split in any mode.
+3. **Measure on a personal vault.** Run the private eval with the flag on and off.
    - Turn on only if no kind regresses on either split of either tier, and trust and
-     absence violations stay at 0.
-   - The holdout MRR drop is a named, human decision.
-   - Changing a retrieval default is the one step that can't easily be undone, so it
-     happens in its own commit, with its own ADR entry.
+     absence violations don't rise.
+   - Flipping the default is a human decision in its own commit, with a line in
+     RETRIEVAL.md. It's the one change here that can't easily be undone.
 
 ## Open questions
 
-1. **RRF `k`.** 60 is conventional, not tuned. The tuner can sweep it within its no-kind-
-   regression rule.
-2. **Holdout MRR.** RRF moves some top-1 hits to rank 2 on holdout. Is recall@5 or MRR
-   the objective for an agent that reads the top 5 anyway?
-3. **The expansion ordering rule.** Predicate-token matching with suffix stripping is
-   crude and was designed against dev failures. Should edge recency, the edge's `conf`, or
-   a small predicate synonym list (in `predicates.defs`) replace or join it?
-4. **Seed crowding.** Every `#facts` passage matches its own predicate names ("run on"
-   hits all `runs_on` lines). Should predicate text be down-weighted or excluded from the
-   keyword index, since the predicate's meaning is already in the graph?
-5. **An associations channel** (see Consequences for dreaming): RFC-0003, or part of
-   RFC-0001's follow-up?
+1. **A total cap.** One cue entity can insert up to 1 + 2 × 2 = 5 passages, the whole
+   top 5 at default settings. That's fine for "what does X run on", but maybe too much when
+   a query names two entities. Should inserted passages be capped at, say, half of `topK`?
+   The eval can measure it.
+2. **The predicate-ordering rule** was designed against dev failures. Holdout agrees, but
+   it's crude. A per-predicate synonym list in `predicates.defs` would be less brittle.
+3. **Auto mode.** Expansion needs `fact` edges, so an auto query that stays in wikilink
+   mode gets none. Should a cue entity with facts be an escalation signal on its own?
+4. **Seed crowding.** Predicate names in `#facts` passages ("runs_on") match many queries
+   lexically. Should the keyword index skip predicate names, since the graph already
+   carries them?
+5. **Restart-mass normalization** remains the reason graph-only neighbours can't rank.
+   That matters for unconfirmed dream edges and for triple paths, and it's left for a
+   later RFC if one of those becomes worth pursuing.
 
-## Appendix: reproducing the prototype
+## History of this RFC
 
-The prototype was a scratch copy of `src/`, never committed. Its changes, all confined to
-`runRung()`:
-
-- compute `restart`, `propagated`, the two rank lists and `fused` as in the Proposal, and
-  use `fused / max fused` as `graph` when `SCORE_VARIANT=v2`;
-- after sorting, run the expansion walk above: `#facts` hits only; edges filtered by
-  `edgeAllowed` plus world-time validity at `asOf ?? now`; ordered by predicate-token
-  overlap; at most 2 targets, each followed by its `#facts` passage when present; only
-  passages already in the candidate set.
-
-With both switches on, the full suite passed except three tests. Two are the baseline
-tests, which are expected to fail until a refresh. The third is the `components.graph`
-assertion noted in Rollout step 2.
+The first draft (same day) proposed rank fusion plus expansion from any `#facts` hit,
+measured before vector seeds reached the eval: temporal 0.17 / 0.50 → 1.00 / 1.00 at a
+cost of holdout MRR. After `fd12997`, the same proposal gains nothing on holdout macro
+recall, loses MRR on both splits, and regresses preference on dev. The entity-anchored
+version replaces it.
