@@ -53,6 +53,46 @@ export function baseLevel(presentations: number[], now: number, decay: number): 
   return sum > 0 ? Math.log(sum) : -Infinity;
 }
 
+/**
+ * ACT-R optimized-learning approximation (Anderson & Schooler 1991; Anderson, Bothell,
+ * Lebiere & Matessa 1998). For a run of `n` presentations whose first occurred `L`
+ * seconds before `now`, the exact sum Σ_j t_j^(-d) is approximated by
+ *   n / (1 - d) · L^(-d)
+ * which is exact for evenly spaced presentations and close otherwise (error is O(1/n)).
+ * This is what lets a compacted summary stand in for the raw events it replaced, without
+ * keeping every timestamp.
+ */
+export function optimizedLearningSum(n: number, firstT: number, now: number, decay: number): number {
+  if (n <= 0) return 0;
+  const L = Math.max(1, (now - firstT) / 1000);
+  // d = 0.5 is canonical; guard the denominator so a misconfigured d >= 1 can't produce NaN.
+  const denom = Math.max(1e-6, 1 - decay);
+  return (n / denom) * Math.pow(L, -decay);
+}
+
+/**
+ * Base-level activation from a compacted run plus exact recent presentations:
+ *   B = ln( optimizedLearningSum(compacted) + Σ_recent t^(-d) ).
+ * The compacted part uses the optimized-learning form (frequency via `count`); the recent
+ * part keeps exact terms, so accesses logged after the summary's watermark still learn.
+ */
+export function baseLevelFromParts(
+  compacted: { count: number; first: number } | null,
+  recent: number[],
+  now: number,
+  decay: number,
+): number {
+  let sum = 0;
+  if (compacted && compacted.count > 0) {
+    sum += optimizedLearningSum(compacted.count, compacted.first, now, decay);
+  }
+  for (const t of recent) {
+    const secs = Math.max(1, (now - t) / 1000);
+    sum += Math.pow(secs, -decay);
+  }
+  return sum > 0 ? Math.log(sum) : -Infinity;
+}
+
 /** Map node -> presentation timestamps (encoding + accesses). */
 export function presentationsByNode(
   events: AccessEvent[],

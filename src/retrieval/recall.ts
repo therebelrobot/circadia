@@ -17,8 +17,8 @@ import { bm25Search, ftsSearch, type KeywordHit } from './keyword.ts';
 import { findCandidateTriples, filterTriplesWithLLM, extractSeeds, HttpTripleVerifier, type TripleVerifier } from './recognition-memory.ts';
 import { MODE_ORIGINS } from './modes.ts';
 import { personalizedPageRank } from './ppr.ts';
-import { appendAccess, baseLevel, presentationsByNode, queryHash, readAccessLog, retrievalProbability } from './activation.ts';
-import { loadSummariesForActivation } from './log-compact.ts';
+import { appendAccess, baseLevelFromParts, queryHash, readAccessLog, retrievalProbability } from './activation.ts';
+import { loadAccessSummaries, presentationsForActivation, type NodePresentations } from './log-compact.ts';
 import { loadGraph, TRUST_RANK, type GraphCache } from './graph-cache.ts';
 import { topKByCosine } from './embeddings.ts';
 
@@ -105,7 +105,7 @@ function runRung(
   seeds: Map<string, number>,
   asOf: number | null,
   now: number,
-  presentations: Map<string, number[]>,
+  presentations: Map<string, NodePresentations>,
   topK: number,
   tokenBudget: number,
   graphCache?: GraphCache,
@@ -133,10 +133,13 @@ function runRung(
 
   const pprMax = Math.max(...rows.map((r) => ppr.get(r.id) ?? 0), 1e-12);
   const acts = rows.map((r) => {
-    const pres = [...(presentations.get(r.id) ?? [])];
+    // compacted run (optimized-learning form) + exact recent presentations; the note's
+    // encoding time is always an exact presentation.
+    const p = presentations.get(r.id);
+    const recent = [...(p?.recent ?? [])];
     const enc = r.created ?? r.updated;
-    if (enc !== null && !pres.includes(enc)) pres.push(enc);
-    return baseLevel(pres, now, cfg.retrieval.actrDecay);
+    if (enc !== null && !recent.includes(enc)) recent.push(enc);
+    return baseLevelFromParts(p?.compacted ?? null, recent, now, cfg.retrieval.actrDecay);
   });
   const w = cfg.retrieval.weights;
   const rp = cfg.retrieval;
@@ -235,19 +238,16 @@ export async function recall(vaultRoot: string, cfg: Config, query: string, opts
     const fused = rrf(lists);
     const seeds = new Map([...fused.entries()].map(([id, v]) => [id, v.score]));
 
-    // ACT-R presentations: encoding time + logged accesses
+    // ACT-R presentations: compacted summaries + raw events after the summary's watermark,
+    // both filtered to <= asOf. The raw log is never rotated (ADR-0009), so an as-of query
+    // dated before the watermark falls back to it. as-of recall evaluates activation as it
+    // stood then: no future accesses, "now" = asOf.
     const accessFile = join(vaultRoot, cfg.index.accessLog);
-    // as-of recall evaluates activation as it stood then: no future accesses, "now" = asOf
-    const events = readAccessLog(accessFile).filter((e) => asOf === null || e.t <= asOf);
+    const events = readAccessLog(accessFile);
     const activationNow = asOf ?? now;
-    // Use compacted summaries if available; fall back to raw log for backward compatibility
     const summaryFile = join(vaultRoot, cfg.index.path.replace(/\.sqlite$/, '-access-summaries.jsonl'));
-    const presentations = loadSummariesForActivation(summaryFile);
-    if (presentations.size === 0) {
-      // Fallback: build presentations from raw log events
-      const rawPresentations = presentationsByNode(events, new Map());
-      rawPresentations.forEach((ts, id) => presentations.set(id, ts));
-    }
+    const summaries = loadAccessSummaries(summaryFile);
+    const presentations = presentationsForActivation(summaries, events, asOf);
 
     // 3–5 on the mode ladder
     const escalations: RecallResult['escalations'] = [];

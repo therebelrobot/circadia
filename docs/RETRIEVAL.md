@@ -203,10 +203,25 @@ the schema-fit gate before becoming facts. This is the triple promotion path.
 
 ## 10. Access-log compaction
 
-The access log (`.circadia/access.jsonl`) is compacted into per-node summaries that preserve
-access counts, encoding times, and recent access timestamps. This supports ACT-R's base-level
-activation calculation without unbounded log growth. Compaction is idempotent and can be
-triggered manually or during consolidation runs.
+`circadia access-log compact` rolls `.circadia/access.jsonl` into per-node summaries
+(`.circadia/index-access-summaries.jsonl`). Each summary records `count`, the first
+presentation, the most recent accesses (for observability), and the file records a
+**watermark**: the timestamp up to which the summary accounts for events.
+
+Recall does not use the summaries *instead of* the log. For each node it combines:
+
+- the **compacted run** — ACT-R's optimized-learning form
+  `B ≈ ln(n / (1 − d)) − d·ln(L)`, where `n` is `count` and `L` is the time since the first
+  presentation (`optimizedLearningSum` in `src/retrieval/activation.ts`); and
+- the **raw events after the watermark**, kept as exact `t^(−d)` terms.
+
+Both are filtered to `≤ asOf`. So learning continues after compaction, and `--as-of` never
+sees a future access. When `asOf` is *before* the watermark the summary is ignored entirely
+and the raw log is used, because a summary cannot un-aggregate.
+
+Compaction is idempotent. It **does not rotate or truncate the raw log** — the log is the
+only non-derivable usage record and as-of queries before the watermark need it. See
+[ADR-0009](decisions/ADR-0009-access-log-compaction-policy.md).
 
 ## 7. Vector seeds in detail
 
