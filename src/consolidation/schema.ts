@@ -49,6 +49,11 @@ export function isSingleValued(cfg: Config, predicate: string): boolean {
  *       supersede when a `by: user` episode states it explicitly;
  *     - the same object is corroboration → no-op.
  *  4. Otherwise promote (known subject + known predicate, no conflict) or queue.
+ *
+ * `candidateValidFrom` is the candidate's world time (its episode's `started`). A claim
+ * older than the current fact it contradicts must never supersede it — that would close a
+ * newer fact with an older one and revert memory to a stale value. Such a candidate queues
+ * with reason "older than the current fact".
  */
 export function evaluateGate(
   candidate: Candidate,
@@ -56,6 +61,7 @@ export function evaluateGate(
   subjectRef: NoteRef | null,
   objectRef: NoteRef | null,
   currentFacts: Fact[] = [],
+  candidateValidFrom: number | null = null,
 ): GateDecision {
   // C4: untrusted sources never auto-promote. Checked first.
   if (candidate.by === 'web' || candidate.by === 'tool' || candidate.trust === 'low') {
@@ -84,6 +90,16 @@ export function evaluateGate(
     if (isSingleValued(cfg, candidate.predicate)) {
       const conflict = samePredicate[0];
       if (conflict) {
+        // World-time guard: an older claim must not supersede a newer fact. This is the
+        // late-arriving-old-episode case (a backfill, a re-import, or a re-selected episode
+        // after a vault copy) — queue it for review instead of reverting memory.
+        if (
+          conflict.valid.from !== null &&
+          candidateValidFrom !== null &&
+          conflict.valid.from > candidateValidFrom
+        ) {
+          return { action: 'queue', reason: 'older than the current fact', candidate, subjectRef, objectRef, conflict };
+        }
         if (candidate.by === 'user' && candidate.explicit) {
           return {
             action: 'supersede',

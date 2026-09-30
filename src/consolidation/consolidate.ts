@@ -28,6 +28,14 @@ import { promoteTriplesToCandidates, readSeenHashes, serializeSeenHashes } from 
 import { applySupersede } from './supersede.ts';
 import { renderReflection } from './reflection.ts';
 import {
+  CONSOLIDATED_STATE_VERSION,
+  consolidatedStatePath,
+  noteBodyHash,
+  readConsolidatedState,
+  serializeConsolidatedState,
+  type ConsolidatedState,
+} from './consolidated-state.ts';
+import {
   PENDING_RECORD_VERSION,
   candidateKey,
   pendingPath as pendingPathFor,
@@ -56,32 +64,25 @@ interface FileChange {
 }
 
 /**
- * Epoch ms of the start of the day AFTER the local calendar date `YYYY-MM-DD`.
- * Used to compare a file's mtime against a `consolidated:` date without re-selecting an
- * episode on the same day consolidation stamped it.
- */
-function endOfLocalDay(date: string): number {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
-  if (!m) return Number.NaN;
-  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + 1).getTime();
-}
-
-/**
- * An episode is unconsolidated when it has no valid `consolidated:` date, or when the file
- * was modified after the consolidated day ended (C22).
+ * An episode is unconsolidated when it has no valid `consolidated:` date, or when its body
+ * has changed since consolidation last ran (C22).
  *
- * Decision (C22): a newer mtime means a manual fix (or C1-style damage), not a new event —
- * episodes are append-only, so a legitimate new event is a new file. Re-processing re-derives
- * facts from the corrected text. The comparison is against the END of the consolidated local
- * day, so the mtime consolidation itself sets on the same day does not re-select the episode
- * (which would loop forever). See docs/ROADMAP.md Phase 4.
+ * Decision (C22): re-selection is driven by a body hash, not mtime. A vault copy, checkout,
+ * rsync, or restore moves mtimes without changing content, and an mtime rule would re-select
+ * every episode — re-extracting it (LLM cost) and, because an old episode can contradict a
+ * newer fact, silently reverting memory to a stale value. A body hash changes only on a real
+ * edit, which is the "manual fix" case the roadmap wants to catch. An episode consolidated
+ * before this mechanism existed has no recorded baseline; its current body is adopted as the
+ * baseline (backfilled below) rather than re-processed. See docs/ROADMAP.md Phase 4.
  */
-function isUnconsolidated(n: ParsedNote): boolean {
+function isUnconsolidated(n: ParsedNote, bodyHash: string, state: ConsolidatedState): boolean {
   const consolidated = n.frontmatter.consolidated;
   if (!consolidated) return true;
   if (typeof consolidated !== 'string') return true;
   if (Number.isNaN(Date.parse(consolidated))) return true;
-  return n.mtime > endOfLocalDay(consolidated);
+  const recorded = state.hashes[n.path];
+  if (recorded === undefined) return false;
+  return bodyHash !== recorded;
 }
 
 export interface ConsolidateOptions {
@@ -100,8 +101,25 @@ export async function consolidate(
   opts: ConsolidateOptions = {},
 ): Promise<ConsolidationResult> {
   const allNotes = parseVault(vault, cfg);
-  const episodes = allNotes.filter((n) => n.type === 'episode' && isUnconsolidated(n));
   const noteById = new Map(allNotes.map((n) => [n.id, n]));
+
+  // C22: re-selection is content-based. Hash each episode's body once; a vault copy,
+  // checkout, or restore changes mtimes but not content, so it must not re-trigger
+  // consolidation. The recorded baseline lives in .circadia/consolidated.json.
+  const statePath = consolidatedStatePath(vault);
+  const state = readConsolidatedState(statePath);
+  const episodeRaw = new Map<string, string>();
+  const episodeHashes = new Map<string, string>();
+  for (const n of allNotes) {
+    if (n.type !== 'episode') continue;
+    const raw = readFileSync(join(vault, n.path), 'utf8');
+    episodeRaw.set(n.path, raw);
+    episodeHashes.set(n.path, noteBodyHash(raw));
+  }
+  const episodes = allNotes.filter(
+    (n) => n.type === 'episode' && isUnconsolidated(n, episodeHashes.get(n.path) ?? '', state),
+  );
+
   const { db } = openIndex(join(vault, cfg.index.path));
 
   // Track consolidated facts per entity for reflection
@@ -205,11 +223,12 @@ export async function consolidate(
     const subjectNote = subjectRef ? noteById.get(subjectRef.id) : undefined;
     const currentFacts = subjectNote ? subjectNote.facts.filter((f) => f.status === 'current') : [];
 
-    const decision = evaluateGate(c, cfg, subjectRef, objectRef, currentFacts);
-
     // World time is when the claim was made (the episode's `started`), not the run date.
-    // `at::` and `superseded::` keep the run date (system time).
+    // `at::` and `superseded::` keep the run date (system time). The gate needs it to refuse
+    // a supersession that would close a newer fact with an older claim.
     const validAt = noteById.get(c.episodeId)?.created ?? todayMs;
+
+    const decision = evaluateGate(c, cfg, subjectRef, objectRef, currentFacts, validAt);
 
     if (decision.action === 'promote' && subjectRef) {
       const fact = buildFact(c, subjectRef.id, objectRef?.id ?? null, todayMs, validAt);
@@ -254,7 +273,7 @@ export async function consolidate(
   // Local calendar date, not UTC: an evening run in a negative-offset timezone must not
   // stamp tomorrow's date on the episode.
   for (const ep of episodes) {
-    const raw = readFileSync(join(vault, ep.path), 'utf8');
+    const raw = episodeRaw.get(ep.path) ?? readFileSync(join(vault, ep.path), 'utf8');
     if (!hasFencedFrontmatter(raw)) {
       // Don't corrupt a malformed episode; surface it instead.
       console.warn(`warning: episode-mark.no-frontmatter ${ep.path}`);
@@ -277,6 +296,17 @@ export async function consolidate(
   if (nextSeenHashes.size > 0 || existsSync(seenPath)) {
     const rel = join(STATE_DIR, 'triples-seen.json');
     stage(rel, () => serializeSeenHashes(nextSeenHashes));
+  }
+
+  // --- Consolidated body-hash state (C22) ----------------------------------------
+  // Record each episode's body hash so a later run re-selects only on a real edit. Built
+  // fresh from the episodes on disk, so a deleted episode's hash is pruned. Staged like any
+  // other write so a dry run leaves it untouched (C7) and the commit includes it.
+  if (episodeHashes.size > 0 || existsSync(statePath)) {
+    const nextHashes: Record<string, string> = {};
+    for (const [path, hash] of episodeHashes) nextHashes[path] = hash;
+    const rel = join(STATE_DIR, 'consolidated.json');
+    stage(rel, () => serializeConsolidatedState({ v: CONSOLIDATED_STATE_VERSION, hashes: nextHashes }));
   }
 
   // --- Reflection ----------------------------------------------------------------

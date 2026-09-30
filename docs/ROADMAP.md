@@ -113,11 +113,13 @@ works in TypeScript and uses Mastra as their agent framework.
 
 - [x] **`circadia consolidate [--dry-run]`**, run nightly by a systemd timer or cron on
       the Pi.
-- [x] **Replay.** Select episodes with no `consolidated:` date, or with a date older than
-      the file's mtime. A newer mtime means a manual fix (or C1-style damage), not a new
-      event — episodes are append-only, so a legitimate new event is a new file. The
-      comparison is against the end of the consolidated local day, so the mtime
-      consolidation itself sets on the same day does not re-select the episode.
+- [x] **Replay.** Select episodes with no `consolidated:` date, or whose body has changed
+      since consolidation last ran. The body hash is recorded in `.circadia/consolidated.json`
+      (not in the episode, whose only permitted edit is `consolidated:`). Re-selection is
+      content-based, not mtime-based: a vault copy, checkout, rsync, or restore moves mtimes
+      without changing content and must not re-trigger consolidation. A changed body means a
+      manual fix (or C1-style damage), not a new event — episodes are append-only, so a
+      legitimate new event is a new file.
 - [x] **Candidate extraction.**
   - A small local model (llama.cpp) extracts `(subject, predicate, object, valid?)`
     candidates per episode. This is batch entity extraction, the defined role for small
@@ -139,7 +141,9 @@ works in TypeScript and uses Mastra as their agent framework.
   2. Add `[superseded:: today]`.
   3. Move it to `## History`.
   4. Append the new fact via `formatFact()`.
-  Never delete.
+  Never delete. A claim older than the current fact it contradicts never supersedes it — it
+  queues with reason `older than the current fact`, and supersession refuses to write an
+  interval that ends before it starts.
 - [x] **Reconsolidation window.** Facts recalled in the same `session` as a contradicting
       episode are prioritized for review. Recall log entries carry a session id once
       Phase 3 lands.

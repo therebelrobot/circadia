@@ -58,8 +58,9 @@ node bin/circadia.mjs --help
 
 - **The vault is the source of truth.** Everything in `.circadia/index.sqlite` must be
   reproducible by deleting it and running `circadia index`. The only non-derivable state
-  is the vault itself, `.circadia/access.jsonl`, and `.circadia/triples/` (a cache of
-  LLM output).
+  is the vault itself, `.circadia/access.jsonl`, `.circadia/triples/` (a cache of LLM
+  output), and `.circadia/consolidated.json` (each episode's body hash at the last
+  consolidation, so re-selection is content-based rather than mtime-based — C22).
 - **Episodes are append-only.** Code never edits an episode body. The one exception:
   consolidation may set the `consolidated:` frontmatter field.
 - **Facts are never deleted.** A changed fact is struck through

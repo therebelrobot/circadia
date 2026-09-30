@@ -124,7 +124,23 @@ export function applySupersede(content: string, opts: SupersedeOptions): Superse
   // Strike the old facts, closing their world-time interval at the change date (not the
   // run date: `valid` is world time, `superseded` is system time).
   const validAt = opts.validAt ?? opts.supersededAt;
-  const struckLines = toSupersede.map(({ fact }) =>
+
+  // Refuse to write an interval that ends before it starts. A fact whose world time opens
+  // after the change date cannot be closed by it; superseding it would produce a backwards
+  // `valid` interval (and a lint error). The gate already queues this case; this is the
+  // last line of defense.
+  const eligible = toSupersede.filter(({ fact }) => fact.valid.from === null || validAt >= fact.valid.from);
+  if (eligible.length === 0) {
+    problems.push({
+      severity: 'warning',
+      path: reportPath,
+      code: 'supersede.backwards-interval',
+      message: 'refusing to close a fact before its valid interval starts',
+    });
+    return { superseded, problems, changed: false, content };
+  }
+
+  const struckLines = eligible.map(({ fact }) =>
     formatFact({
       ...fact,
       valid: { from: fact.valid.from, to: fact.valid.to ?? validAt },
@@ -132,9 +148,9 @@ export function applySupersede(content: string, opts: SupersedeOptions): Superse
       status: 'superseded',
     }),
   );
-  for (const { fact } of toSupersede) superseded.push(fact);
+  for (const { fact } of eligible) superseded.push(fact);
 
-  const remove = new Set(toSupersede.map((f) => f.index));
+  const remove = new Set(eligible.map((f) => f.index));
 
   // Rebuild: everything up to and including the Facts heading, minus the superseded
   // lines, then the new fact.

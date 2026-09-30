@@ -1,7 +1,7 @@
 // Consolidation tests (Phase 4).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, mkdirSync, utimesSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CONFIG_FILENAME, STATE_DIR, loadConfig } from '../src/config.ts';
@@ -60,13 +60,8 @@ test('consolidation: marked episode is not selected', async () => {
     extraction: { provider: 'none', endpoint: '', model: '', apiKeyEnv: null },
     predicates: { strict: false, defs: {} },
   }));
-  const markedPath = join(v, 'episodes', '2026', '09', '2026-09-16-marked.md');
-  writeFileSync(markedPath,
+  writeFileSync(join(v, 'episodes', '2026', '09', '2026-09-16-marked.md'),
     '---\ntype: episode\nstarted: 2026-09-16\nby: user\nsource: chat\nboundary: topic-shift\nconsolidated: 2026-09-16\nimportance: 0.5\n---\n# Marked\n');
-  // C22: a marked episode is only skipped when its mtime is not newer than the consolidated
-  // day. Pin the mtime to that day so this test exercises the "already consolidated" path.
-  const stamp = new Date(2026, 8, 16, 12, 0, 0);
-  utimesSync(markedPath, stamp, stamp);
   const cfg = loadConfig(v);
   const result = await consolidate(v, cfg, { dryRun: true });
   assert.equal(result.processedEpisodes.length, 0);
