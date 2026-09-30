@@ -44,7 +44,7 @@ The design is grounded in cognitive neuroscience. Each mechanism maps to a findi
 
 ## Status
 
-**Phases 1 through 6 are done and tested.** Phase 1 includes:
+**Phases 1 through 8 are done and tested.** Phase 1 includes:
 
 - Vault schema v1: [`docs/SCHEMA.md`](docs/SCHEMA.md)
   - inline typed facts in entity notes
@@ -82,10 +82,15 @@ seed filter, and triple promotion path to consolidation.
 **Phase 6:** Git-backed as-of for prose, `circadia history` for note history, and
 access-log compaction for ACT-R activation.
 
-**Phase 8 (in progress):** Dreaming — a REM pass that pairs recently active notes with
-distant ones and records candidate associations under `.circadia/dreams/`, a read-once
-`wake` recall, human confirmation in `circadia review`, and `dream` edges that ship at
-weight 0 until the eval says they help. See [`docs/rfcs/RFC-0001-dreaming.md`](docs/rfcs/RFC-0001-dreaming.md).
+**Phase 7:** Evaluation and tuning — `circadia eval` with recall@k and MRR per mode and
+per query kind, threshold tuning, ablations, and optional LongMemEval and LoCoMo adapters.
+
+**Phase 8:** Dreaming — a REM pass that pairs recently active notes with distant ones and
+records candidate associations under `.circadia/dreams/`, a read-once `wake` recall, human
+confirmation in `circadia review`, and `dream` edges that ship at weight 0 until the eval
+says they help. Implemented (Stages 1–5); the Stage 5 sweep was flat on the Phase 7
+fixture, so dream edges stay at weight 0. See
+[`docs/rfcs/RFC-0001-dreaming.md`](docs/rfcs/RFC-0001-dreaming.md).
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for details.
 

@@ -267,7 +267,9 @@ works in TypeScript and uses Mastra as their agent framework.
 
 ---
 
-## Phase 8: Dreaming (REM pass and wake recall)
+## Phase 8: Dreaming (REM pass and wake recall) ✅
+
+implemented (Stages 1–5). Stage 5 sweep flat on the Phase 7 fixture; dream edges stay at weight 0. See docs/EVAL.md §8 and RFC-0002.
 
 RFC-0001. Contract in `src/dreams/README.md`; decision in ADR-0011.
 

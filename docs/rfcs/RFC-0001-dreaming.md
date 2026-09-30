@@ -3,8 +3,7 @@
 > *Do Androids Dream of Electric Sheep?*
 > — Philip K. Dick, 1968
 
-Status: proposed · 2026-09-30 · written against `31dc3a8` (Phase 7 complete) · revised after
-architecture review (decisions in [Appendix A](#appendix-a-review-decisions))
+Status: implemented (Stages 1–5). Stage 5 sweep flat on the Phase 7 fixture; dream edges stay at weight 0. See docs/EVAL.md §8 and RFC-0002.
 
 ## Summary
 
