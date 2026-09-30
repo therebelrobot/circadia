@@ -95,9 +95,12 @@ The objective is the macro-average of per-kind mean recall@5 over the unscoped
 recall kinds (`single-hop`, `multi-hop`, `temporal`, `preference`, and both
 remote-association tiers); `*-scoped` kinds are excluded, as agreed for the
 headline. A candidate may not increase the trust, absent, order, or missing-id
-counts over the baseline candidate. After the best candidate is frozen, the tuner
-reads the holdout exactly once to confirm the pick; selection itself never reads
-it.
+counts over the baseline candidate, and may not lower recall@5 for **any** kind —
+scoped kinds included. The second rule matters because a knob that helps the
+headline can break a scoped path: `minTopMargin: 0` stops auto escalation and
+drops the scoped deep queries from 1.00 to 0.00, so it is rejected rather than
+suggested. After the best candidate is frozen, the tuner reads the holdout exactly
+once to confirm the pick; selection itself never reads it.
 
 The fixture's access log has only 5 events, so the activation knobs
 (`retrieval.weights.activation`, `retrieval.actrThresholdDays`) are barely

@@ -72,6 +72,8 @@ export interface TuneCandidate {
   mrr: number;
   score: number;
   violations: TuneViolations;
+  /** mean recall@5 per kind, every non-trust kind (scoped included). */
+  perKind: Record<string, number>;
 }
 
 export interface TuneHoldout {
@@ -108,10 +110,24 @@ function noWorse(a: TuneViolations, b: TuneViolations): boolean {
   return a.trust <= b.trust && a.absent <= b.absent && a.order <= b.order && a.missing <= b.missing;
 }
 
+/**
+ * A candidate may not lower recall@5 for ANY kind, scoped kinds included. The
+ * objective excludes scoped kinds (a scope shrinks the problem), but a knob that
+ * helps the headline by breaking a scoped path — e.g. `minTopMargin: 0` stopping
+ * auto escalation — must be rejected, not suggested.
+ */
+function noKindRegression(cand: Record<string, number>, base: Record<string, number>): boolean {
+  for (const [kind, v] of Object.entries(base)) {
+    if ((cand[kind] ?? 0) < v - 1e-9) return false;
+  }
+  return true;
+}
+
 interface Scored {
   recallAt5: number;
   mrr: number;
   violations: TuneViolations;
+  perKind: Record<string, number>;
 }
 
 /**
@@ -132,6 +148,15 @@ async function scoreConfig(
     const list = byKind.get(r.kind) ?? byKind.set(r.kind, []).get(r.kind)!;
     list.push(r.metrics.recallAtK['5'] ?? 0);
   }
+  // every non-trust kind, scoped included, for the no-regression check
+  const byKindAll = new Map<string, number[]>();
+  for (const r of results) {
+    if (r.kind === 'trust') continue;
+    const list = byKindAll.get(r.kind) ?? byKindAll.set(r.kind, []).get(r.kind)!;
+    list.push(r.metrics.recallAtK['5'] ?? 0);
+  }
+  const perKind: Record<string, number> = {};
+  for (const [kind, xs] of byKindAll) perKind[kind] = mean(xs);
   return {
     recallAt5: mean([...byKind.values()].map(mean)),
     mrr: mean(objective.map((r) => r.metrics.mrr)),
@@ -141,6 +166,7 @@ async function scoreConfig(
       order: sum(results.map((r) => r.orderViolations)),
       missing: sum(results.map((r) => r.missingIds.length)),
     },
+    perKind,
   };
 }
 
@@ -166,7 +192,14 @@ export async function tuneThresholds(
     const candidates: TuneCandidate[] = [];
     const evaluate = async (cfg: Config): Promise<TuneCandidate> => {
       const s = await scoreConfig(fixtureDir, queries, cfg, dbPath, 'dev');
-      const c: TuneCandidate = { config: cfg, recallAt5: s.recallAt5, mrr: s.mrr, score: s.recallAt5 + s.mrr * 1e-6, violations: s.violations };
+      const c: TuneCandidate = {
+        config: cfg,
+        recallAt5: s.recallAt5,
+        mrr: s.mrr,
+        score: s.recallAt5 + s.mrr * 1e-6,
+        violations: s.violations,
+        perKind: s.perKind,
+      };
       candidates.push(c);
       return c;
     };
@@ -202,7 +235,13 @@ export async function tuneThresholds(
         // don't re-evaluate the value already in place
         if (JSON.stringify(step.current(best.config)) === JSON.stringify(value)) continue;
         const cand = await evaluate(step.apply(best.config, value));
-        if (cand.score > best.score && noWorse(cand.violations, baseline.violations)) best = cand;
+        if (
+          cand.score > best.score &&
+          noWorse(cand.violations, baseline.violations) &&
+          noKindRegression(cand.perKind, baseline.perKind)
+        ) {
+          best = cand;
+        }
       }
     }
 

@@ -57,6 +57,21 @@ test('selection never reads a holdout query', async () => {
   assert.equal(a.devCount, b.devCount);
 });
 
+test('a candidate that lowers any kind (scoped included) is rejected', async () => {
+  const dir = join(tmp, 'vault3');
+  generateFixture(dir);
+  // minTopMargin 0 stops auto escalation and drops the scoped deep query to 0;
+  // it must not be selected even if it helps the unscoped objective.
+  const grid: TuneGrid = { ...SMALL_GRID, minTopMargin: [0, 0.05], damping: [0.3, 0.5] };
+  const report = await tuneThresholds(dir, devSubset(), grid);
+  for (const [kind, v] of Object.entries(report.baseline.perKind)) {
+    assert.ok(
+      (report.best.perKind[kind] ?? 0) >= v - 1e-9,
+      `best lowered ${kind}: ${report.best.perKind[kind]} < ${v}`,
+    );
+  }
+});
+
 test('the suggestion is a valid Config and DEFAULT_CONFIG is unchanged', async () => {
   const dir = join(tmp, 'vault2');
   generateFixture(dir);

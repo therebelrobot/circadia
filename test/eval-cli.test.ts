@@ -3,7 +3,7 @@
 // committed baseline (the baseline path is redirected to a temp file).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, existsSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { generateFixture } from '../eval/generate-fixture.ts';
@@ -71,6 +71,20 @@ test('a non-fixture target cannot write the tracked baseline', async () => {
   const { code, err } = await capture(() => main(['eval', '--vault', dir, '--update-baseline', '--json']));
   assert.notEqual(code, 0, 'exits non-zero');
   assert.match(err, /--update-baseline needs an explicit --baseline/);
+  assert.equal(readFileSync(TRACKED_BASELINE, 'utf8'), before, 'tracked baseline unchanged');
+});
+
+test('a symlinked baseline path into the repo is refused', async () => {
+  const dir = join(tmp, 'personal-symlink');
+  generateFixture(dir);
+  const link = join(tmp, 'link-to-repo-eval');
+  symlinkSync(join(REPO, 'eval'), link, 'dir');
+  const before = readFileSync(TRACKED_BASELINE, 'utf8');
+  const { code, err } = await capture(() =>
+    main(['eval', '--vault', dir, '--baseline', join(link, 'baseline.json'), '--update-baseline', '--json']),
+  );
+  assert.notEqual(code, 0, 'a symlinked path into the repo is refused');
+  assert.match(err, /outside the repo/);
   assert.equal(readFileSync(TRACKED_BASELINE, 'utf8'), before, 'tracked baseline unchanged');
 });
 

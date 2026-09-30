@@ -1,8 +1,8 @@
 // `circadia` CLI. Zero dependencies; hand-rolled argument parsing.
 
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, copyFileSync, mkdtempSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve, dirname, sep } from 'node:path';
+import { join, resolve, dirname, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CONFIG_FILENAME, DEFAULT_CONFIG, STATE_DIR, deepMerge, loadConfig } from '../config.ts';
 import { buildIndex, incrementalIndex, parseVault, buildResolver, embedPassages } from '../index/indexer.ts';
@@ -109,6 +109,38 @@ function readQueriesFile(path: string): EvalQuery[] {
     .split('\n')
     .filter((l) => l.trim())
     .map((l) => JSON.parse(l) as EvalQuery);
+}
+
+/**
+ * Is `p` inside the repo, following symlinks? `resolve()` alone is not enough:
+ * a symlinked parent (or a symlinked file) can point into the repo while the
+ * literal path looks external. Realpath the file when it exists, else the
+ * nearest existing ancestor plus the basename.
+ */
+function isInsideRepo(p: string): boolean {
+  let realRepo: string;
+  try {
+    realRepo = realpathSync(REPO);
+  } catch {
+    realRepo = REPO;
+  }
+  let real: string;
+  if (existsSync(p)) {
+    try {
+      real = realpathSync(p);
+    } catch {
+      real = resolve(p);
+    }
+  } else {
+    let dir = dirname(p);
+    while (!existsSync(dir) && dir !== dirname(dir)) dir = dirname(dir);
+    try {
+      real = join(realpathSync(dir), basename(p));
+    } catch {
+      real = resolve(p);
+    }
+  }
+  return real === realRepo || real.startsWith(realRepo + sep);
 }
 
 /** Drop per-query hits and query text for aggregate-only output (Tier B). */
@@ -593,7 +625,7 @@ export async function main(argv: string[]): Promise<number> {
       let baselinePath: string | null;
       if (explicitBaseline) {
         baselinePath = resolve(explicitBaseline);
-        if (!isFixture && (baselinePath === REPO || baselinePath.startsWith(REPO + sep))) {
+        if (!isFixture && isInsideRepo(baselinePath)) {
           console.error(`error: --baseline must be outside the repo for a non-fixture target (got ${baselinePath})`);
           return 1;
         }
@@ -645,7 +677,8 @@ export async function main(argv: string[]): Promise<number> {
           console.log(`baseline recall@5 ${tune.baseline.recallAt5.toFixed(3)}  mrr ${tune.baseline.mrr.toFixed(3)}`);
           console.log(`best     recall@5 ${tune.best.recallAt5.toFixed(3)}  mrr ${tune.best.mrr.toFixed(3)}`);
           console.log(
-            `holdout  baseline recall@5 ${tune.holdout.baseline.recallAt5.toFixed(3)}  best ${tune.holdout.best.recallAt5.toFixed(3)}`,
+            `holdout  baseline recall@5 ${tune.holdout.baseline.recallAt5.toFixed(3)} mrr ${tune.holdout.baseline.mrr.toFixed(3)}` +
+            `  best recall@5 ${tune.holdout.best.recallAt5.toFixed(3)} mrr ${tune.holdout.best.mrr.toFixed(3)}`,
           );
           console.log('suggested config (report only; defaults are never written):');
           console.log(JSON.stringify(tune.best.config, null, 2));
