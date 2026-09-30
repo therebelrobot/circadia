@@ -22,6 +22,7 @@ import { openIndex } from '../src/index/db.ts';
 import { parseNote } from '../src/vault/parse.ts';
 import { passageHash, writeTriples } from '../src/extract/triples.ts';
 import { HttpEmbeddingsClient, type EmbeddingsClient } from '../src/retrieval/embeddings.ts';
+import { main } from '../src/cli/main.ts';
 import { startMockEmbeddings } from './helpers/mock-embeddings.ts';
 
 const tmp = mkdtempSync(join(tmpdir(), 'circadia-synonym-trust-'));
@@ -229,6 +230,47 @@ test('Phase 5: embedPassages embeds phrases, so synonym edges form end to end', 
 
     const edges = synonymEdges(dbPath);
     assert.equal(edgeTrust(edges, 'p:alpha-sensor', 'p:beta-probe'), 'high', 'synonym edge formed without manual embedding');
+  } finally {
+    await mock.close();
+  }
+});
+
+test('cli: index summary reflects synonym edges written by the embedding step', async () => {
+  const dir = join(tmp, 'cli');
+  const assigned = new Map<string, number[]>();
+  let next = 8;
+  const mock = await startMockEmbeddings((t) => {
+    if (t === 'alpha sensor') return vec(1);
+    if (t === 'beta probe') return vec(0.8, 0.6);
+    let v = assigned.get(t);
+    if (!v) {
+      v = new Array<number>(DIM).fill(0);
+      v[next++] = 1;
+      assigned.set(t, v);
+    }
+    return v;
+  });
+  try {
+    write(dir, 'circadia.config.json', JSON.stringify({
+      graph: { defaultExtraction: 'hipporag', hipporag: { synonymThreshold: 0.7, maxSynonymEdges: 20 } },
+      embeddings: { provider: 'http', model: 'test-model', batchSize: 32, endpoint: mock.url },
+    }));
+    write(dir, 'entities/projects/alpha.md', '---\ntype: entity\nkind: project\n---\n# Alpha Project\n\nThe alpha sensor reports temperature.\n');
+    write(dir, 'entities/projects/beta.md', '---\ntype: entity\nkind: project\n---\n# Beta Project\n\nThe beta probe reports humidity.\n');
+    cacheTriple(dir, 'entities/projects/alpha.md', 'alpha sensor', 'reports', 'temperature');
+    cacheTriple(dir, 'entities/projects/beta.md', 'beta probe', 'reports', 'humidity');
+
+    const log = console.log;
+    const out: string[] = [];
+    console.log = (s?: unknown) => { out.push(String(s)); };
+    try {
+      assert.equal(await main(['index', '--vault', dir]), 0);
+    } finally {
+      console.log = log;
+    }
+    // The summary is printed after embeddings, so it counts the synonym edge
+    // that emitSynonymEdges just wrote (it was 0 before the fix).
+    assert.match(out.join('\n'), /synonym=1/, 'the summary counts the synonym edge written during embedding');
   } finally {
     await mock.close();
   }

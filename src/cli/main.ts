@@ -178,14 +178,29 @@ export async function main(argv: string[]): Promise<number> {
           console.error(`warning: embedding failed, continuing text-only: ${(e as Error).message}`);
         }
       }
-      if (json) console.log(JSON.stringify({ stats: r.stats, problems: r.problems, embedded }, null, 2));
+      // embedPassages emits synonym edges, so r.stats.edges is stale after it
+      // runs. Re-read the counts so the summary reflects what is on disk.
+      let edges = r.stats.edges;
+      if (embedded !== null) {
+        const { db } = openIndex(join(vault, cfg.index.path));
+        try {
+          const counts: Record<string, number> = {};
+          for (const row of db.prepare(`SELECT origin, count(*) AS n FROM edges GROUP BY origin`).all() as { origin: string; n: number }[]) {
+            counts[row.origin] = row.n;
+          }
+          edges = counts;
+        } finally {
+          db.close();
+        }
+      }
+      if (json) console.log(JSON.stringify({ stats: { ...r.stats, edges }, problems: r.problems, embedded }, null, 2));
       else {
         const s = r.stats;
         console.log(
           `indexed ${s.notes} notes, ${s.passages} passages in ${s.ms} ms (keyword: ${s.fts ? 'fts5' : 'bm25-js'})` +
           (embedded !== null ? `, embedded ${embedded} node(s)` : '') + '\n' +
           `extraction: ${Object.entries(s.byExtraction).map(([k, v]) => `${k}=${v}`).join(' ')}\n` +
-          `edges: ${Object.entries(s.edges).map(([k, v]) => `${k}=${v}`).join(' ')}` +
+          `edges: ${Object.entries(edges).map(([k, v]) => `${k}=${v}`).join(' ')}` +
           (s.placeholders ? `\nunresolved link targets: ${s.placeholders}` : '') +
           (s.phrases ? `\nphrase nodes: ${s.phrases}` : ''),
         );
