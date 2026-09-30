@@ -15,6 +15,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../src/config.ts';
 import { applyDreamDecision } from '../src/cli/review.ts';
+import { main } from '../src/cli/main.ts';
 import { candidatesPath, readCandidates, transitionCandidate, type DreamCandidate } from '../src/dreams/candidates.ts';
 
 // Pin the timezone so the evening-accept test is deterministic: 2026-09-30T01:30:00Z is
@@ -198,6 +199,28 @@ test('review CLI: offers to add related_to when predicates.defs lacks it', () =>
     assert.equal(readCandidates(v).find((x) => x.id === 'd-2026-09-29-abc123')?.state, 'accepted');
   } finally {
     rmSync(v, { recursive: true, force: true });
+  }
+});
+
+test('circadia init defines related_to with cardinality many and no inverse', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'circadia-dreams-init-cfg-'));
+  const log = console.log;
+  console.log = () => { };
+  try {
+    assert.equal(await main(['init', dir]), 0);
+    const cfg = JSON.parse(readFileSync(join(dir, 'circadia.config.json'), 'utf8')) as {
+      predicates: { defs: Record<string, { cardinality?: string; inverse?: string }> };
+    };
+    const def = cfg.predicates.defs.related_to;
+    assert.ok(def, 'related_to is defined by init');
+    assert.ok(
+      def.cardinality === undefined || def.cardinality === 'many',
+      `related_to cardinality must be many (or unset); got ${String(def.cardinality)}`,
+    );
+    assert.equal(def.inverse, undefined, 'related_to has no inverse');
+  } finally {
+    console.log = log;
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

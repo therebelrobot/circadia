@@ -1,6 +1,6 @@
 # src/dreams: the REM pass and wake recall (Phase 8, contract)
 
-RFC-0001. See `docs/ARCHITECTURE.md` §11, `docs/ROADMAP.md` Phase 8, and
+RFC-0001. See `docs/ARCHITECTURE.md` §10, `docs/ROADMAP.md` Phase 8, and
 `docs/decisions/ADR-0011-dreaming-disposable-state.md`.
 
 ## Pipeline

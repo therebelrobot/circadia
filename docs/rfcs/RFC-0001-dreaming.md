@@ -97,14 +97,15 @@ under `.circadia/dreams/`.
 - With no index, the pass errors the same way `recall` does.
 
 1. **Recent side.** The notes with the highest ACT-R activation over the last
-   `dreaming.recentDays`, computed read-only from `access.jsonl` (the same code recall
-   uses, with `logAccess: false`). Notes below `dreaming.trustFloor` are skipped.
+   `dreaming.recentDays`, computed read-only from `access.jsonl` (the same activation
+   primitives recall uses, with `logAccess: false`). Notes below `dreaming.trustFloor`
+   are skipped.
 2. **Remote side.** For each recent note, a partner at least `dreaming.minHops` away over
    every edge origin except `dream` (a dream must not make its own pair look close),
    chosen with probability weighted toward low
    personalized-PageRank mass from the recent note. A `dreaming.noiseShare` of partners
-   are uniformly random older notes (D5). Pairs already connected by an open or dismissed
-   candidate are skipped.
+   are uniformly random older notes (D5). Pairs already connected by an open, endorsed,
+   rejected or accepted candidate are skipped.
 3. **Propose.** One passage from each note goes to the extraction model through
    `chatComplete()` in `src/llm/chat.ts`, each wrapped by `fenceData(text, 'passage-data')`.
    The model returns JSON, validated like consolidation candidates (C11):
@@ -221,9 +222,10 @@ note titles and gist. Quotes, scores and pruned fragments stay out. The `--json`
 
 **Forgetting.** `wake` renames the log to `<night>.json.reading-<pid>-<random>` before
 reading, so two sessions can't both read it, then deletes the temp file in a `finally`.
-An unread log is deleted after `dreaming.logTtlHours` by the next `dream` or `wake` call.
-`logTtlHours: 0` turns the TTL off: the log is then deleted only by reading it.
-Candidates outlive the log until they expire.
+An unread log is deleted after `dreaming.logTtlHours` by the next `dream` or `wake` call
+that writes: `--dry-run` and `--sample-only` write nothing (C7), so they do not sweep
+expired logs. `logTtlHours: 0` turns the TTL off: the log is then deleted only by reading
+it. Candidates outlive the log until they expire.
 
 **Answering "how did you sleep?"**
 

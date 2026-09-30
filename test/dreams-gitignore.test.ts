@@ -4,10 +4,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkDreamsIgnored } from '../src/dreams/gitignore.ts';
+import { main } from '../src/cli/main.ts';
 
 function git(cwd: string, args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' });
@@ -80,5 +81,19 @@ test('a tracked file under .circadia/dreams/ is refused even when the candidate 
     assert.match(r.reason ?? '', /tracked files/);
   } finally {
     rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test('circadia init writes .circadia/dreams/ into the .gitignore it creates', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'circadia-dreams-init-'));
+  const log = console.log;
+  console.log = () => { };
+  try {
+    assert.equal(await main(['init', dir]), 0);
+    const gi = readFileSync(join(dir, '.gitignore'), 'utf8');
+    assert.match(gi, /^\.circadia\/dreams\/$/m, 'the dream state directory is git-ignored');
+  } finally {
+    console.log = log;
+    rmSync(dir, { recursive: true, force: true });
   }
 });

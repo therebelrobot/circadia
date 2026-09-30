@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../src/config.ts';
 import { buildIndex } from '../src/index/indexer.ts';
 import { wake, renderWake, wakeJson } from '../src/dreams/wake.ts';
-import { writeLog, logPath, logDir, type DreamLog } from '../src/dreams/log.ts';
+import { writeLog, logPath, logDir, deleteExpiredLogs, type DreamLog } from '../src/dreams/log.ts';
 
 const execFileP = promisify(execFile);
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -258,6 +258,24 @@ test('wake: --json has exactly the RFC key set', () => {
     writeLog(v, makeLog());
     const r = wake(v, cfg, { now: NOW });
     assert.deepEqual(Object.keys(wakeJson(r)).sort(), ['forgotten', 'fragments', 'night', 'report', 'rules']);
+  } finally {
+    rmSync(v, { recursive: true, force: true });
+  }
+});
+
+test('wake: logTtlHours 0 turns the TTL off, so an old unread log is not deleted', () => {
+  const v = makeVault();
+  try {
+    const cfg = loadConfig(v);
+    buildIndex(v, cfg, { dbPath: join(v, '.circadia', 'index.sqlite') });
+    writeLog(v, makeLog());
+    // A year past any TTL: with the TTL off the sweep deletes nothing.
+    const farFuture = Date.now() + 365 * 24 * 3_600_000;
+    assert.deepEqual(deleteExpiredLogs(v, 0, farFuture), [], 'logTtlHours 0 deletes nothing');
+    assert.ok(existsSync(logPath(v, NIGHT)), 'the unread log survives');
+    // Contrast: with a real TTL the same sweep deletes it.
+    assert.deepEqual(deleteExpiredLogs(v, 12, farFuture), [NIGHT], 'a real TTL deletes the old log');
+    assert.equal(existsSync(logPath(v, NIGHT)), false);
   } finally {
     rmSync(v, { recursive: true, force: true });
   }

@@ -14,6 +14,7 @@ import { buildIndex, incrementalIndex } from '../src/index/indexer.ts';
 import { openIndex } from '../src/index/db.ts';
 import { loadGraph } from '../src/retrieval/graph-cache.ts';
 import { relate, type RelateResult } from '../src/retrieval/relate.ts';
+import { recall } from '../src/retrieval/recall.ts';
 import { parseInstant } from '../src/vault/time.ts';
 
 const tmp = mkdtempSync(join(tmpdir(), 'circadia-dreams-edges-'));
@@ -23,8 +24,13 @@ function makeVault(name: string): string {
   const v = join(tmp, name);
   mkdirSync(join(v, 'entities', 'concepts'), { recursive: true });
   mkdirSync(join(v, '.circadia', 'dreams'), { recursive: true });
+  // `created` is pinned before the dream night so an as-of query can see the notes while
+  // the dream edge (recorded_at = the night) is still invisible.
   const note = (id: string, body: string): void =>
-    writeFileSync(join(v, 'entities', 'concepts', `${id}.md`), `---\ntype: entity\nkind: concept\n---\n# ${id}\n\n${body}\n`);
+    writeFileSync(
+      join(v, 'entities', 'concepts', `${id}.md`),
+      `---\ntype: entity\nkind: concept\ncreated: 2026-09-01\n---\n# ${id}\n\n${body}\n`,
+    );
   note('alpha', 'Alpha is a concept.');
   note('beta', 'Beta is a concept.');
   note('gamma', 'Gamma is a concept. See [[delta]].');
@@ -216,6 +222,88 @@ test('relate output is unchanged by the candidate file', () => {
   } finally {
     a.close();
     b.close();
+  }
+});
+
+test('a dream edge is traversed at trustFloor low and dropped at medium', () => {
+  const v = makeVault('trust');
+  writeCandidates(v, [candidate()]);
+  const cfg = loadConfig(v);
+  const dbPath = join(tmp, 'trust.sqlite');
+  buildIndex(v, cfg, { dbPath });
+
+  const { db } = openIndex(dbPath);
+  try {
+    // Turn the weight on so the edge is in the graph; the trust floor is what is under test.
+    const withFloor = (floor: 'low' | 'medium') => ({
+      ...cfg,
+      graph: { ...cfg.graph, originWeights: { ...cfg.graph.originWeights, dream: 1 } },
+      retrieval: { ...cfg.retrieval, trustFloor: floor },
+    });
+    const adjacent = (floor: 'low' | 'medium'): boolean => {
+      const g = loadGraph(db, 'typed', null, withFloor(floor));
+      const ai = g.index.get('alpha');
+      const bi = g.index.get('beta');
+      assert.ok(ai !== undefined && bi !== undefined, 'both notes are in the graph');
+      return (g.nbr[ai] ?? []).map((j) => g.ids[j]).includes('beta');
+    };
+    assert.equal(adjacent('low'), true, 'a low-trust dream edge is traversed at the low floor');
+    assert.equal(adjacent('medium'), false, 'the same edge is dropped at the medium floor');
+  } finally {
+    db.close();
+  }
+});
+
+test('scope drops a dream edge whose endpoint is outside the scope', async () => {
+  const v = makeVault('scope');
+  writeCandidates(v, [candidate()]);
+  const cfg = loadConfig(v);
+  const withDream = {
+    ...cfg,
+    graph: { ...cfg.graph, originWeights: { ...cfg.graph.originWeights, dream: 1 } },
+  };
+  const dbPath = join(tmp, 'scope.sqlite');
+  buildIndex(v, withDream, { dbPath });
+
+  const unscoped = await recall(v, withDream, 'Alpha', { dbPath, logAccess: false, mode: 'typed', topK: 10 });
+  assert.ok(unscoped.hits.some((h) => h.noteId === 'beta'), 'the dream edge reaches beta unscoped');
+
+  const scoped = await recall(v, withDream, 'Alpha', {
+    dbPath,
+    logAccess: false,
+    mode: 'typed',
+    topK: 10,
+    scope: 'entities/concepts/alpha.md',
+  });
+  assert.ok(!scoped.hits.some((h) => h.noteId === 'beta'), 'the out-of-scope endpoint is dropped');
+});
+
+test('as-of sees a dream edge only after its night', () => {
+  const v = makeVault('asof');
+  writeCandidates(v, [candidate()]);
+  const cfg = loadConfig(v);
+  const dbPath = join(tmp, 'asof.sqlite');
+  buildIndex(v, cfg, { dbPath });
+
+  const { db } = openIndex(dbPath);
+  try {
+    const withDream = {
+      ...cfg,
+      graph: { ...cfg.graph, originWeights: { ...cfg.graph.originWeights, dream: 1 } },
+    };
+    const adjacent = (asOf: number | null): boolean => {
+      const g = loadGraph(db, 'typed', asOf, withDream);
+      const ai = g.index.get('alpha');
+      const bi = g.index.get('beta');
+      assert.ok(ai !== undefined && bi !== undefined, 'both notes are in the graph');
+      return (g.nbr[ai] ?? []).map((j) => g.ids[j]).includes('beta');
+    };
+    const night = parseInstant('2026-09-29');
+    assert.ok(night !== null, 'the night parses');
+    assert.equal(adjacent(night - 1), false, 'before the night the dream edge is invisible');
+    assert.equal(adjacent(night), true, 'at the night it becomes visible');
+  } finally {
+    db.close();
   }
 });
 
