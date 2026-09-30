@@ -267,3 +267,25 @@ Phrase nodes (hipporag) carry no path or tags. A phrase is in scope only when an
 passage mentions it, so a scoped `hipporag` traversal stays inside the scope instead of
 bridging out through a shared phrase. An unscoped recall is unchanged. A scope that matches
 nothing returns no hits.
+
+## 12. Evaluation
+
+Retrieval is measured by the eval harness (`npm run eval`), not asserted. It reports
+recall@k, precision@k, and MRR per mode, per `kind`, and per escalation path, and diffs
+each run against `eval/baseline.json`. The methodology, the determinism contract, and the
+comparability caveats are in [`docs/EVAL.md`](EVAL.md) and
+[ADR-0010](decisions/ADR-0010-eval-harness-determinism.md).
+
+`circadia eval --ablate` runs the edge-origin ablations built by
+`src/eval/ablate.ts`. The set is driven by `MODE_ORIGINS`, so a new origin appears
+automatically:
+
+| ablation | what it isolates |
+|---|---|
+| `mode:wikilink` / `mode:typed` / `mode:hipporag` | each mode alone |
+| `weights:activation=0` | the ACT-R activation term |
+| `weights:importance=0` | the importance term |
+| `origin:<mode>:<origin>=0` | one edge origin (e.g. `origin:typed:fact=0`) within a mode |
+
+Ablations are built in memory from `DEFAULT_CONFIG` via `deepMerge`; nothing is written to
+the vault or to the defaults.

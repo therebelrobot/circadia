@@ -259,7 +259,10 @@ function runRung(
     out.push(h);
     budget -= cost;
   }
-  const margin = out.length >= 2 && out[0].score > 0 ? (out[0].score - out[1].score) / out[0].score : out.length === 1 ? 1 : 0;
+  // A single hit is not evidence of confidence: with nothing to compare against,
+  // the margin is 0 so `auto` keeps escalating (a lone seed can still be the wrong
+  // rung). Two or more hits use the relative top-1/top-2 gap.
+  const margin = out.length >= 2 && out[0].score > 0 ? (out[0].score - out[1].score) / out[0].score : 0;
   return { hits: out, margin };
 }
 

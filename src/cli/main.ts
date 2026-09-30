@@ -1,9 +1,10 @@
 // `circadia` CLI. Zero dependencies; hand-rolled argument parsing.
 
-import { existsSync, mkdirSync, writeFileSync, readdirSync, copyFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, copyFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CONFIG_FILENAME, DEFAULT_CONFIG, STATE_DIR, loadConfig } from '../config.ts';
+import { CONFIG_FILENAME, DEFAULT_CONFIG, STATE_DIR, deepMerge, loadConfig } from '../config.ts';
 import { buildIndex, incrementalIndex, parseVault, buildResolver, embedPassages } from '../index/indexer.ts';
 import { recall, renderForContext } from '../retrieval/recall.ts';
 import { createEmbeddingsClient } from '../retrieval/embeddings.ts';
@@ -12,6 +13,8 @@ import { timeline } from '../retrieval/timeline.ts';
 import { parseInstant } from '../vault/time.ts';
 import { resolveCommit, isGitRepo } from '../vault/git.ts';
 import type { GraphMode, Problem, QueryMode, RecallHit } from '../types.ts';
+import type { EvalAggregate, EvalQuery } from '../eval/types.ts';
+import type { BaselineDelta } from '../eval/baseline.ts';
 import { getMeta, openIndex } from '../index/db.ts';
 import { watchVault } from './watch.ts';
 
@@ -36,6 +39,7 @@ commands
   stats                 show index statistics
   history <id>          show all versions of a note across commits
   access-log compact    compact access log into per-node summaries for ACT-R learning
+  eval                  run the retrieval eval set (recall@k, MRR, ablations, tuning)
 options
   --vault <dir>         vault root (default: current directory)
   --full                (index) force a full rebuild instead of incremental
@@ -55,6 +59,15 @@ options
   --warnings            (lint/index) also print warnings
   --dry-run             (consolidate) print changes without committing
   --no-commit           (consolidate) skip git commit even if it would normally run
+  --fixture <dir>       (eval) fixture vault (default: eval/.fixture)
+  --queries <path>      (eval) query set (default: eval/queries.jsonl)
+  --baseline <path>     (eval) baseline to diff against (default: eval/baseline.json)
+  --update-baseline     (eval) write the run to the baseline path
+  --split <dev|holdout> (eval) run only one split
+  --ablate              (eval) also run the edge-origin ablations
+  --tune                (eval) grid-search thresholds on the dev split (report only)
+  --adapter <name>      (eval) read an external set: longmemeval | locomo
+  --report <path>       (eval) write the full JSON report to a file
   -h, --help            this help
 `;
 
@@ -67,7 +80,7 @@ interface Args {
 export function parseArgs(argv: string[]): Args {
   const flags = new Map<string, string | true>();
   const pos: string[] = [];
-  const valued = new Set(['vault', 'mode', 'as-of', 'top', 'budget', 'scope']);
+  const valued = new Set(['vault', 'mode', 'as-of', 'top', 'budget', 'scope', 'queries', 'baseline', 'split', 'fixture', 'adapter', 'report']);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '-h') flags.set('help', true);
@@ -85,6 +98,14 @@ export function parseArgs(argv: string[]): Args {
 function str(flags: Args['flags'], k: string): string | undefined {
   const v = flags.get(k);
   return typeof v === 'string' ? v : undefined;
+}
+
+/** Read a JSONL query set. Blank lines are skipped; a malformed line throws. */
+function readQueriesFile(path: string): EvalQuery[] {
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .filter((l) => l.trim())
+    .map((l) => JSON.parse(l) as EvalQuery);
 }
 
 function printProblems(problems: Problem[], showWarnings: boolean): void {
@@ -531,6 +552,116 @@ export async function main(argv: string[]): Promise<number> {
       console.error(`starting MCP server for vault at ${vault}`);
       await mcpModule.runServer(vault);
       return 0;
+    }
+    case 'eval': {
+      const { runEval, buildReport } = await import('../eval/run.ts');
+      const { readBaseline, writeBaseline, diffBaseline, toBaseline } = await import('../eval/baseline.ts');
+      const { aggregate } = await import('../eval/metrics.ts');
+      const { buildAblations } = await import('../eval/ablate.ts');
+      const { tuneThresholds } = await import('../eval/tune.ts');
+
+      // The fixture is a generated vault; `--vault` is accepted as an alias so a
+      // caller can point at a fixture it built itself (the CLI test does this).
+      const fixtureDir = str(args.flags, 'fixture') ?? (args.flags.has('vault') ? vault : join(REPO, 'eval', '.fixture'));
+      const queriesPath = str(args.flags, 'queries') ?? join(REPO, 'eval', 'queries.jsonl');
+      const baselinePath = str(args.flags, 'baseline') ?? join(REPO, 'eval', 'baseline.json');
+      const splitRaw = str(args.flags, 'split');
+      if (splitRaw && splitRaw !== 'dev' && splitRaw !== 'holdout') {
+        throw new Error(`--split must be dev or holdout (got "${splitRaw}")`);
+      }
+      const split = splitRaw as 'dev' | 'holdout' | undefined;
+
+      // Adapters are off by default; an external set is read only when named.
+      const adapter = str(args.flags, 'adapter');
+      let queries: EvalQuery[];
+      if (adapter === 'longmemeval') {
+        const { parseLongMemEval } = await import('../eval/adapters/longmemeval.ts');
+        queries = parseLongMemEval(queriesPath);
+      } else if (adapter === 'locomo') {
+        const { parseLoCoMo } = await import('../eval/adapters/locomo.ts');
+        queries = parseLoCoMo(queriesPath);
+      } else if (adapter) {
+        throw new Error(`unknown --adapter "${adapter}" (longmemeval | locomo)`);
+      } else {
+        queries = readQueriesFile(queriesPath);
+      }
+
+      const cfg = loadConfig(fixtureDir);
+
+      // Tuning is report-only: it returns a suggested config and never writes
+      // DEFAULT_CONFIG or src/config.ts (ADR-0010).
+      if (args.flags.has('tune')) {
+        const tune = await tuneThresholds(fixtureDir, queries);
+        if (json) console.log(JSON.stringify(tune, null, 2));
+        else {
+          console.log(`tuned on ${tune.devCount} dev query(ies); holdout never read`);
+          console.log(`baseline recall@5 ${tune.baseline.recallAt5.toFixed(3)}  mrr ${tune.baseline.mrr.toFixed(3)}`);
+          console.log(`best     recall@5 ${tune.best.recallAt5.toFixed(3)}  mrr ${tune.best.mrr.toFixed(3)}`);
+          console.log('suggested config (report only; defaults are never written):');
+          console.log(JSON.stringify(tune.best.config, null, 2));
+        }
+        return 0;
+      }
+
+      const tmpDir = mkdtempSync(join(tmpdir(), 'circadia-eval-cli-'));
+      const dbPath = join(tmpDir, 'index.sqlite');
+      try {
+        const results = await runEval(fixtureDir, queries, { config: cfg, split, dbPath });
+        const report = buildReport(fixtureDir, cfg, results);
+
+        // Forced-mode aggregates, reusing the one index build.
+        const modes: Record<string, EvalAggregate[]> = {};
+        for (const mode of ['wikilink', 'typed', 'hipporag'] as const) {
+          const modeCfg = deepMerge(cfg, { graph: { query: { mode } } });
+          const rs = await runEval(fixtureDir, queries, { config: modeCfg, split, dbPath, reuseIndex: true });
+          modes[mode] = [...aggregate(rs, 'kind'), ...aggregate(rs, 'kind-split')];
+        }
+
+        let ablations: { name: string; aggregates: EvalAggregate[] }[] | undefined;
+        if (args.flags.has('ablate')) {
+          ablations = [];
+          for (const spec of buildAblations(cfg)) {
+            const rs = await runEval(fixtureDir, queries, { config: spec.config, split, dbPath, reuseIndex: true });
+            ablations.push({ name: spec.name, aggregates: aggregate(rs, 'kind') });
+          }
+        }
+
+        let deltas: BaselineDelta[] | undefined;
+        if (existsSync(baselinePath)) deltas = diffBaseline(readBaseline(baselinePath), toBaseline(report, modes));
+
+        if (args.flags.has('update-baseline')) writeBaseline(baselinePath, report, modes);
+
+        const reportPath = str(args.flags, 'report');
+        if (reportPath) {
+          writeFileSync(reportPath, JSON.stringify({ ...report, modes, ablations, deltas }, null, 2) + '\n');
+        }
+
+        if (json) {
+          console.log(
+            JSON.stringify(
+              { report, modes, ablations, deltas, baselinePath, updated: args.flags.has('update-baseline') },
+              null,
+              2,
+            ),
+          );
+        } else {
+          console.log(`eval: ${report.results.length} query(ies)${split ? ` (split: ${split})` : ''}  fixture: ${fixtureDir}`);
+          console.log(
+            `trust violations: ${report.trustViolations}  absent: ${report.absentViolations}  order: ${report.orderViolations}  vacuous: ${report.vacuousAbsences}`,
+          );
+          for (const a of report.aggregates.filter((x) => x.group.includes(':'))) {
+            console.log(
+              `  ${a.group.padEnd(28)} n=${String(a.count).padStart(3)}  recall@5=${(a.recallAtK['5'] ?? 0).toFixed(3)}  mrr=${a.mrr.toFixed(3)}`,
+            );
+          }
+          if (deltas) console.log(`baseline: ${deltas.length} delta(s) vs ${baselinePath}`);
+          if (args.flags.has('update-baseline')) console.log(`baseline written to ${baselinePath}`);
+        }
+        // A trust violation is a hard gate: the command exits non-zero.
+        return report.failed ? 1 : 0;
+      } finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
     }
     default:
       console.error(`unknown command "${args.cmd}"\n`);

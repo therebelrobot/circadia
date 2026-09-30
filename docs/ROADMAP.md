@@ -223,17 +223,41 @@ works in TypeScript and uses Mastra as their agent framework.
 
 ---
 
-## Phase 7: Evaluation and tuning
+## Phase 7: Evaluation and tuning ✅
 
-- [ ] **Personal eval set**: `eval/queries.jsonl` with
+- [x] **Personal eval set**: `eval/queries.jsonl` with
       `{query, as_of?, expected_passages[], kind: single-hop|multi-hop|temporal|preference}`.
-- [ ] **`circadia eval`**: recall@k, MRR, per mode, per `kind`, and per escalation path.
-- [ ] **Threshold tuning** for `minTopMargin`, `minSeeds`, `weights`, `actrThresholdDays`,
+- [x] **`circadia eval`**: recall@k, MRR, per mode, per `kind`, and per escalation path.
+- [x] **Threshold tuning** for `minTopMargin`, `minSeeds`, `weights`, `actrThresholdDays`,
       and `damping`.
-- [ ] **Ablations**: activation weight 0; importance weight 0; each mode alone.
-- [ ] **Optional adapters** for LongMemEval and LoCoMo. Report the methodology honestly:
+- [x] **Ablations**: activation weight 0; importance weight 0; each mode alone.
+- [x] **Optional adapters** for LongMemEval and LoCoMo. Report the methodology honestly:
       the answer model, the judge, and single-run vs best-of. Vendor numbers in this space
       are rarely comparable (see SOURCES).
+
+**Acceptance**
+
+- **recall@k / MRR per mode, per `kind`, and per escalation path.** `circadia eval`
+  reports all three; the full run is recorded in [`eval/baseline.json`](../eval/baseline.json).
+  Methodology and caveats: [`docs/EVAL.md`](EVAL.md).
+- **Two runs are identical.** `test/eval-determinism.test.ts` asserts byte-identical
+  output; `test/eval-fixture.test.ts` asserts the fixture itself is byte-identical.
+- **Trust violation count, with a single violation failing the run.**
+  `test/eval-trust.test.ts` plants one violation and asserts `report.failed === true`;
+  the CLI maps `report.failed` to a non-zero exit. Caveat: the runner filters hits by
+  `retrieval.trustFloor` and counts violations below the same floor, so the count is
+  always zero end-to-end — the gate is wired and unit-tested but currently unreachable
+  (ADR-0010 §Consequences).
+- **hipporag beats typed on scoped multi-hop recall@5 and does not regress single-hop,
+  met on synthetic triples.** Forced-mode aggregates: `multi-hop-scoped` recall@5
+  hipporag 1.000 vs typed 0.000; `single-hop` recall@5 1.000 for both (MRR hipporag
+  0.735 vs typed 0.720). The unscoped `multi-hop` bar is still not met (both 0.125) —
+  see the Phase 5 acceptance note above.
+- **Recall fix (Step 12).** A single-hit result no longer receives top confidence, so
+  `auto` escalates instead of treating a lone seed as certain. Delta vs the pre-fix
+  baseline: the four `multi-hop-scoped` deep queries moved `wikilink → hipporag`,
+  recall@5 0.000 → 1.000; violation counts unchanged. Regression test:
+  `test/recall-auto-escalation.test.ts`.
 
 ---
 

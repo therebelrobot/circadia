@@ -18,7 +18,7 @@ without breaking its invariants. Read it fully before editing anything.
 ## 2. Commands
 
 ```bash
-npm test                  # node:test, ~8s. 206 tests.
+npm test                  # node:test, ~10s. 249 tests.
 npm run typecheck         # tsc --noEmit, strict + erasableSyntaxOnly
 npm run example:index     # index examples/vault (incremental; --full for a full rebuild)
 node bin/circadia.mjs watch --vault examples/vault   # reindex on change (Ctrl-C to stop)
@@ -26,6 +26,7 @@ npm run example:recall -- "query"   # --no-log is baked in so the example access
 node bin/circadia.mjs relate --vault examples/vault orchard-sensors pi-cluster
 node bin/circadia.mjs timeline --vault examples/vault orchard-sensors
 npm run benchmark         # 10k-note synthetic vault: index, incremental, recall p50/p95, RSS
+npm run eval              # generate the eval fixture, then run the retrieval eval
 node bin/circadia.mjs --help
 ```
 
@@ -100,6 +101,8 @@ node bin/circadia.mjs --help
 | `benchmarks/` | synthetic vault generator + benchmark runner | `npm run benchmark`; results in `docs/PERFORMANCE.md` |
 | `src/consolidation/` | episode replay → candidate extraction → schema-fit gate → promote/queue/supersede | `schema.ts` `evaluateGate` is pure (facts are read in `consolidate.ts`); untrusted sources and triple candidates always queue (ADR-0006) |
 | `src/mcp/` | MCP server (stdio) | contract in its README |
+| `src/eval/` | eval runner, metrics, ablations, baseline, tuning, adapters | strictly read-only; determinism contract in ADR-0010 |
+| `eval/` | fixture generator, query set, committed baseline | `npm run eval`; `eval/.fixture/` is generated and gitignored |
 
 ## 6. How to make a change
 
@@ -155,6 +158,13 @@ node bin/circadia.mjs --help
 - One-shot recall re-reads edges from SQLite per query. Long-running processes pass a
   `graphCache` (`createGraphCache(db)`) to `recall()`; it caches per (mode, asOf) and
   self-invalidates when the index's `built_at` meta changes. The MCP server does this.
+- The eval harness (`npm run eval`) measures retrieval only — recall@k/MRR over gold
+  passages, no answer model or judge — so its numbers are not comparable to vendor
+  LongMemEval/LoCoMo figures. It is deterministic (fixed clock, no logging, trigram
+  lexical embeddings) and strictly read-only. Tuning (`eval --tune`) is report-only and
+  never writes defaults. The trust gate is wired and unit-tested but currently
+  unreachable end-to-end (the runner filters hits by the same floor it counts against).
+  See `docs/EVAL.md` and ADR-0010.
 
 ## 10. Working rules for agents
 
