@@ -65,3 +65,19 @@ export function parseInterval(raw: string): Interval | null {
 export function intervalContains(iv: Interval, t: number): boolean {
   return (iv.from === null || iv.from <= t) && (iv.to === null || t < iv.to);
 }
+
+/**
+ * Format a Date as the LOCAL calendar date `YYYY-MM-DD`.
+ *
+ * Why not `toISOString().slice(0, 10)`: that returns the UTC date, so an evening run in
+ * a negative-offset timezone (e.g. America/New_York) would stamp tomorrow's date on the
+ * `consolidated:` field. This reads the local Y/M/D components directly, so the stamp
+ * matches the operator's wall clock. Pure: no I/O, no timezone lookup beyond the Date's
+ * own local getters.
+ */
+export function localDateString(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}

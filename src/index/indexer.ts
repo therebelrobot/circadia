@@ -6,7 +6,7 @@
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import type { DatabaseSync, StatementSync } from 'node:sqlite';
 import type { Config } from '../config.ts';
 import type { GraphMode, ParsedNote, Problem, SourceKind, Trust, WikiLink } from '../types.ts';
@@ -494,7 +494,7 @@ export function buildIndex(vaultRoot: string, config: Config, opts: { dbPath?: s
     // Check if vault is a git repo for Phase 6 (git-backed as-of)
     const isRepo = (() => {
       try {
-        execSync('git rev-parse --git-dir', { cwd: vaultRoot, stdio: 'ignore' });
+        execFileSync('git', ['rev-parse', '--git-dir'], { cwd: vaultRoot, stdio: 'ignore' });
         return true;
       } catch {
         return false;
@@ -508,8 +508,9 @@ export function buildIndex(vaultRoot: string, config: Config, opts: { dbPath?: s
       let commitHash: string | null = null;
       if (isRepo) {
         try {
-          const hash = execSync(
-            `git log -1 --format="%H" -- "${n.path}" 2>/dev/null`,
+          const hash = execFileSync(
+            'git',
+            ['log', '-1', '--format=%H', '--', n.path],
             { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
           ).trim() || null;
           commitHash = hash;
@@ -599,7 +600,7 @@ export function incrementalIndex(vaultRoot: string, config: Config, opts: { dbPa
   // Check if vault is a git repo for Phase 6 (git-backed as-of)
   const isRepo = (() => {
     try {
-      execSync('git rev-parse --git-dir', { cwd: vaultRoot, stdio: 'ignore' });
+      execFileSync('git', ['rev-parse', '--git-dir'], { cwd: vaultRoot, stdio: 'ignore' });
       return true;
     } catch {
       return false;
@@ -616,8 +617,9 @@ export function incrementalIndex(vaultRoot: string, config: Config, opts: { dbPa
       let commitHash: string | null = null;
       if (isRepo) {
         try {
-          const hash = execSync(
-            `git log -1 --format="%H" -- "${f.path}" 2>/dev/null`,
+          const hash = execFileSync(
+            'git',
+            ['log', '-1', '--format=%H', '--', f.path],
             { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
           ).trim() || null;
           commitHash = hash;
@@ -643,8 +645,9 @@ export function incrementalIndex(vaultRoot: string, config: Config, opts: { dbPa
     let commitHash: string | null = null;
     if (isRepo) {
       try {
-        const hash = execSync(
-          `git log -1 --format="%H" -- "${f.path}" 2>/dev/null`,
+        const hash = execFileSync(
+          'git',
+          ['log', '-1', '--format=%H', '--', f.path],
           { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
         ).trim() || null;
         commitHash = hash;

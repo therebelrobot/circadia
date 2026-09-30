@@ -8,6 +8,7 @@ import { STATE_DIR, type Config } from '../config.ts';
 import type { ParsedNote } from '../types.ts';
 import { parseVault } from '../index/indexer.ts';
 import { setConsolidatedDate, hasFencedFrontmatter } from '../vault/episode-mark.ts';
+import { localDateString } from '../vault/time.ts';
 import { extractCandidates, type Candidate } from './candidate.ts';
 import { resolveEntity } from './entity.ts';
 import { evaluateGate } from './schema.ts';
@@ -128,7 +129,9 @@ export async function consolidate(
   // Episodes are append-only: the only permitted mutation is the `consolidated:` field.
   // setConsolidatedDate performs a minimal in-place text edit (one line changed) so
   // quotes, comments, block lists, and the `---` fences survive untouched.
-  const today = new Date().toISOString().slice(0, 10);
+  // Local calendar date, not UTC: an evening run in a negative-offset timezone must not
+  // stamp tomorrow's date on the episode.
+  const today = localDateString();
   for (const ep of episodes) {
     if (opts.dryRun) {
       processedEpisodes.push(ep.path);

@@ -1,8 +1,13 @@
 // Git utilities for time-travel recall. Zero-dependency: we invoke git via child_process
 // and parse its output. This module handles commit resolution and reading note content
 // at a specific commit.
+//
+// SECURITY (C5): every git invocation uses execFileSync with an argument array, never a
+// shell string. Refs and paths are passed as discrete argv elements, so shell
+// metacharacters (`;`, `$()`, backticks, spaces) cannot be interpreted. Refs are also
+// validated with `git rev-parse --verify` before use.
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 export interface ConsolidationCommitOptions {
   promoted: number;
@@ -14,6 +19,9 @@ export interface CommitResult {
   hash: string;
 }
 
+/** Shared exec options: capture stdout/stderr, never inherit a shell. */
+const GIT_OPTS = { encoding: 'utf8' as const, stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe'] };
+
 /**
  * Create a git commit for consolidation changes.
  */
@@ -24,17 +32,15 @@ export function createConsolidationCommit(vaultRoot: string, opts: Consolidation
 
   try {
     // Stage all changed files in the vault
-    execSync('git add -A', {
+    execFileSync('git', ['add', '-A'], {
       cwd: vaultRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
+      ...GIT_OPTS,
     });
 
     // Check if there are any changes
-    const statusOutput = execSync('git status --porcelain', {
+    const statusOutput = execFileSync('git', ['status', '--porcelain'], {
       cwd: vaultRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
+      ...GIT_OPTS,
     });
 
     if (!statusOutput.trim()) {
@@ -56,18 +62,17 @@ export function createConsolidationCommit(vaultRoot: string, opts: Consolidation
 
     const message = parts.join('; ');
 
-    // Commit with the message
-    execSync(`git commit -m "${message}"`, {
+    // Commit with the message. The message is a single argv element, so quotes and
+    // shell metacharacters in it are inert.
+    execFileSync('git', ['commit', '-m', message], {
       cwd: vaultRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
+      ...GIT_OPTS,
     });
 
     // Get the commit hash
-    const hashOutput = execSync('git rev-parse HEAD', {
+    const hashOutput = execFileSync('git', ['rev-parse', 'HEAD'], {
       cwd: vaultRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
+      ...GIT_OPTS,
     });
 
     return { hash: hashOutput.trim() };
@@ -88,17 +93,15 @@ export function printConsolidationDiff(vaultRoot: string): void {
 
   try {
     // Stage all changes temporarily
-    execSync('git add -A', {
+    execFileSync('git', ['add', '-A'], {
       cwd: vaultRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
+      ...GIT_OPTS,
     });
 
     // Print diff
-    const diff = execSync('git diff --staged', {
+    const diff = execFileSync('git', ['diff', '--staged'], {
       cwd: vaultRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
+      ...GIT_OPTS,
     });
 
     console.log(diff);
@@ -114,13 +117,36 @@ export interface GitCommit {
 }
 
 /**
+ * Validate a ref and resolve it to a commit hash.
+ *
+ * `git rev-parse --verify` accepts both ref names (`main`, `HEAD`) and rev expressions
+ * (`HEAD~3`), and rejects anything that is not a real object. Because the ref is passed
+ * as a single argv element (no shell), an injection payload like `HEAD;touch /tmp/x`
+ * simply fails to resolve and returns null. Returns null on any failure.
+ */
+function resolveRefHash(vaultRoot: string, ref: string): string | null {
+  try {
+    const out = execFileSync('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], {
+      cwd: vaultRoot,
+      ...GIT_OPTS,
+    });
+    const hash = out.trim();
+    return hash || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Resolve a git ref (e.g., "HEAD~3", "2026-09-10", "main") to a commit.
  * Returns the commit whose timestamp <= target if target is a date.
  */
 export function resolveCommit(vaultRoot: string, ref: string): GitCommit | null {
   try {
-    // If ref looks like a date, find the commit at or before that date
-    if (/^\d{4}(-\d{2}){0,2}/.test(ref)) {
+    // If ref looks like a date, find the commit at or before that date. Anchored so a
+    // 40-char hex commit hash that happens to begin with four digits is not mistaken
+    // for a date (which would make hash refs resolve to null ~15% of the time).
+    if (/^\d{4}(-\d{2}(-\d{2})?)?$/.test(ref) || /^\d{4}-\d{2}-\d{2}T/.test(ref)) {
       // Parse the date
       const dateStr = ref.length === 4 ? ref + '-01-01' :
         ref.length === 7 ? ref + '-01' : ref;
@@ -128,9 +154,10 @@ export function resolveCommit(vaultRoot: string, ref: string): GitCommit | null 
       if (isNaN(targetDate.getTime())) return null;
 
       // Get all commits with their timestamps
-      const output = execSync(
-        'git log --format="%H %at" --reverse',
-        { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+      const output = execFileSync(
+        'git',
+        ['log', '--format=%H %at', '--reverse'],
+        { cwd: vaultRoot, ...GIT_OPTS }
       );
 
       const lines = output.trim().split('\n').filter(l => l);
@@ -150,20 +177,20 @@ export function resolveCommit(vaultRoot: string, ref: string): GitCommit | null 
       return closestCommit;
     }
 
-    // Otherwise, resolve as a normal git ref
-    const output = execSync(
-      `git rev-parse ${ref}^{commit} 2>/dev/null`,
-      { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
-    );
-    const hash = output.trim();
+    // Otherwise, validate and resolve as a normal git ref. An invalid ref (including
+    // any shell-injection payload) resolves to null rather than executing anything.
+    const hash = resolveRefHash(vaultRoot, ref);
+    if (!hash) return null;
 
-    const meta = execSync(
-      'git log -1 --format="%at %s"',
-      { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+    // C15: read the timestamp/message of the RESOLVED commit, not HEAD. `%x00` is a NUL
+    // byte, which cannot appear in a commit subject, so the split is unambiguous.
+    const meta = execFileSync(
+      'git',
+      ['log', '-1', '--format=%at%x00%s', hash],
+      { cwd: vaultRoot, ...GIT_OPTS }
     );
-    const [epochSec, ...msgParts] = meta.trim().split(' ');
+    const [epochSec, message = ''] = meta.split('\u0000');
     const timestamp = Number(epochSec) * 1000;
-    const message = msgParts.join(' ');
 
     return { hash, timestamp, message };
   } catch {
@@ -177,10 +204,10 @@ export function resolveCommit(vaultRoot: string, ref: string): GitCommit | null 
  */
 export function getCommits(vaultRoot: string, maxCommit?: string): GitCommit[] {
   try {
-    const output = execSync(
-      `git log${maxCommit ? ` ${maxCommit}` : ''} --format="%H %at %s" --reverse`,
-      { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
-    );
+    const args = ['log'];
+    if (maxCommit) args.push(maxCommit);
+    args.push('--format=%H %at %s', '--reverse');
+    const output = execFileSync('git', args, { cwd: vaultRoot, ...GIT_OPTS });
 
     const lines = output.trim().split('\n').filter(l => l);
     return lines.map(line => {
@@ -201,9 +228,11 @@ export function getCommits(vaultRoot: string, maxCommit?: string): GitCommit[] {
  */
 export function readFileAtCommit(vaultRoot: string, relativePath: string, commitHash: string): string | null {
   try {
-    const output = execSync(
-      `git show ${commitHash}:${relativePath} 2>/dev/null`,
-      { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+    // `${commitHash}:${relativePath}` is one argv element; a path with spaces is fine.
+    const output = execFileSync(
+      'git',
+      ['show', `${commitHash}:${relativePath}`],
+      { cwd: vaultRoot, ...GIT_OPTS }
     );
     return output;
   } catch {
@@ -216,10 +245,9 @@ export function readFileAtCommit(vaultRoot: string, relativePath: string, commit
  */
 export function isGitRepo(vaultRoot: string): boolean {
   try {
-    execSync('git rev-parse --git-dir', {
+    execFileSync('git', ['rev-parse', '--git-dir'], {
       cwd: vaultRoot,
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
+      ...GIT_OPTS,
     });
     return true;
   } catch {
@@ -234,9 +262,11 @@ export function isGitRepo(vaultRoot: string): boolean {
 export function getNoteCommitAtTime(vaultRoot: string, relativePath: string, timestamp: number): string | null {
   try {
     const epochSec = Math.floor(timestamp / 1000);
-    const output = execSync(
-      `git log -1 --format="%H" --before=${epochSec} -- "${relativePath}" 2>/dev/null`,
-      { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+    // `--` separates flags from the path; the path is its own argv element (C27).
+    const output = execFileSync(
+      'git',
+      ['log', '-1', '--format=%H', `--before=${epochSec}`, '--', relativePath],
+      { cwd: vaultRoot, ...GIT_OPTS }
     );
     const hash = output.trim();
     return hash || null;
@@ -250,9 +280,10 @@ export function getNoteCommitAtTime(vaultRoot: string, relativePath: string, tim
  */
 export function getNoteCommits(vaultRoot: string, relativePath: string): GitCommit[] {
   try {
-    const output = execSync(
-      `git log --format="%H %at %s" -- "${relativePath}"`,
-      { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+    const output = execFileSync(
+      'git',
+      ['log', '--format=%H %at %s', '--', relativePath],
+      { cwd: vaultRoot, ...GIT_OPTS }
     );
 
     const lines = output.trim().split('\n').filter(l => l);

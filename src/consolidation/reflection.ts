@@ -3,7 +3,7 @@
 
 import { writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import type { Fact } from '../types.ts';
 
 export interface ReflectionResult {
@@ -40,7 +40,9 @@ export function reflect(
   let hasHumanEdits = false;
   if (existsSync(join(vaultPath, '.git'))) {
     try {
-      const diff = execSync(`git diff HEAD -- "${relPath}"`, {
+      // C27: the path is a discrete argv element after `--`, so spaces and shell
+      // metacharacters in it are inert (no shell is involved).
+      const diff = execFileSync('git', ['diff', 'HEAD', '--', relPath], {
         cwd: vaultPath,
         encoding: 'utf8',
         timeout: 5000,
