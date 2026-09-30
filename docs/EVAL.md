@@ -116,6 +116,7 @@ node bin/circadia.mjs eval --json              # machine-readable report
 node bin/circadia.mjs eval --split dev         # one split
 node bin/circadia.mjs eval --ablate            # edge-origin ablations
 node bin/circadia.mjs eval --tune              # threshold suggestion (report only)
+node bin/circadia.mjs eval --dream-sweep       # dream-edge weight sweep (report only)
 node bin/circadia.mjs eval --update-baseline   # write eval/baseline.json
 node bin/circadia.mjs eval --adapter locomo --queries /path/to/locomo.json
 ```
@@ -131,3 +132,44 @@ no write. `--update-baseline` then requires an explicit `--baseline <path>`, and
 path inside the repo is refused, so private note ids never land in the tracked
 baseline. `--aggregate-only` (the default for a non-fixture target) omits per-query
 hits and query text from all output.
+
+## 8. The dream eval (RFC-0001 Stage 5)
+
+`circadia eval --dream-sweep` measures whether the `dream` edge origin helps
+retrieval, before anything is turned on. It is **report-only**: it never changes
+the default `graph.originWeights.dream` (which stays `0`) and never writes the
+baseline. The turn-on decision is a human one (RFC-0001 "Rollout → Stage 5").
+
+For `originWeights.dream` ∈ {0, 0.25, 0.5, 1}, in two configurations and per
+forced mode, it reports:
+
+1. **true + decoys** — remote-association recall@5, dev and holdout. The fixture
+   plants one true candidate per remote-association pair, so this measures the
+   mechanism (does a real association, once in the graph, help recall?), not the
+   model.
+2. **decoys only** — every kind's recall@5, to show what bad dreams cost. The
+   decoys join unrelated notes with plausible gists.
+3. trust, absent, order, vacuous and missing counts.
+
+**Two configurations.** The true/decoy split comes from the generator's
+knowledge as encoded in the query set (each remote-association query names its
+`seed` and its gold target), never from a candidate field. Part 0 removed the
+salience confound: every candidate carries the same `salience` and `hops`, so
+the sweep cannot measure "the heavier link wins".
+
+**Forced modes.** `auto` alone is not enough: many remote queries stay in
+`wikilink` mode, which never traverses dream edges. The sweep therefore reports
+forced `typed` and forced `hipporag` (which do), plus `wikilink` for
+completeness.
+
+**The gate.** The RFC's Stage 5 gate is evaluated per mode and weight and
+reported as a recommendation: *turn on* only if, at some weight,
+remote-association recall@5 rises on **both** dev and holdout, no kind regresses
+on either split in the decoys-only run, and trust stays at 0. The tuner's
+`noKindRegression` rule is applied as written. If the sweep is flat, dreams stay
+at weight 0.
+
+The sweep is deterministic and strictly read-only (ADR-0010): it builds one
+index per configuration in a temp directory, prepares the decoys-only
+configuration in a temp copy of the fixture, and writes nothing under the vault
+or the committed baseline.

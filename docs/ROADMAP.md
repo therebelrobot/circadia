@@ -287,9 +287,10 @@ RFC-0001. Contract in `src/dreams/README.md`; decision in ADR-0011.
 - [x] **Stage 4 — Dream edges at weight 0.** `EdgeOrigin` gains `'dream'`, `MODE_ORIGINS`,
       `graph.originWeights.dream: 0`, the indexer's dream-edge emission, `relate` exclusion,
       the committed `eval/dreams.fixture.jsonl`, and a baseline refresh.
-- [ ] **Stage 5 — Measure, then decide.** `circadia eval --dream-sweep` over
+- [x] **Stage 5 — Measure, then decide.** `circadia eval --dream-sweep` over
       `originWeights.dream` ∈ {0, 0.25, 0.5, 1}. Report-only; turning dreams on is a human
-      decision.
+      decision. The sweep is flat: remote-association recall@5 stays 0.000 at every weight
+      in every mode, so dreams stay at weight 0 (see `docs/EVAL.md` §8).
 
 **Acceptance**
 

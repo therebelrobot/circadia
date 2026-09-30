@@ -30,6 +30,7 @@ node bin/circadia.mjs wake --vault examples/vault   # read the night's dream log
 npm run benchmark         # 10k-note synthetic vault: index, incremental, recall p50/p95, RSS
 npm run eval              # generate the eval fixture, then run the retrieval eval
 npm run eval:check        # same, but exit non-zero on any baseline delta (CI)
+node bin/circadia.mjs eval --dream-sweep   # dream-edge weight sweep (report only)
 node bin/circadia.mjs --help
 ```
 
@@ -107,7 +108,7 @@ node bin/circadia.mjs --help
 | `src/consolidation/` | episode replay → candidate extraction → schema-fit gate → promote/queue/supersede | `schema.ts` `evaluateGate` is pure (facts are read in `consolidate.ts`); untrusted sources and triple candidates always queue (ADR-0006) |
 | `src/dreams/` | REM pass → candidate associations → read-once wake recall | writes only under `.circadia/dreams/`; never writes the vault; dream edges ship at weight 0 (ADR-0011); contract in its README |
 | `src/mcp/` | MCP server (stdio) | contract in its README |
-| `src/eval/` | eval runner, metrics, ablations, baseline, tuning, adapters | strictly read-only; determinism contract in ADR-0010 |
+| `src/eval/` | eval runner, metrics, ablations, baseline, tuning, adapters, dream sweep | strictly read-only; determinism contract in ADR-0010 |
 | `eval/` | fixture generator, query set, committed baseline | `npm run eval`; `eval/.fixture/` is generated and gitignored |
 
 ## 6. How to make a change

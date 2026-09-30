@@ -71,6 +71,7 @@ options
   --split <dev|holdout> (eval) run only one split
   --ablate              (eval) also run the edge-origin ablations
   --tune                (eval) grid-search thresholds on the dev split (report only)
+  --dream-sweep         (eval) sweep graph.originWeights.dream (report only)
   --adapter <name>      (eval) read an external set: longmemeval | locomo
   --report <path>       (eval) write the full JSON report to a file
   --aggregate-only      (eval) omit per-query hits and query text from output
@@ -736,6 +737,44 @@ export async function main(argv: string[]): Promise<number> {
           );
           console.log('suggested config (report only; defaults are never written):');
           console.log(JSON.stringify(tune.best.config, null, 2));
+        }
+        return 0;
+      }
+
+      // The dream sweep is report-only: it never changes the default
+      // graph.originWeights.dream and never writes the baseline (RFC-0001 Stage 5).
+      if (args.flags.has('dream-sweep')) {
+        const { runDreamSweep } = await import('../eval/dreams.ts');
+        const sweep = await runDreamSweep(fixtureDir, queries);
+        if (json) {
+          console.log(JSON.stringify(sweep, null, 2));
+        } else {
+          console.log(`dream sweep: report only; graph.originWeights.dream stays ${DEFAULT_CONFIG.graph.originWeights.dream}`);
+          console.log(`weights: ${sweep.weights.join(', ')}   modes: ${sweep.modes.join(', ')}`);
+          for (const cfgName of ['true+decoys', 'decoys-only'] as const) {
+            console.log(`\n${cfgName}`);
+            for (const cell of sweep.cells.filter((c) => c.config === cfgName)) {
+              const c = cell.counts;
+              const counts = `trust=${c.trust} absent=${c.absent} order=${c.order} vacuous=${c.vacuous} missing=${c.missing}`;
+              if (cfgName === 'true+decoys') {
+                console.log(
+                  `  ${cell.mode.padEnd(9)} w=${String(cell.weight).padEnd(5)} remote@5 dev=${cell.remoteRecall5.dev.toFixed(3)} holdout=${cell.remoteRecall5.holdout.toFixed(3)}  ${counts}`,
+                );
+              } else {
+                const kinds = Object.entries(cell.perKind)
+                  .map(([k, v]) => `${k}=${v.dev === null ? '-' : v.dev.toFixed(3)}/${v.holdout === null ? '-' : v.holdout.toFixed(3)}`)
+                  .join(' ');
+                console.log(`  ${cell.mode.padEnd(9)} w=${String(cell.weight).padEnd(5)} ${kinds}  ${counts}`);
+              }
+            }
+          }
+          console.log('\ngate (report only):');
+          for (const g of sweep.gate) {
+            console.log(
+              `  ${g.mode.padEnd(9)} w=${String(g.weight).padEnd(5)} remoteRises=${g.remoteRises} noKindRegression=${g.noKindRegression} trustZero=${g.trustZero} pass=${g.pass}`,
+            );
+          }
+          console.log(`\nrecommendation: ${sweep.recommendation.turnOn ? 'turn on' : 'stay at weight 0'} — ${sweep.recommendation.reason}`);
         }
         return 0;
       }
