@@ -109,6 +109,34 @@ export interface Config {
     /** log each returned hit to the access log (reconsolidation / base-level activation) */
     logAccess: boolean;
   };
+  /**
+   * Phase 8 dreaming (RFC-0001). A user who never sets any of these gets no dreaming at
+   * all: `enabled` is false, so `consolidate --dream` skips the pass. The explicit
+   * `circadia dream` command always runs (typing it is consent).
+   */
+  dreaming: {
+    /** `consolidate --dream` runs the REM pass only when true */
+    enabled: boolean;
+    /** model calls per night */
+    samplesPerNight: number;
+    /** minimum graph distance between a pair, over non-dream origins */
+    minHops: number;
+    /** window (days) for the recent side */
+    recentDays: number;
+    /** share of partners that are uniformly random older notes */
+    noiseShare: number;
+    /**
+     * Sampling floor: notes below this trust are never sampled. Distinct from
+     * `retrieval.trustFloor`, the traversal floor.
+     */
+    trustFloor: Trust;
+    /** fragments shown by `wake` */
+    recallFragments: number;
+    /** unread log lifetime in hours; 0 turns the TTL off */
+    logTtlHours: number;
+    /** candidate lifetime in nights */
+    candidateTtlNights: number;
+  };
   mcp: {
     /**
      * Log MCP `recall` hits to the access log. Defaults to true: the log stores only the
@@ -198,6 +226,17 @@ export const DEFAULT_CONFIG: Config = {
     includeSuperseded: false,
     logAccess: true,
   },
+  dreaming: {
+    enabled: false,
+    samplesPerNight: 20,
+    minHops: 2,
+    recentDays: 7,
+    noiseShare: 0.25,
+    trustFloor: 'medium',
+    recallFragments: 3,
+    logTtlHours: 12,
+    candidateTtlNights: 14,
+  },
   mcp: {
     logAccess: true,
   },
@@ -269,6 +308,31 @@ export function validateConfig(c: Config): string[] {
   if (!(c.graph.damping > 0 && c.graph.damping < 1)) errs.push('graph.damping must be in (0, 1)');
   if (!['high', 'medium', 'low'].includes(c.retrieval.trustFloor)) {
     errs.push('retrieval.trustFloor must be high, medium, or low');
+  }
+  const d = c.dreaming;
+  if (!Number.isInteger(d.samplesPerNight) || d.samplesPerNight < 0) {
+    errs.push('dreaming.samplesPerNight must be a non-negative integer');
+  }
+  if (!Number.isInteger(d.minHops) || d.minHops < 1) {
+    errs.push('dreaming.minHops must be an integer >= 1');
+  }
+  if (!Number.isInteger(d.recentDays) || d.recentDays < 0) {
+    errs.push('dreaming.recentDays must be a non-negative integer');
+  }
+  if (typeof d.noiseShare !== 'number' || d.noiseShare < 0 || d.noiseShare > 1) {
+    errs.push('dreaming.noiseShare must be in [0, 1]');
+  }
+  if (!['high', 'medium', 'low'].includes(d.trustFloor)) {
+    errs.push('dreaming.trustFloor must be high, medium, or low');
+  }
+  if (!Number.isInteger(d.recallFragments) || d.recallFragments < 0) {
+    errs.push('dreaming.recallFragments must be a non-negative integer');
+  }
+  if (!Number.isInteger(d.logTtlHours) || d.logTtlHours < 0) {
+    errs.push('dreaming.logTtlHours must be a non-negative integer');
+  }
+  if (!Number.isInteger(d.candidateTtlNights) || d.candidateTtlNights < 0) {
+    errs.push('dreaming.candidateTtlNights must be a non-negative integer');
   }
   if (c.embeddings.provider === 'http' && !c.embeddings.endpoint) {
     errs.push('embeddings.endpoint is required when embeddings.provider is "http"');

@@ -18,13 +18,14 @@ without breaking its invariants. Read it fully before editing anything.
 ## 2. Commands
 
 ```bash
-npm test                  # node:test, ~10s. 249 tests.
+npm test                  # node:test, ~16s. 284 tests.
 npm run typecheck         # tsc --noEmit, strict + erasableSyntaxOnly
 npm run example:index     # index examples/vault (incremental; --full for a full rebuild)
 node bin/circadia.mjs watch --vault examples/vault   # reindex on change (Ctrl-C to stop)
 npm run example:recall -- "query"   # --no-log is baked in so the example access log stays clean
 node bin/circadia.mjs relate --vault examples/vault orchard-sensors pi-cluster
 node bin/circadia.mjs timeline --vault examples/vault orchard-sensors
+node bin/circadia.mjs dream --vault examples/vault --sample-only   # sample REM pairs; no model calls
 npm run benchmark         # 10k-note synthetic vault: index, incremental, recall p50/p95, RSS
 npm run eval              # generate the eval fixture, then run the retrieval eval
 npm run eval:check        # same, but exit non-zero on any baseline delta (CI)

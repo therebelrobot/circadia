@@ -95,7 +95,7 @@ Requires **Node ≥ 22.18**. `node:sqlite` is built in and TypeScript runs nativ
 
 ```bash
 npm install                 # dev-only: typescript + @types/node for `npm run typecheck`
-npm test                    # 62 tests
+npm test                    # 284 tests
 npm run example:index       # build the example vault's index
 npm run example:recall -- "where does the orchard collector run"
 npm run benchmark           # 10k-note synthetic vault: index, incremental, recall latency
@@ -114,6 +114,7 @@ node bin/circadia.mjs recall --vault ~/memory --as-of 2026-07 "where did it run"
 node bin/circadia.mjs recall --vault ~/memory --context "drip timing"   # LLM-ready output
 node bin/circadia.mjs relate --vault ~/memory orchard-sensors pi-cluster  # shortest paths
 node bin/circadia.mjs timeline --vault ~/memory orchard-sensors          # fact history
+node bin/circadia.mjs dream  --vault ~/memory --sample-only  # sample REM pairs (no model calls)
 node bin/circadia.mjs stats  --vault ~/memory
 ```
 

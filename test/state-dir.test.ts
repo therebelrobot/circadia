@@ -28,6 +28,10 @@ test('no source file constructs a literal .circadia path', () => {
     'src/extract/triples.ts',
     'src/cli/watch.ts',
     'src/cli/main.ts',
+    'src/dreams/candidates.ts',
+    'src/dreams/log.ts',
+    'src/dreams/rem.ts',
+    'src/dreams/gitignore.ts',
   ];
   for (const f of files) {
     const src = readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');

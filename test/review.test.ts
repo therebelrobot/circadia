@@ -212,6 +212,7 @@ describe('review (C9)', () => {
       'src/index/indexer.ts', // built_at meta (system time, not a note date)
       'src/retrieval/recall.ts', // activation "now"
       'src/consolidation/consolidate.ts', // now + ?? fallbacks; note dates use systemDateNow
+      'src/dreams/rem.ts', // the pass's "now"; the night is a local date, not a note date
     ]);
     const srcDir = fileURLToPath(new URL('../src', import.meta.url));
     const offenders: string[] = [];

@@ -14,6 +14,7 @@ import { join, dirname } from 'node:path';
 import { loadConfig } from '../src/config.ts';
 import { parseNote } from '../src/vault/parse.ts';
 import { passageHash, writeTriples } from '../src/extract/triples.ts';
+import { makeRng } from '../src/util/rng.ts';
 
 const HERE = import.meta.dirname;
 
@@ -23,15 +24,6 @@ const HERE = import.meta.dirname;
  * refused so a stray file (or a real vault) is never silently overwritten.
  */
 export const FIXTURE_MARKER = '.circadia-eval-fixture';
-
-/** Small deterministic PRNG (LCG) so generated vaults are reproducible. */
-function makeRng(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 0xffffffff;
-  };
-}
 
 interface Note {
   path: string;

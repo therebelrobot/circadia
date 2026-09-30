@@ -35,6 +35,7 @@ commands
   timeline <entity>     every fact about an entity, ordered by world time
   extract               extract hipporag triples from episodes
   consolidate           replay episodes to consolidate facts into entity notes
+  dream                 run the REM pass (--dry-run | --sample-only)
   review                interactive review of pending consolidation candidates
   stats                 show index statistics
   history <id>          show all versions of a note across commits
@@ -58,6 +59,9 @@ options
   --no-log              don't append this recall to the access log
   --warnings            (lint/index) also print warnings
   --dry-run             (consolidate) print changes without committing
+                        (dream) build the log and candidates in memory; write nothing
+  --sample-only         (dream) print the sampled pairs; make no model calls
+  --dream               (consolidate) run the REM pass after the commit
   --no-commit           (consolidate) skip git commit even if it would normally run
   --fixture <dir>       (eval) fixture vault (default: eval/.fixture)
   --queries <path>      (eval) query set (default: eval/queries.jsonl)
@@ -193,7 +197,7 @@ function cmdInit(dir: string): void {
   writeFileSync(join(root, CONFIG_FILENAME), JSON.stringify(cfg, null, 2) + '\n');
   writeFileSync(
     join(root, '.gitignore'),
-    `# derived — rebuild with \`circadia index\`\n${STATE_DIR}/index.sqlite*\n# keep ${STATE_DIR}/access.jsonl and ${STATE_DIR}/triples/: they are not derivable\n`,
+    `# derived — rebuild with \`circadia index\`\n${STATE_DIR}/index.sqlite*\n# keep ${STATE_DIR}/access.jsonl and ${STATE_DIR}/triples/: they are not derivable\n# dream state is disposable and never committed (ADR-0011)\n${STATE_DIR}/dreams/\n`,
   );
   const tdir = join(REPO, 'templates');
   for (const f of readdirSync(tdir)) copyFileSync(join(tdir, f), join(root, '_meta/templates', f));
@@ -512,7 +516,7 @@ export async function main(argv: string[]): Promise<number> {
       const dryRun = args.flags.has('dry-run');
       const commit = !args.flags.has('no-commit');
       const { consolidate } = await import('../consolidation/consolidate.ts');
-      const result = await consolidate(vault, cfg, { dryRun, commit });
+      const result = await consolidate(vault, cfg, { dryRun, commit, dream: args.flags.has('dream') });
 
       console.log(`consolidated: ${result.promoted} promoted, ${result.queued} queued, ${result.superseded} superseded`);
       console.log(`processed episodes: ${result.processedEpisodes.length}`);
@@ -523,6 +527,44 @@ export async function main(argv: string[]): Promise<number> {
         // so a dry run cannot stage or alter the working tree.
         console.log('\n--- would-be changes (unified diff) ---');
         console.log(result.diff && result.diff.length > 0 ? result.diff : '(no changes)');
+      }
+      return 0;
+    }
+    case 'dream': {
+      const cfg = loadConfig(vault);
+      const dryRun = args.flags.has('dry-run');
+      const sampleOnly = args.flags.has('sample-only');
+      const { runRem } = await import('../dreams/rem.ts');
+      const result = await runRem(vault, cfg, { dryRun, sampleOnly });
+
+      if (json) {
+        console.log(JSON.stringify(result, null, 2));
+        return 0;
+      }
+      if (result.skipped) {
+        console.log(`dream: skipped (${result.skipped})`);
+        return 0;
+      }
+      if (sampleOnly) {
+        console.log(`dream: sampled ${result.pairs.length} pair(s) (no model calls)`);
+        for (const p of result.pairs) console.log(`  ${p.a} × ${p.b}`);
+        return 0;
+      }
+      console.log(`dream: ${result.samples} sample(s), ${result.kept} kept, ${result.pruned} pruned`);
+      if (Object.keys(result.errors).length > 0) {
+        console.log(`errors: ${Object.entries(result.errors).map(([k, v]) => `${k}=${v}`).join(' ')}`);
+      }
+      if (result.samples > 0 && result.kept === 0 && result.pruned === result.samples) {
+        console.log('every sample failed or was pruned; see the error classes above');
+      }
+      if (dryRun) {
+        console.log('\n--- would-be log (dry run; nothing written) ---');
+        console.log(JSON.stringify(result.log, null, 2));
+        console.log('\n--- would-be candidates ---');
+        console.log(result.candidates.length > 0 ? result.candidates.map((c) => JSON.stringify(c)).join('\n') : '(none)');
+      } else {
+        console.log(`log: ${STATE_DIR}/dreams/log/${result.night}.json`);
+        console.log(`candidates appended: ${result.candidates.length}`);
       }
       return 0;
     }

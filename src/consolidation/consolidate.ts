@@ -90,6 +90,8 @@ export interface ConsolidateOptions {
   dryRun?: boolean;
   reflectionThreshold?: number;
   commit?: boolean;
+  /** run the REM pass after the commit (RFC-0001 Stage 2) */
+  dream?: boolean;
 }
 
 /**
@@ -391,6 +393,23 @@ export async function consolidate(
       } catch (e) {
         console.error(`warning: git commit failed: ${(e as Error).message}`);
       }
+    }
+  }
+
+  // --- REM pass (Phase 8) --------------------------------------------------------
+  // Runs after the commit, including when the commit was refused (C25). A dream error
+  // never fails consolidation. The commit above stages only the paths this run wrote, so
+  // dream files are never swept into it.
+  if (opts.dream && cfg.dreaming.enabled) {
+    try {
+      const { runRem } = await import('../dreams/rem.ts');
+      const rem = await runRem(vault, cfg, {
+        consolidation: { ran: true, episodes: processedEpisodes.length, promoted, queued },
+      });
+      if (rem.skipped) console.log(`dream: skipped (${rem.skipped})`);
+      else console.log(`dream: ${rem.samples} sample(s), ${rem.kept} kept, ${rem.pruned} pruned`);
+    } catch (e) {
+      console.error(`warning: dream pass failed: ${(e as Error).message}`);
     }
   }
 

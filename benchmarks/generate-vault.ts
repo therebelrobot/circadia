@@ -8,19 +8,11 @@
 
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { makeRng } from '../src/util/rng.ts';
 
 export interface GenOptions {
   notes: number;
   links: number;
-}
-
-/** Small deterministic PRNG (LCG) so generated vaults are reproducible. */
-function makeRng(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 0xffffffff;
-  };
 }
 
 export function generateVault(outDir: string, opts: GenOptions): void {

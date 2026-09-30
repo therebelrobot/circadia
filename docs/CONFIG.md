@@ -48,9 +48,31 @@ load.
 | `retrieval.actrDecay` | `0.5` | ACT-R decay d |
 | `retrieval.actrThresholdDays` | `30` | age at which a single-presentation memory has P = 0.5 |
 | `retrieval.actrNoise` | `1.0` | ACT-R noise s in the retrieval-probability logistic |
-| `retrieval.trustFloor` | `"low"` | drop edges and passages below this trust (`low` \| `medium` \| `high`) |
+| `retrieval.trustFloor` | `"low"` | **traversal** floor: drop edges and passages below this trust (`low` \| `medium` \| `high`). Distinct from `dreaming.trustFloor`, the **sampling** floor |
 | `retrieval.includeSuperseded` | `false` | traverse superseded fact edges |
 | `retrieval.logAccess` | `true` | append returned hits to the access log |
+
+## dreaming (Phase 8)
+
+The REM pass (RFC-0001). A user who never sets any of these gets no dreaming at all:
+`dreaming.enabled` is `false`, so `consolidate --dream` skips the pass. The explicit
+`circadia dream` command always runs — typing it is consent. Dream state lives under
+`.circadia/dreams/`, is disposable, and is never committed to git (ADR-0011).
+
+| key | default | meaning |
+|---|---|---|
+| `dreaming.enabled` | `false` | `consolidate --dream` runs the REM pass only when true |
+| `dreaming.samplesPerNight` | `20` | model calls per night |
+| `dreaming.minHops` | `2` | minimum graph distance between a pair, over non-dream origins |
+| `dreaming.recentDays` | `7` | window (days) for the recent side |
+| `dreaming.noiseShare` | `0.25` | share of partners that are uniformly random older notes |
+| `dreaming.trustFloor` | `"medium"` | **sampling** floor: notes below this trust are never sampled. Distinct from `retrieval.trustFloor`, the **traversal** floor |
+| `dreaming.recallFragments` | `3` | fragments shown by `wake` |
+| `dreaming.logTtlHours` | `12` | unread log lifetime in hours; `0` turns the TTL off |
+| `dreaming.candidateTtlNights` | `14` | candidate lifetime in nights |
+
+Proposals use the configured `extraction` endpoint, a local model by default. A hosted
+endpoint is the user's choice and carries passage text off the machine.
 
 ## mcp
 
