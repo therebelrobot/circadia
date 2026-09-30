@@ -202,10 +202,12 @@ works in TypeScript and uses Mastra as their agent framework.
 
 **Acceptance**
 
-- **Implemented; acceptance pending Phase 7.** On an eval set of multi-hop questions
-  (Phase 7), `hipporag` beats `typed` on recall@5 for the scoped notes, and doesn't regress
-  single-hop questions. This is HippoRAG 2's "no factual-recall regression" bar. The eval
-  set does not exist yet, so this criterion cannot be judged.
+- **Not met on the Phase 7 fixture.** On the eval set of multi-hop questions
+  (`eval/queries.jsonl`), `hipporag` does not beat `typed` on recall@5 unscoped (both
+  0.125), so HippoRAG 2's "no factual-recall regression" bar is not met. The scoped
+  correctness check passes (`multi-hop-scoped`: hipporag 1.000, typed 0.000), but a scope
+  shrinks the retrieval problem, so it is not evidence the unscoped query works. Numbers:
+  [`eval/baseline.json`](../eval/baseline.json).
 
 ---
 
