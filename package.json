@@ -23,6 +23,7 @@
   },
   "license": "Unlicense",
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@types/node": "^22.18.0",
     "typescript": "^5.9.0"
   },

@@ -59,11 +59,22 @@ interface JSONRPCResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-async function handleInit(id: string | number | null): Promise<JSONRPCResponse> {
+// Protocol versions this server understands, newest first. Mirrors the official SDK's
+// SUPPORTED_PROTOCOL_VERSIONS. The initialize result MUST carry `protocolVersion`; the
+// MCP TypeScript SDK rejects a handshake without it (`invalid_type at "protocolVersion"`).
+const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05', '2024-10-07'];
+const LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
+
+async function handleInit(id: string | number | null, params?: Record<string, unknown>): Promise<JSONRPCResponse> {
+  // Echo the client's requested version when we support it; otherwise advertise the
+  // newest we do support and let the client decide whether to continue.
+  const requested = typeof params?.protocolVersion === 'string' ? params.protocolVersion : undefined;
+  const protocolVersion = requested && SUPPORTED_PROTOCOL_VERSIONS.includes(requested) ? requested : LATEST_PROTOCOL_VERSION;
   return {
     jsonrpc: '2.0',
     id,
     result: {
+      protocolVersion,
       serverInfo: { name: 'circadia', version: '0.1.0' },
       capabilities: { tools: {} },
     },
@@ -262,7 +273,7 @@ async function dispatch(
   const id = req.id ?? null;
   const { method, params } = req;
   if (method === 'initialize') {
-    return handleInit(id);
+    return handleInit(id, params);
   }
   if (method === 'tools/list') {
     return handleToolsList(vaultRoot, cfg, id);

@@ -167,6 +167,7 @@ test('batches two messages in one write and echoes both ids', async () => {
   assert.deepEqual(res.map((r) => r.id), [100, 101], 'each response must echo its request id');
   assert.equal(res[0].jsonrpc, '2.0');
   assert.ok(res[0].result.serverInfo, 'initialize must return serverInfo');
+  assert.equal(typeof res[0].result.protocolVersion, 'string', 'initialize must return protocolVersion');
   assert.ok(Array.isArray(res[1].result.tools), 'tools/list must return tools');
 });
 
@@ -196,6 +197,7 @@ test('parses a message split across two writes', async () => {
   assert.equal(res.id, 200, 'a message split across chunks must still parse');
   assert.equal(res.jsonrpc, '2.0');
   assert.ok(res.result.serverInfo);
+  assert.equal(typeof res.result.protocolVersion, 'string');
 });
 
 test('handles CRLF terminators and a final line without a trailing newline', async () => {
