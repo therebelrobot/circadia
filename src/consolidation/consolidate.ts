@@ -7,7 +7,7 @@ import { openIndex } from '../index/db.ts';
 import { STATE_DIR, type Config } from '../config.ts';
 import type { ParsedNote } from '../types.ts';
 import { parseVault } from '../index/indexer.ts';
-import { parseFrontmatter } from '../vault/frontmatter.ts';
+import { setConsolidatedDate, hasFencedFrontmatter } from '../vault/episode-mark.ts';
 import { extractCandidates, type Candidate } from './candidate.ts';
 import { resolveEntity } from './entity.ts';
 import { evaluateGate } from './schema.ts';
@@ -124,7 +124,10 @@ export async function consolidate(
     }
   }
 
-  // Mark episodes as consolidated
+  // Mark episodes as consolidated.
+  // Episodes are append-only: the only permitted mutation is the `consolidated:` field.
+  // setConsolidatedDate performs a minimal in-place text edit (one line changed) so
+  // quotes, comments, block lists, and the `---` fences survive untouched.
   const today = new Date().toISOString().slice(0, 10);
   for (const ep of episodes) {
     if (opts.dryRun) {
@@ -132,11 +135,16 @@ export async function consolidate(
       continue;
     }
     const raw = readFileSync(join(vault, ep.path), 'utf8');
-    const { frontmatter: fmSrc, body } = splitFrontmatter(raw);
-    const fm = parseFrontmatter(fmSrc ?? '').data;
-    fm.consolidated = today;
-    const fmOut = serializeFrontmatter(fm);
-    writeFileSync(join(vault, ep.path), fmOut + body, 'utf8');
+    if (!hasFencedFrontmatter(raw)) {
+      // Don't corrupt a malformed episode; surface it instead.
+      console.warn(`warning: episode-mark.no-frontmatter ${ep.path}`);
+      processedEpisodes.push(ep.path);
+      continue;
+    }
+    const updated = setConsolidatedDate(raw, today);
+    if (updated !== raw) {
+      writeFileSync(join(vault, ep.path), updated, 'utf8');
+    }
     processedEpisodes.push(ep.path);
   }
 
@@ -170,23 +178,4 @@ export async function consolidate(
   db.close();
 
   return { promoted, queued, superseded, processedEpisodes, pendingPath };
-}
-
-// Simple frontmatter split/serialize for episode updates
-function splitFrontmatter(text: string): { frontmatter: string | null; body: string } {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(text);
-  if (!match) return { frontmatter: null, body: text };
-  return { frontmatter: match[1], body: text.slice(match[0].length) };
-}
-
-function serializeFrontmatter(fm: Record<string, unknown>): string {
-  const lines: string[] = [];
-  for (const [key, value] of Object.entries(fm)) {
-    if (Array.isArray(value)) {
-      lines.push(`${key}: ${JSON.stringify(value)}`);
-    } else {
-      lines.push(`${key}: ${value}`);
-    }
-  }
-  return lines.join('\n');
 }
