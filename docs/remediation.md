@@ -1,6 +1,6 @@
 # Circadia: remediation status
 
-Last updated 2026-09-30, at commit `591eedd`. The original audit was taken at `c67157e`.
+Last updated 2026-09-30, at commit `b918743`. The original audit was taken at `c67157e`.
 
 Every P0 and P1 issue from the audit is fixed, and each fix has been verified end to end:
 through the real CLI against a mock model, through the official MCP SDK client, and with
@@ -8,7 +8,7 @@ regression tests that fail on the old code. Several further issues found during 
 are fixed too (§2). The five items that remained after the first pass are now closed too
 (§3). None of them affected correctness or safety.
 
-At `591eedd`: 204 tests pass, the typecheck is clean, the example vault lints clean, runtime
+At `b918743`: 206 tests pass, the typecheck is clean, the example vault lints clean, runtime
 dependencies are zero, and `git grep "execSync(" src` is empty.
 
 ---
@@ -96,7 +96,8 @@ pending Phase 7"; the `predicates.defs` (`{}`) and `cardinality` (`many`) defaul
 noted. One mismatch was found and annotated: the Phase 2 adjacency cache existed and
 `recall()` accepted it, but the MCP server did not pass one. That gap is now closed —
 `src/mcp/server.ts` opens the index once and passes a `createGraphCache(db)` to recall
-(test: `test/mcp.test.ts`).
+(`test/mcp.test.ts`), and `test/mcp-stdio.test.ts` locks in that a running server picks up
+an external reindex without a restart.
 
 ## 4. Working rules for the next agent
 
