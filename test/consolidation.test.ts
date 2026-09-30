@@ -4,17 +4,17 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadConfig } from '../src/config.ts';
+import { CONFIG_FILENAME, STATE_DIR, loadConfig } from '../src/config.ts';
 import { consolidate } from '../src/consolidation/consolidate.ts';
 
-const tmp = mkdtempSync(join(tmpdir(), 'palimpsest-test-'));
+const tmp = mkdtempSync(join(tmpdir(), 'circadia-consolidation-test-'));
 
 test('consolidation: empty vault produces empty result', async () => {
   const v = join(tmp, 'empty-vault');
   mkdirSync(v, { recursive: true });
-  writeFileSync(join(v, 'palimpsest.config.json'), JSON.stringify({
+  writeFileSync(join(v, CONFIG_FILENAME), JSON.stringify({
     vault: { factsHeading: '## Facts', historyHeading: '## History', ignore: [] },
-    index: { path: '.palimpsest/index.sqlite', accessLog: '.palimpsest/access.jsonl' },
+    index: { path: `${STATE_DIR}/index.sqlite`, accessLog: `${STATE_DIR}/access.jsonl` },
     graph: { defaultExtraction: 'typed', scopes: [], query: { mode: 'auto', auto: { ladder: ['typed', 'wikilink'], minTopMargin: 0.1, minSeeds: 2, multiEntityThreshold: 2 } }, originWeights: { contains: 1, link: 1, fact: 1, provenance: 1, triple: 1, synonym: 1 }, damping: 0.5, maxIterations: 100, tolerance: 0.001 },
     retrieval: { topK: 20, tokenBudget: 5000, seedLimit: 10, weights: { graph: 0.6, activation: 0.25, importance: 0.15 }, actrDecay: 0.5, actrThresholdDays: 14, actrNoise: 0.3, trustFloor: 'low', includeSuperseded: false, logAccess: true },
     embeddings: { provider: 'none', endpoint: '', model: '', apiKeyEnv: null, batchSize: 8 },
@@ -32,9 +32,9 @@ test('consolidation: empty vault produces empty result', async () => {
 test('consolidation: episode without consolidated date is selected', async () => {
   const v = join(tmp, 'episode-vault');
   mkdirSync(join(v, 'episodes', '2026', '09'), { recursive: true });
-  writeFileSync(join(v, 'palimpsest.config.json'), JSON.stringify({
+  writeFileSync(join(v, CONFIG_FILENAME), JSON.stringify({
     vault: { factsHeading: '## Facts', historyHeading: '## History', ignore: [] },
-    index: { path: '.palimpsest/index.sqlite', accessLog: '.palimpsest/access.jsonl' },
+    index: { path: `${STATE_DIR}/index.sqlite`, accessLog: `${STATE_DIR}/access.jsonl` },
     graph: { defaultExtraction: 'typed', scopes: [], query: { mode: 'auto', auto: { ladder: ['typed'], minTopMargin: 0.1, minSeeds: 2, multiEntityThreshold: 2 } }, originWeights: { contains: 1, link: 1, fact: 1, provenance: 1, triple: 1, synonym: 1 }, damping: 0.5, maxIterations: 100, tolerance: 0.001 },
     retrieval: { topK: 20, tokenBudget: 5000, seedLimit: 10, weights: { graph: 0.6, activation: 0.25, importance: 0.15 }, actrDecay: 0.5, actrThresholdDays: 14, actrNoise: 0.3, trustFloor: 'low', includeSuperseded: false, logAccess: true },
     embeddings: { provider: 'none', endpoint: '', model: '', apiKeyEnv: null, batchSize: 8 },
@@ -51,9 +51,9 @@ test('consolidation: episode without consolidated date is selected', async () =>
 test('consolidation: marked episode is not selected', async () => {
   const v = join(tmp, 'marked-vault');
   mkdirSync(join(v, 'episodes', '2026', '09'), { recursive: true });
-  writeFileSync(join(v, 'palimpsest.config.json'), JSON.stringify({
+  writeFileSync(join(v, CONFIG_FILENAME), JSON.stringify({
     vault: { factsHeading: '## Facts', historyHeading: '## History', ignore: [] },
-    index: { path: '.palimpsest/index.sqlite', accessLog: '.palimpsest/access.jsonl' },
+    index: { path: `${STATE_DIR}/index.sqlite`, accessLog: `${STATE_DIR}/access.jsonl` },
     graph: { defaultExtraction: 'typed', scopes: [], query: { mode: 'auto', auto: { ladder: ['typed'], minTopMargin: 0.1, minSeeds: 2, multiEntityThreshold: 2 } }, originWeights: { contains: 1, link: 1, fact: 1, provenance: 1, triple: 1, synonym: 1 }, damping: 0.5, maxIterations: 100, tolerance: 0.001 },
     retrieval: { topK: 20, tokenBudget: 5000, seedLimit: 10, weights: { graph: 0.6, activation: 0.25, importance: 0.15 }, actrDecay: 0.5, actrThresholdDays: 14, actrNoise: 0.3, trustFloor: 'low', includeSuperseded: false, logAccess: true },
     embeddings: { provider: 'none', endpoint: '', model: '', apiKeyEnv: null, batchSize: 8 },
@@ -70,9 +70,9 @@ test('consolidation: marked episode is not selected', async () => {
 test('consolidation: extracts candidates from episodes', async () => {
   const v = join(tmp, 'candidate-vault');
   mkdirSync(join(v, 'episodes'), { recursive: true });
-  writeFileSync(join(v, 'palimpsest.config.json'), JSON.stringify({
+  writeFileSync(join(v, CONFIG_FILENAME), JSON.stringify({
     vault: { factsHeading: '## Facts', historyHeading: '## History', ignore: [] },
-    index: { path: '.palimpsest/index.sqlite', accessLog: '.palimpsest/access.jsonl' },
+    index: { path: `${STATE_DIR}/index.sqlite`, accessLog: `${STATE_DIR}/access.jsonl` },
     graph: { defaultExtraction: 'typed', scopes: [], query: { mode: 'auto', auto: { ladder: ['typed'], minTopMargin: 0.1, minSeeds: 2, multiEntityThreshold: 2 } }, originWeights: { contains: 1, link: 1, fact: 1, provenance: 1, triple: 1, synonym: 1 }, damping: 0.5, maxIterations: 100, tolerance: 0.001 },
     retrieval: { topK: 20, tokenBudget: 5000, seedLimit: 10, weights: { graph: 0.6, activation: 0.25, importance: 0.15 }, actrDecay: 0.5, actrThresholdDays: 14, actrNoise: 0.3, trustFloor: 'low', includeSuperseded: false, logAccess: true },
     embeddings: { provider: 'none', endpoint: '', model: '', apiKeyEnv: null, batchSize: 8 },

@@ -10,6 +10,7 @@
 import { existsSync, readdirSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { STATE_DIR } from '../config.ts';
 
 export interface CachedTriple {
   passageId: string;
@@ -28,7 +29,7 @@ export function passageHash(text: string): string {
 }
 
 export function triplesDir(vaultRoot: string): string {
-  return join(vaultRoot, '.circadia', 'triples');
+  return join(vaultRoot, STATE_DIR, 'triples');
 }
 
 export function loadTriples(vaultRoot: string): { triples: CachedTriple[]; badLines: number } {

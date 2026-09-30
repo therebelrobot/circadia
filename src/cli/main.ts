@@ -3,7 +3,7 @@
 import { existsSync, mkdirSync, writeFileSync, readdirSync, copyFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CONFIG_FILENAME, DEFAULT_CONFIG, loadConfig } from '../config.ts';
+import { CONFIG_FILENAME, DEFAULT_CONFIG, STATE_DIR, loadConfig } from '../config.ts';
 import { buildIndex, incrementalIndex, parseVault, buildResolver, embedPassages } from '../index/indexer.ts';
 import { recall, renderForContext } from '../retrieval/recall.ts';
 import { createEmbeddingsClient } from '../retrieval/embeddings.ts';
@@ -100,7 +100,7 @@ function printProblems(problems: Problem[], showWarnings: boolean): void {
 function cmdInit(dir: string): void {
   const root = resolve(dir);
   if (existsSync(join(root, CONFIG_FILENAME))) throw new Error(`${root} already has ${CONFIG_FILENAME}`);
-  for (const d of ['episodes', 'entities/people', 'entities/projects', 'entities/concepts', 'schemas', 'procedures', '_meta/templates', '.circadia']) {
+  for (const d of ['episodes', 'entities/people', 'entities/projects', 'entities/concepts', 'schemas', 'procedures', '_meta/templates', STATE_DIR]) {
     mkdirSync(join(root, d), { recursive: true });
   }
   const cfg = {
@@ -123,7 +123,7 @@ function cmdInit(dir: string): void {
   writeFileSync(join(root, CONFIG_FILENAME), JSON.stringify(cfg, null, 2) + '\n');
   writeFileSync(
     join(root, '.gitignore'),
-    '# derived — rebuild with `circadia index`\n.circadia/index.sqlite*\n# keep .circadia/access.jsonl and .circadia/triples/: they are not derivable\n',
+    `# derived — rebuild with \`circadia index\`\n${STATE_DIR}/index.sqlite*\n# keep ${STATE_DIR}/access.jsonl and ${STATE_DIR}/triples/: they are not derivable\n`,
   );
   const tdir = join(REPO, 'templates');
   for (const f of readdirSync(tdir)) copyFileSync(join(tdir, f), join(root, '_meta/templates', f));

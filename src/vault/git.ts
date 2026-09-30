@@ -151,10 +151,6 @@ export function resolveCommit(vaultRoot: string, ref: string): GitCommit | null 
     }
 
     // Otherwise, resolve as a normal git ref
-    // Validate ref format to prevent shell injection (only allow alphanumeric, /, -, ~, ^, .)
-    if (!/^[a-zA-Z0-9/_~^.\-]+$/.test(ref)) {
-      return null;
-    }
     const output = execSync(
       `git rev-parse ${ref}^{commit} 2>/dev/null`,
       { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }

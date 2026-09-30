@@ -4,6 +4,7 @@
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { STATE_DIR } from '../config.ts';
 
 export interface ReviewCandidate {
   subject: string;
@@ -21,7 +22,7 @@ export interface ReviewCandidate {
  * Returns { promoted, rejected, edited } counts.
  */
 export async function review(vault: string): Promise<{ promoted: number; rejected: number; edited: number }> {
-  const pendingPath = join(vault, '.circadia', 'pending.jsonl');
+  const pendingPath = join(vault, STATE_DIR, 'pending.jsonl');
 
   if (!existsFileSync(pendingPath)) {
     console.log('No pending candidates to review.');

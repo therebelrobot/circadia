@@ -30,7 +30,7 @@ describe('triple extraction', () => {
   });
 
   describe('isStale', () => {
-    const tmpRoot = join(tmpdir(), `palimpsest-triple-test-${Date.now()}`);
+    const tmpRoot = join(tmpdir(), `circadia-triple-test-${Date.now()}`);
 
     test.beforeEach(() => {
       mkdirSync(tmpRoot, { recursive: true });
@@ -122,7 +122,7 @@ describe('triple extraction', () => {
   });
 
   describe('writeTriples and loadTriples', () => {
-    const tmpRoot = join(tmpdir(), `palimpsest-triple-io-${Date.now()}`);
+    const tmpRoot = join(tmpdir(), `circadia-triple-io-${Date.now()}`);
 
     test.beforeEach(() => {
       mkdirSync(tmpRoot, { recursive: true });

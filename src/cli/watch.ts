@@ -4,7 +4,7 @@
 
 import { watch as fsWatch, type FSWatcher } from 'node:fs';
 import { join } from 'node:path';
-import type { Config } from '../config.ts';
+import { STATE_DIR, type Config } from '../config.ts';
 import { walkVault } from '../vault/walk.ts';
 import { embedPassages, incrementalIndex, type IndexResult } from '../index/indexer.ts';
 
@@ -101,7 +101,7 @@ export function watchVault(vaultRoot: string, config: Config, opts: WatchOptions
         if (stopped) return;
         // ignore the derived index / access log / triple cache: reindexing writes
         // to them, and we must not let that trigger another reindex (infinite loop)
-        if (filename && (filename.startsWith('.circadia') || filename.includes('.circadia'))) return;
+        if (filename && (filename.startsWith(STATE_DIR) || filename.includes(STATE_DIR))) return;
         schedule();
       });
     } catch (e) {

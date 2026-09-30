@@ -4,7 +4,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { openIndex } from '../index/db.ts';
-import type { Config } from '../config.ts';
+import { STATE_DIR, type Config } from '../config.ts';
 import type { ParsedNote } from '../types.ts';
 import { parseVault } from '../index/indexer.ts';
 import { parseFrontmatter } from '../vault/frontmatter.ts';
@@ -81,7 +81,7 @@ export async function consolidate(
   allCandidates.push(...tripleCandidates);
 
   // Apply schema-fit gate
-  const pendingPath = join(vault, '.circadia', 'pending.jsonl');
+  const pendingPath = join(vault, STATE_DIR, 'pending.jsonl');
   mkdirSync(dirname(pendingPath), { recursive: true });
 
   for (const c of allCandidates) {
@@ -136,8 +136,7 @@ export async function consolidate(
     const fm = parseFrontmatter(fmSrc ?? '').data;
     fm.consolidated = today;
     const fmOut = serializeFrontmatter(fm);
-    // Reconstruct with proper YAML frontmatter delimiters
-    writeFileSync(join(vault, ep.path), '---\n' + fmOut + '---\n' + body, 'utf8');
+    writeFileSync(join(vault, ep.path), fmOut + body, 'utf8');
     processedEpisodes.push(ep.path);
   }
 
@@ -177,10 +176,7 @@ export async function consolidate(
 function splitFrontmatter(text: string): { frontmatter: string | null; body: string } {
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(text);
   if (!match) return { frontmatter: null, body: text };
-  // Ensure body starts with a newline to separate from frontmatter
-  const rawBody = text.slice(match[0].length);
-  const body = rawBody.startsWith('\n') ? rawBody : '\n' + rawBody;
-  return { frontmatter: match[1], body };
+  return { frontmatter: match[1], body: text.slice(match[0].length) };
 }
 
 function serializeFrontmatter(fm: Record<string, unknown>): string {
@@ -192,5 +188,5 @@ function serializeFrontmatter(fm: Record<string, unknown>): string {
       lines.push(`${key}: ${value}`);
     }
   }
-  return lines.join('\n') + '\n';
+  return lines.join('\n');
 }
