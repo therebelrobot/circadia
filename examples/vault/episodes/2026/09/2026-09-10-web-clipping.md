@@ -4,7 +4,9 @@ source: tool
 by: web
 boundary: manual
 importance: 0.3
-consolidated: 2026-09-29# Clipped: forum thread on drip irrigation timing
+consolidated: 2026-09-29
+
+# Clipped: forum thread on drip irrigation timing
 
 A forum post claims drip lines should run at dawn to reduce evaporation, and that
 [[soil-moisture]] thresholds around 15% VWC suit most fruit trees.

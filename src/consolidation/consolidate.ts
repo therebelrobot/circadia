@@ -136,7 +136,8 @@ export async function consolidate(
     const fm = parseFrontmatter(fmSrc ?? '').data;
     fm.consolidated = today;
     const fmOut = serializeFrontmatter(fm);
-    writeFileSync(join(vault, ep.path), fmOut + body, 'utf8');
+    // Reconstruct with proper YAML frontmatter delimiters
+    writeFileSync(join(vault, ep.path), '---\n' + fmOut + '---\n' + body, 'utf8');
     processedEpisodes.push(ep.path);
   }
 
@@ -176,7 +177,10 @@ export async function consolidate(
 function splitFrontmatter(text: string): { frontmatter: string | null; body: string } {
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(text);
   if (!match) return { frontmatter: null, body: text };
-  return { frontmatter: match[1], body: text.slice(match[0].length) };
+  // Ensure body starts with a newline to separate from frontmatter
+  const rawBody = text.slice(match[0].length);
+  const body = rawBody.startsWith('\n') ? rawBody : '\n' + rawBody;
+  return { frontmatter: match[1], body };
 }
 
 function serializeFrontmatter(fm: Record<string, unknown>): string {
@@ -188,5 +192,5 @@ function serializeFrontmatter(fm: Record<string, unknown>): string {
       lines.push(`${key}: ${value}`);
     }
   }
-  return lines.join('\n');
+  return lines.join('\n') + '\n';
 }

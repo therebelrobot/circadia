@@ -4,7 +4,9 @@ source: manual
 by: user
 boundary: manual
 importance: 0.7
-consolidated: 2026-09-29# Migrated collector to the cluster
+consolidated: 2026-09-29
+
+# Migrated collector to the cluster
 
 Moved the [[orchard-sensors]] collector and the [[mqtt-broker]] off the [[old-laptop]]
 onto the [[pi-cluster]]. Laptop retired.
