@@ -24,9 +24,11 @@ export interface PredicateDef {
   values?: string[];
   description?: string;
   /**
-   * How many objects a subject may hold for this predicate. `single` (default) means a
-   * second, different object is a contradiction the consolidation gate must resolve;
-   * `many` means multiple objects coexist (e.g. `depends_on`).
+   * How many objects a subject may hold for this predicate. `many` (default) means
+   * multiple objects coexist and a new one is simply added — the safe choice, since it
+   * only accumulates facts. `single` means a second, different object is a contradiction
+   * the consolidation gate must resolve (queue, or supersede for a `by: user` episode).
+   * Set `single` only where replacement makes sense, e.g. `runs_on`, `status`.
    */
   cardinality?: 'single' | 'many';
 }

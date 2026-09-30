@@ -45,8 +45,11 @@ const CONFIG = {
   predicates: {
     strict: false,
     defs: {
-      runs_on: { object: 'entity', inverse: 'hosts' },
-      status: { object: 'literal', values: ['active', 'paused', 'archived'] },
+      // single: a second, different object is a contradiction
+      runs_on: { object: 'entity', inverse: 'hosts', cardinality: 'single' },
+      status: { object: 'literal', values: ['active', 'paused', 'archived'], cardinality: 'single' },
+      // many (default): a second object is a new fact to accumulate
+      depends_on: { object: 'entity', inverse: 'dependency_of' },
     },
   },
 };
@@ -169,20 +172,48 @@ test('C3: a user episode supersedes a contradicting fact (roadmap Phase 4 fixtur
 
   const text = readFileSync(join(v, 'entities/projects/x.md'), 'utf8');
   const today = localDateString();
+  // World time is the episode's `started` (2026-09-20T10:00:00-04:00 -> UTC 2026-09-20),
+  // not the run date. `at::` and `superseded::` keep the run date.
+  const episodeStart = '2026-09-20';
 
-  // New fact in ## Facts, opening its world-time interval at the supersession date.
+  // New fact in ## Facts, opening its world-time interval at the change date.
   assert.ok(
-    text.includes(`[runs_on:: [[y]]] [valid:: ${today}..] [at:: ${today}] [by:: agent] [src:: [[2026-09-21-move]]] [trust:: high] [conf:: 0.9]`),
+    text.includes(`[runs_on:: [[y]]] [valid:: ${episodeStart}..] [at:: ${today}] [by:: agent] [src:: [[2026-09-21-move]]] [trust:: high] [conf:: 0.9]`),
     `new fact missing or malformed:\n${text}`,
   );
 
-  // Old fact struck through, interval closed, moved to ## History.
-  const struck = `~~[runs_on:: [[z]]] [valid:: 2026-06-01..${today}]~~ [at:: 2026-06-01] [superseded:: ${today}] [by:: user] ^f-x-old`;
+  // Old fact struck through, interval closed at the change date, moved to ## History.
+  const struck = `~~[runs_on:: [[z]]] [valid:: 2026-06-01..${episodeStart}]~~ [at:: 2026-06-01] [superseded:: ${today}] [by:: user] ^f-x-old`;
   assert.ok(text.includes(struck), `struck fact missing or malformed:\n${text}`);
 
   const historyIdx = text.indexOf('## History');
   assert.ok(historyIdx !== -1 && text.indexOf(struck) > historyIdx, 'struck fact must live under ## History');
   assert.ok(text.indexOf('[runs_on:: [[y]]]') < historyIdx, 'new fact must live under ## Facts');
+});
+
+test('C3: a many-valued predicate accumulates instead of superseding', async () => {
+  const v = makeVault('c3-many', {
+    'entities/projects/x.md': entityNote('x', '## Facts\n- [depends_on:: [[a]]] [by:: user]\n'),
+    'entities/tools/a.md': entityNote('a', ''),
+    'entities/tools/b.md': entityNote('b', ''),
+    'episodes/2026/09/2026-09-25-more.md': episodeNote('user', 'x now also depends on b.'),
+  });
+  const cfg = loadConfig(v);
+  buildIndex(v, cfg);
+
+  const restore = mockFetch([{ subject: 'x', predicate: 'depends_on', object: '[[b]]', valid: true, confidence: 0.9 }]);
+  try {
+    const result = await consolidate(v, cfg);
+    assert.equal(result.superseded, 0, 'a many predicate must not supersede');
+    assert.equal(result.promoted, 1);
+  } finally {
+    restore();
+  }
+
+  const text = readFileSync(join(v, 'entities/projects/x.md'), 'utf8');
+  assert.ok(text.includes('[depends_on:: [[a]]]'), 'the existing fact must remain current');
+  assert.ok(text.includes('[depends_on:: [[b]]]'), 'the new fact must be added');
+  assert.ok(!text.includes('~~'), 'nothing should be struck through');
 });
 
 test('C4: a by: web episode queues and never promotes', async () => {

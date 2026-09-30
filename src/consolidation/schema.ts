@@ -27,9 +27,13 @@ export function factObjectKey(f: Fact): string {
   return f.object.kind === 'link' ? `[[${f.object.link.target}]]` : f.object.value;
 }
 
-/** A predicate is single-valued unless its def says `cardinality: "many"`. */
+/**
+ * A predicate is single-valued only when its def explicitly says `cardinality: "single"`.
+ * The default is `many`: a new object is added rather than treated as a contradiction, so
+ * an unconfigured predicate can never silently strike out a correct current fact.
+ */
 export function isSingleValued(cfg: Config, predicate: string): boolean {
-  return (cfg.predicates.defs[predicate]?.cardinality ?? 'single') === 'single';
+  return cfg.predicates.defs[predicate]?.cardinality === 'single';
 }
 
 /**
@@ -70,23 +74,28 @@ export function evaluateGate(
     const samePredicate = currentFacts.filter((f) => f.predicate === candidate.predicate);
     const newObjectKey = objectRef ? `[[${objectRef.id}]]` : candidate.object;
 
-    const conflict = samePredicate.find((f) => factObjectKey(f) !== newObjectKey);
-    if (conflict) {
-      if (isSingleValued(cfg, candidate.predicate) && candidate.by === 'user' && candidate.explicit) {
-        return {
-          action: 'supersede',
-          reason: 'contradicts a current fact (user-confirmed)',
-          candidate,
-          subjectRef,
-          objectRef,
-          conflict,
-        };
-      }
-      return { action: 'queue', reason: 'contradicts a current fact', candidate, subjectRef, objectRef, conflict };
-    }
-
+    // The same object is corroboration, never a second fact.
     if (samePredicate.some((f) => factObjectKey(f) === newObjectKey)) {
       return { action: 'noop', reason: 'corroborates a current fact', candidate, subjectRef, objectRef };
+    }
+
+    // A different object is only a contradiction for a single-valued predicate. For a
+    // `many` predicate (the default) it is simply a new fact to accumulate.
+    if (isSingleValued(cfg, candidate.predicate)) {
+      const conflict = samePredicate[0];
+      if (conflict) {
+        if (candidate.by === 'user' && candidate.explicit) {
+          return {
+            action: 'supersede',
+            reason: 'contradicts a current fact (user-confirmed)',
+            candidate,
+            subjectRef,
+            objectRef,
+            conflict,
+          };
+        }
+        return { action: 'queue', reason: 'contradicts a current fact', candidate, subjectRef, objectRef, conflict };
+      }
     }
 
     return {

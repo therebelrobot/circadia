@@ -12,8 +12,14 @@ import { formatFact, parseFactLine } from '../vault/facts.ts';
 import type { Fact, Problem } from '../types.ts';
 
 export interface SupersedeOptions {
-  /** epoch ms for the superseded date */
+  /** epoch ms for the superseded date (system time: when we stopped believing it) */
   supersededAt: number;
+  /**
+   * epoch ms for the world-time boundary (when the change actually happened, normally the
+   * source episode's `started`). Closes the old fact's `valid` interval. Defaults to
+   * `supersededAt` when the caller has no better world-time value.
+   */
+  validAt?: number;
   /** new fact to append */
   newFact: Omit<Fact, 'line' | 'raw'>;
 }
@@ -103,11 +109,13 @@ export function supersede(notePath: string, opts: SupersedeOptions): SupersedeRe
     return { superseded, problems, changed: false };
   }
 
-  // Strike the old facts, closing their world-time interval at the supersession date.
+  // Strike the old facts, closing their world-time interval at the change date (not the
+  // run date: `valid` is world time, `superseded` is system time).
+  const validAt = opts.validAt ?? opts.supersededAt;
   const struckLines = toSupersede.map(({ fact }) =>
     formatFact({
       ...fact,
-      valid: { from: fact.valid.from, to: fact.valid.to ?? opts.supersededAt },
+      valid: { from: fact.valid.from, to: fact.valid.to ?? validAt },
       supersededAt: opts.supersededAt,
       status: 'superseded',
     }),

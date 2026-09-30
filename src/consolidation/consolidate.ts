@@ -102,8 +102,11 @@ export async function consolidate(
       trackFact(entityFacts, subjectRef.path, fact);
     } else if (decision.action === 'supersede' && subjectRef) {
       const supersededAt = todayMs ?? Date.now();
-      const newFact = buildFact(c, subjectRef.id, objectRef?.id ?? null, supersededAt, supersededAt);
-      const result = supersede(join(vault, subjectRef.path), { supersededAt, newFact });
+      // World time is when the change happened (the episode's `started`), not the run
+      // date. `at::` and `superseded::` keep the run date (system time).
+      const validAt = noteById.get(c.episodeId)?.created ?? supersededAt;
+      const newFact = buildFact(c, subjectRef.id, objectRef?.id ?? null, supersededAt, validAt);
+      const result = supersede(join(vault, subjectRef.path), { supersededAt, validAt, newFact });
       if (result.changed) {
         superseded++;
         trackFact(entityFacts, subjectRef.path, newFact);
