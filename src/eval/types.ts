@@ -112,6 +112,12 @@ export interface EvalQueryResult {
   trustViolations: number;
   /** `expect_absent` checks whose paired query did not retrieve the passage. */
   vacuousAbsences: number;
+  /**
+   * Gold ids this query names (`expected_passages`, `expect_absent`, `expect_before`)
+   * that are not passages in the built index. A non-empty list means the query can
+   * never score, so the CLI fails the run unless `--allow-missing` is passed.
+   */
+  missingIds: string[];
 }
 
 /** Aggregated metrics for one group of results. */
@@ -137,6 +143,8 @@ export interface EvalReport {
   orderViolations: number;
   /** total expect_absent checks that proved nothing (paired query missed). */
   vacuousAbsences: number;
+  /** union of every query's `missingIds`, sorted. */
+  missingIds: string[];
   failed: boolean;
 }
 

@@ -27,6 +27,7 @@ node bin/circadia.mjs relate --vault examples/vault orchard-sensors pi-cluster
 node bin/circadia.mjs timeline --vault examples/vault orchard-sensors
 npm run benchmark         # 10k-note synthetic vault: index, incremental, recall p50/p95, RSS
 npm run eval              # generate the eval fixture, then run the retrieval eval
+npm run eval:check        # same, but exit non-zero on any baseline delta (CI)
 node bin/circadia.mjs --help
 ```
 
@@ -162,9 +163,10 @@ node bin/circadia.mjs --help
   passages, no answer model or judge — so its numbers are not comparable to vendor
   LongMemEval/LoCoMo figures. It is deterministic (fixed clock, no logging, trigram
   lexical embeddings) and strictly read-only. Tuning (`eval --tune`) is report-only and
-  never writes defaults. The trust gate is wired and unit-tested but currently
-  unreachable end-to-end (the runner filters hits by the same floor it counts against).
-  See `docs/EVAL.md` and ADR-0010.
+  never writes defaults. The trust gate recomputes each hit's trust from the index, so
+  it fires when the trust filter regresses rather than agreeing with it. A gold id not
+  in the index fails the run unless `--allow-missing`; a non-fixture target has no
+  default baseline and is aggregate-only. See `docs/EVAL.md` and ADR-0010.
 
 ## 10. Working rules for agents
 

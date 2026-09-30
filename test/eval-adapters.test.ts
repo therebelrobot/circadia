@@ -15,8 +15,9 @@ test('a LongMemEval JSONL fixture maps to EvalQuery[]', () => {
     }),
     JSON.stringify({ question_id: 'q2', question: 'What changed?', question_type: 'knowledge-update' }),
   ].join('\n');
-  const qs = parseLongMemEvalText(text);
+  const { queries: qs, skippedAbs } = parseLongMemEvalText(text);
   assert.equal(qs.length, 2);
+  assert.equal(skippedAbs, 0);
   assert.equal(qs[0].id, 'q1');
   assert.equal(qs[0].kind, 'single-hop');
   assert.deepEqual(qs[0].expected_passages, ['s1#0']);
@@ -30,11 +31,24 @@ test('a malformed line is skipped, not thrown', () => {
     '{ this is not json',
     JSON.stringify({ question_id: 'q2', question: 'also ok' }),
   ].join('\n');
-  const qs = parseLongMemEvalText(text);
+  const { queries: qs } = parseLongMemEvalText(text);
   assert.equal(qs.length, 2);
   assert.deepEqual(
     qs.map((q) => q.id),
     ['q1', 'q2'],
+  );
+});
+
+test('an abstention (_abs) record is skipped and counted', () => {
+  const text = [
+    JSON.stringify({ question_id: 'q1', question: 'ok', question_type: 'single-session-user' }),
+    JSON.stringify({ question_id: 'q2_abs', question: 'no answer exists', question_type: 'single-session-user' }),
+  ].join('\n');
+  const { queries: qs, skippedAbs } = parseLongMemEvalText(text);
+  assert.equal(skippedAbs, 1, 'the _abs record is counted');
+  assert.deepEqual(
+    qs.map((q) => q.id),
+    ['q1'],
   );
 });
 

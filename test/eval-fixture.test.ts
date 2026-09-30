@@ -2,7 +2,7 @@
 // never touches examples/vault/.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -52,7 +52,22 @@ test('fixture generation is byte-identical across two runs', () => {
   const hb = treeHash(b);
   assert.deepEqual([...ha.keys()].sort(), [...hb.keys()].sort(), 'same file set');
   for (const [rel, hash] of ha) assert.equal(hb.get(rel), hash, `content differs: ${rel}`);
-  assert.equal(ha.size, 299 + 1 + 1 + 8, '299 notes + config + access log + 8 triple files');
+  assert.equal(ha.size, 299 + 1 + 1 + 8 + 1, '299 notes + config + access log + 8 triple files + marker');
+});
+
+test('generation refuses a non-empty directory without the marker', () => {
+  const dir = join(tmp, 'stray');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'stray.md'), 'not a fixture\n');
+  assert.throws(() => generateFixture(dir), /refusing to write into non-empty/);
+});
+
+test('generation replaces a directory that carries the marker', () => {
+  const dir = join(tmp, 'replace');
+  generateFixture(dir);
+  writeFileSync(join(dir, 'stray.md'), 'left over\n');
+  generateFixture(dir); // marker present -> safe to rebuild
+  assert.ok(!readdirSync(dir).includes('stray.md'), 'the stray file is gone');
 });
 
 test('fixture contains at least one note of each required shape', () => {

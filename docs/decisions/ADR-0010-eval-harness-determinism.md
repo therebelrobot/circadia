@@ -51,12 +51,23 @@ it must not let a tuning pass silently change production defaults.
 - The harness measures retrieval only. There is no answer model or judge by
   default, so the numbers are not comparable to vendor-reported LongMemEval or
   LoCoMo figures (`docs/SOURCES.md` L14, L15).
-- The trust gate is currently unreachable end-to-end: `runRung` filters hits by
-  `retrieval.trustFloor` and `countTrustViolations` counts hits below the same
-  floor, so the count is always zero. The gate is wired and unit-tested
-  (`test/eval-trust.test.ts`); making it fire would require a path that returns a
-  below-floor hit, which the filter prevents. This is recorded as a known
-  limitation rather than silently "fixed".
+- The trust gate recomputes each hit's trust from the index (`nodes.trust` for the
+  passage and its source note) rather than reading the value recall reported, so a
+  C12-style laundering regression — a synonym edge or path that lifts a low-trust
+  passage's trust — is caught even though the filter and the counter would
+  otherwise agree. It fires when the filter regresses; it does not depend on the
+  filter's own output (`test/eval-trust.test.ts`).
+- A gold id that is not a passage in the built index is reported (`missingIds`) and
+  fails the run unless `--allow-missing`; a query that can never score is not
+  silently averaged as 0.
+- Only the generated fixture has a default baseline. A personal vault must name an
+  explicit `--baseline` outside the repo, and its output is aggregate-only by
+  default, so private note ids never land in the tracked baseline.
+- A generated fixture carries a marker (`.circadia-eval-fixture`). A re-run
+  replaces the directory only when the marker is present and refuses a non-empty
+  directory without it, so a stray file (or a real vault) is never silently
+  overwritten. The marker is excluded from `fixtureHash`, so it does not perturb
+  the baseline.
 
 ## Status
 

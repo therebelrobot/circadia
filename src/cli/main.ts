@@ -2,7 +2,7 @@
 
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CONFIG_FILENAME, DEFAULT_CONFIG, STATE_DIR, deepMerge, loadConfig } from '../config.ts';
 import { buildIndex, incrementalIndex, parseVault, buildResolver, embedPassages } from '../index/indexer.ts';
@@ -13,7 +13,7 @@ import { timeline } from '../retrieval/timeline.ts';
 import { parseInstant } from '../vault/time.ts';
 import { resolveCommit, isGitRepo } from '../vault/git.ts';
 import type { GraphMode, Problem, QueryMode, RecallHit } from '../types.ts';
-import type { EvalAggregate, EvalQuery } from '../eval/types.ts';
+import type { EvalAggregate, EvalQuery, EvalReport } from '../eval/types.ts';
 import type { BaselineDelta } from '../eval/baseline.ts';
 import { getMeta, openIndex } from '../index/db.ts';
 import { watchVault } from './watch.ts';
@@ -68,6 +68,9 @@ options
   --tune                (eval) grid-search thresholds on the dev split (report only)
   --adapter <name>      (eval) read an external set: longmemeval | locomo
   --report <path>       (eval) write the full JSON report to a file
+  --aggregate-only      (eval) omit per-query hits and query text from output
+  --allow-missing       (eval) don't fail when a gold id is not in the index
+  --check               (eval) exit non-zero on any baseline delta
   -h, --help            this help
 `;
 
@@ -106,6 +109,19 @@ function readQueriesFile(path: string): EvalQuery[] {
     .split('\n')
     .filter((l) => l.trim())
     .map((l) => JSON.parse(l) as EvalQuery);
+}
+
+/** Drop per-query hits and query text for aggregate-only output (Tier B). */
+function stripReport(report: EvalReport): unknown {
+  return {
+    ...report,
+    results: report.results.map((r) => {
+      const copy: Record<string, unknown> = { ...r };
+      delete copy.query;
+      delete copy.hits;
+      return copy;
+    }),
+  };
 }
 
 function printProblems(problems: Problem[], showWarnings: boolean): void {
@@ -555,28 +571,59 @@ export async function main(argv: string[]): Promise<number> {
     }
     case 'eval': {
       const { runEval, buildReport } = await import('../eval/run.ts');
-      const { readBaseline, writeBaseline, diffBaseline, toBaseline } = await import('../eval/baseline.ts');
+      const { readBaseline, diffBaseline, toBaseline } = await import('../eval/baseline.ts');
       const { aggregate } = await import('../eval/metrics.ts');
       const { buildAblations } = await import('../eval/ablate.ts');
       const { tuneThresholds } = await import('../eval/tune.ts');
 
-      // The fixture is a generated vault; `--vault` is accepted as an alias so a
-      // caller can point at a fixture it built itself (the CLI test does this).
-      const fixtureDir = str(args.flags, 'fixture') ?? (args.flags.has('vault') ? vault : join(REPO, 'eval', '.fixture'));
+      const FIXTURE_DIR = join(REPO, 'eval', '.fixture');
+      const fixtureDir = str(args.flags, 'fixture') ?? (args.flags.has('vault') ? vault : FIXTURE_DIR);
+      // Only the generated fixture has a default baseline. A personal vault must
+      // name an explicit path outside the repo, so private note ids never land in
+      // the tracked baseline (Tier B is aggregate-only and kept outside the repo).
+      const isFixture = resolve(fixtureDir) === resolve(FIXTURE_DIR);
       const queriesPath = str(args.flags, 'queries') ?? join(REPO, 'eval', 'queries.jsonl');
-      const baselinePath = str(args.flags, 'baseline') ?? join(REPO, 'eval', 'baseline.json');
       const splitRaw = str(args.flags, 'split');
       if (splitRaw && splitRaw !== 'dev' && splitRaw !== 'holdout') {
         throw new Error(`--split must be dev or holdout (got "${splitRaw}")`);
       }
       const split = splitRaw as 'dev' | 'holdout' | undefined;
 
+      const explicitBaseline = str(args.flags, 'baseline');
+      let baselinePath: string | null;
+      if (explicitBaseline) {
+        baselinePath = resolve(explicitBaseline);
+        if (!isFixture && (baselinePath === REPO || baselinePath.startsWith(REPO + sep))) {
+          console.error(`error: --baseline must be outside the repo for a non-fixture target (got ${baselinePath})`);
+          return 1;
+        }
+      } else if (isFixture) {
+        baselinePath = join(REPO, 'eval', 'baseline.json');
+      } else {
+        baselinePath = null;
+      }
+      if (args.flags.has('update-baseline') && !baselinePath) {
+        console.error('error: --update-baseline needs an explicit --baseline <path> when the target is not the generated fixture');
+        return 1;
+      }
+      if (args.flags.has('check') && !baselinePath) {
+        console.error('error: --check needs a baseline; pass --baseline <path> for a non-fixture target');
+        return 1;
+      }
+
+      // Aggregate-only omits per-query hits and query text. It is the default for
+      // a non-fixture target, so a personal vault's note ids never leave it.
+      const aggregateOnly = args.flags.has('aggregate-only') || !isFixture;
+
       // Adapters are off by default; an external set is read only when named.
       const adapter = str(args.flags, 'adapter');
       let queries: EvalQuery[];
+      let adapterSkipped = 0;
       if (adapter === 'longmemeval') {
         const { parseLongMemEval } = await import('../eval/adapters/longmemeval.ts');
-        queries = parseLongMemEval(queriesPath);
+        const parsed = parseLongMemEval(queriesPath);
+        queries = parsed.queries;
+        adapterSkipped = parsed.skippedAbs;
       } else if (adapter === 'locomo') {
         const { parseLoCoMo } = await import('../eval/adapters/locomo.ts');
         queries = parseLoCoMo(queriesPath);
@@ -594,9 +641,12 @@ export async function main(argv: string[]): Promise<number> {
         const tune = await tuneThresholds(fixtureDir, queries);
         if (json) console.log(JSON.stringify(tune, null, 2));
         else {
-          console.log(`tuned on ${tune.devCount} dev query(ies); holdout never read`);
+          console.log(`tuned on ${tune.devCount} dev query(ies); holdout read once after selection`);
           console.log(`baseline recall@5 ${tune.baseline.recallAt5.toFixed(3)}  mrr ${tune.baseline.mrr.toFixed(3)}`);
           console.log(`best     recall@5 ${tune.best.recallAt5.toFixed(3)}  mrr ${tune.best.mrr.toFixed(3)}`);
+          console.log(
+            `holdout  baseline recall@5 ${tune.holdout.baseline.recallAt5.toFixed(3)}  best ${tune.holdout.best.recallAt5.toFixed(3)}`,
+          );
           console.log('suggested config (report only; defaults are never written):');
           console.log(JSON.stringify(tune.best.config, null, 2));
         }
@@ -626,29 +676,49 @@ export async function main(argv: string[]): Promise<number> {
           }
         }
 
-        let deltas: BaselineDelta[] | undefined;
-        if (existsSync(baselinePath)) deltas = diffBaseline(readBaseline(baselinePath), toBaseline(report, modes));
+        const outReport = aggregateOnly ? stripReport(report) : report;
+        const baseline = toBaseline(report, modes);
+        if (aggregateOnly) baseline.queries = [];
 
-        if (args.flags.has('update-baseline')) writeBaseline(baselinePath, report, modes);
+        let deltas: BaselineDelta[] | undefined;
+        if (baselinePath && existsSync(baselinePath)) deltas = diffBaseline(readBaseline(baselinePath), baseline);
+
+        if (args.flags.has('update-baseline') && baselinePath) {
+          mkdirSync(dirname(baselinePath), { recursive: true });
+          writeFileSync(baselinePath, JSON.stringify(baseline, null, 2) + '\n');
+        }
 
         const reportPath = str(args.flags, 'report');
         if (reportPath) {
-          writeFileSync(reportPath, JSON.stringify({ ...report, modes, ablations, deltas }, null, 2) + '\n');
+          writeFileSync(reportPath, JSON.stringify({ report: outReport, modes, ablations, deltas }, null, 2) + '\n');
         }
 
         if (json) {
           console.log(
             JSON.stringify(
-              { report, modes, ablations, deltas, baselinePath, updated: args.flags.has('update-baseline') },
+              {
+                report: outReport,
+                modes,
+                ablations,
+                deltas,
+                baselinePath,
+                aggregateOnly,
+                adapterSkipped,
+                missingIds: report.missingIds,
+                updated: args.flags.has('update-baseline'),
+              },
               null,
               2,
             ),
           );
         } else {
           console.log(`eval: ${report.results.length} query(ies)${split ? ` (split: ${split})` : ''}  fixture: ${fixtureDir}`);
+          if (aggregateOnly) console.log('aggregate-only: per-query hits and query text omitted');
+          if (adapterSkipped > 0) console.log(`adapter: skipped ${adapterSkipped} abstention (_abs) question(s)`);
           console.log(
-            `trust violations: ${report.trustViolations}  absent: ${report.absentViolations}  order: ${report.orderViolations}  vacuous: ${report.vacuousAbsences}`,
+            `trust violations: ${report.trustViolations}  absent: ${report.absentViolations}  order: ${report.orderViolations}  vacuous: ${report.vacuousAbsences}  missing: ${report.missingIds.length}`,
           );
+          if (report.missingIds.length > 0) console.log(`missing gold ids: ${report.missingIds.join(', ')}`);
           for (const a of report.aggregates.filter((x) => x.group.includes(':'))) {
             console.log(
               `  ${a.group.padEnd(28)} n=${String(a.count).padStart(3)}  recall@5=${(a.recallAtK['5'] ?? 0).toFixed(3)}  mrr=${a.mrr.toFixed(3)}`,
@@ -657,8 +727,14 @@ export async function main(argv: string[]): Promise<number> {
           if (deltas) console.log(`baseline: ${deltas.length} delta(s) vs ${baselinePath}`);
           if (args.flags.has('update-baseline')) console.log(`baseline written to ${baselinePath}`);
         }
-        // A trust violation is a hard gate: the command exits non-zero.
-        return report.failed ? 1 : 0;
+
+        // Hard gates: a trust violation, a missing gold id (unless allowed), or a
+        // baseline delta under --check all exit non-zero.
+        let code = 0;
+        if (report.failed) code = 1;
+        if (report.missingIds.length > 0 && !args.flags.has('allow-missing')) code = 1;
+        if (args.flags.has('check') && deltas && deltas.length > 0) code = 1;
+        return code;
       } finally {
         rmSync(tmpDir, { recursive: true, force: true });
       }

@@ -69,6 +69,19 @@ into `EvalQuery[]` (`src/eval/adapters/`). No download, no dependency. They are
 off by default and enabled only by the explicit flag. External sets are always
 `holdout`: tuning must never read them. A malformed line is skipped, not thrown.
 
+**The adapters parse queries only.** They do not import a dataset's haystack, so
+the passage ids they produce (`<session-id>#0`, LoCoMo `<dialog-id>#0`) will not
+exist in any vault you point them at, and every query would silently score 0.
+Running an adapter needs a vault built from the dataset's haystack, which Circadia
+does not import yet. LongMemEval gives each question its own haystack, so it needs
+one vault per question — the one-vault-many-queries model does not fit it. Until
+that importer exists, the adapters are a query-format bridge, not a benchmark.
+
+LongMemEval marks abstention questions with an `_abs` suffix on `question_id`
+(there is no `abstention` question_type). Those records are skipped and counted in
+the output: "the answer is absent" is not Circadia's trust gate, which is about
+provenance.
+
 ## 6. Tuning is report-only
 
 `circadia eval --tune` grid-searches `graph.query.auto.minTopMargin`, `minSeeds`,
@@ -78,10 +91,24 @@ and never edits `src/config.ts`; a human reads the suggestion and applies it by
 hand (`test/eval-tune.test.ts`). The search is coordinate-wise over the grid, so
 the number of eval runs is the sum of the grid sizes, not their product.
 
+The objective is the macro-average of per-kind mean recall@5 over the unscoped
+recall kinds (`single-hop`, `multi-hop`, `temporal`, `preference`, and both
+remote-association tiers); `*-scoped` kinds are excluded, as agreed for the
+headline. A candidate may not increase the trust, absent, order, or missing-id
+counts over the baseline candidate. After the best candidate is frozen, the tuner
+reads the holdout exactly once to confirm the pick; selection itself never reads
+it.
+
+The fixture's access log has only 5 events, so the activation knobs
+(`retrieval.weights.activation`, `retrieval.actrThresholdDays`) are barely
+exercised. A suggestion for them should be checked on a personal vault before
+anyone changes a default.
+
 ## 7. Commands
 
 ```bash
 npm run eval                                   # generate the fixture, then run the eval
+npm run eval:check                             # same, but exit non-zero on any baseline delta
 node bin/circadia.mjs eval --json              # machine-readable report
 node bin/circadia.mjs eval --split dev         # one split
 node bin/circadia.mjs eval --ablate            # edge-origin ablations
@@ -90,6 +117,14 @@ node bin/circadia.mjs eval --update-baseline   # write eval/baseline.json
 node bin/circadia.mjs eval --adapter locomo --queries /path/to/locomo.json
 ```
 
-A trust-gate violation makes the command exit non-zero. Absence and ordering
-violations are reported and diffed against the baseline but do not fail the run
-on their own.
+The command exits non-zero on a trust-gate violation, on a gold id that is not in
+the index (unless `--allow-missing`), and on any baseline delta under `--check`.
+Absence and ordering violations are reported and diffed against the baseline but
+do not fail the run on their own.
+
+**Personal vaults (Tier B).** Only the generated fixture has a default baseline.
+When the target is not the fixture, there is no default baseline path: no diff and
+no write. `--update-baseline` then requires an explicit `--baseline <path>`, and a
+path inside the repo is refused, so private note ids never land in the tracked
+baseline. `--aggregate-only` (the default for a non-fixture target) omits per-query
+hits and query text from all output.

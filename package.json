@@ -17,6 +17,7 @@
     "example:index": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/cli/main.ts index --vault examples/vault",
     "example:recall": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/cli/main.ts recall --vault examples/vault --no-log",
     "eval": "node --experimental-strip-types --disable-warning=ExperimentalWarning eval/generate-fixture.ts eval/.fixture && node --experimental-strip-types --disable-warning=ExperimentalWarning src/cli/main.ts eval --fixture eval/.fixture",
+    "eval:check": "node --experimental-strip-types --disable-warning=ExperimentalWarning eval/generate-fixture.ts eval/.fixture && node --experimental-strip-types --disable-warning=ExperimentalWarning src/cli/main.ts eval --fixture eval/.fixture --check",
     "release:patch": "npm version patch -m \"chore: release v%s\" && git push && git push --tags",
     "release:minor": "npm version minor -m \"chore: release v%s\" && git push && git push --tags",
     "release:major": "npm version major -m \"chore: release v%s\" && git push && git push --tags",

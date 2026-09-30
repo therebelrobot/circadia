@@ -8,9 +8,11 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import type { DatabaseSync } from 'node:sqlite';
 import type { Config } from '../config.ts';
 import { deepMerge, loadConfig } from '../config.ts';
 import { buildIndex, embedPassages } from '../index/indexer.ts';
+import { openIndex } from '../index/db.ts';
 import { recall } from '../retrieval/recall.ts';
 import { TRUST_RANK } from '../retrieval/graph-cache.ts';
 import { parseInstant } from '../vault/time.ts';
@@ -75,6 +77,40 @@ export function countTrustViolations(hits: readonly { trust: Trust }[], floor: T
 }
 
 /**
+ * Recompute each hit's trust from the index instead of trusting the value recall
+ * reported. `hit.trust` is computed by the same code path that filters hits, so a
+ * C12-style laundering regression (a synonym edge or path that lifts a low-trust
+ * passage's trust) would pass a gate that read it. Here the passage's and its
+ * source note's `trust` are read straight from the `nodes` table; a hit is a
+ * violation when either is below the floor.
+ */
+export function recomputeTrustViolations(
+  db: DatabaseSync,
+  hits: readonly { passageId: string; noteId: string }[],
+  floor: Trust,
+): number {
+  if (hits.length === 0) return 0;
+  const ids = new Set<string>();
+  for (const h of hits) {
+    ids.add(h.passageId);
+    ids.add(h.noteId);
+  }
+  const list = [...ids];
+  const rows = db
+    .prepare(`SELECT id, trust FROM nodes WHERE id IN (${list.map(() => '?').join(',')})`)
+    .all(...list) as { id: string; trust: string | null }[];
+  const trustById = new Map(rows.map((r) => [r.id, (r.trust ?? 'low') as Trust]));
+  const floorRank = TRUST_RANK[floor];
+  let n = 0;
+  for (const h of hits) {
+    const passageTrust = trustById.get(h.passageId) ?? 'low';
+    const noteTrust = trustById.get(h.noteId) ?? 'low';
+    if (TRUST_RANK[passageTrust] < floorRank || TRUST_RANK[noteTrust] < floorRank) n++;
+  }
+  return n;
+}
+
+/**
  * `expect_before` violations: for each `[a, b]`, `a` must rank above `b`, or `b`
  * must be absent. A missing `a` with a present `b` is a violation.
  */
@@ -101,6 +137,9 @@ export function fixtureHash(root: string): string {
       const abs = join(dir, ent.name);
       if (ent.isDirectory()) visit(abs);
       else if (ent.isFile()) {
+        // the fixture marker is metadata, not eval content: excluding it keeps the
+        // baseline's fixtureHash stable when the marker is added or refreshed.
+        if (ent.name === '.circadia-eval-fixture') continue;
         h.update(abs.slice(root.length + 1));
         h.update('\0');
         h.update(readFileSync(abs));
@@ -118,6 +157,7 @@ async function runQuery(
   q: EvalQuery,
   dbPath: string,
   ks: readonly number[],
+  db: DatabaseSync,
 ): Promise<EvalQueryResult> {
   const overrides = q.config_overrides ?? {};
   for (const key of Object.keys(overrides)) {
@@ -160,8 +200,10 @@ async function runQuery(
     metrics: metricsFor(hits, q.expected_passages, ks),
     absentViolations: hits.filter((h) => absent.has(h.passageId)).length,
     orderViolations: countOrderViolations(hits, q.expect_before ?? []),
-    trustViolations: countTrustViolations(hits, cfg.retrieval.trustFloor),
+    // trust is recomputed from the index, not read from the hit recall produced
+    trustViolations: recomputeTrustViolations(db, hits, cfg.retrieval.trustFloor),
     vacuousAbsences: 0,
+    missingIds: [],
   };
 }
 
@@ -204,19 +246,46 @@ export async function runEval(
         await embedPassages(dbPath, baseCfg, new TrigramEmbeddingsClient());
       }
     }
-    const all = new Map<string, EvalQueryResult>();
-    for (const q of toRun.values()) all.set(q.id, await runQuery(fixtureDir, baseCfg, q, dbPath, ks));
+    const { db } = openIndex(dbPath);
+    try {
+      // Gold ids that are not passages in the built index can never score. Report
+      // them per query so the CLI can fail the run instead of silently scoring 0.
+      const passageIds = new Set(
+        (db.prepare(`SELECT id FROM nodes WHERE kind = 'passage'`).all() as { id: string }[]).map((r) => r.id),
+      );
+      const missingByQuery = new Map<string, string[]>();
+      for (const q of selected) {
+        const want = new Set<string>();
+        for (const g of q.expected_passages) for (const id of typeof g === 'string' ? [g] : g) want.add(id);
+        for (const id of q.expect_absent ?? []) want.add(id);
+        for (const [a, b] of q.expect_before ?? []) {
+          want.add(a);
+          want.add(b);
+        }
+        const miss = [...want].filter((id) => !passageIds.has(id));
+        if (miss.length > 0) missingByQuery.set(q.id, miss);
+      }
 
-    // An absence check is only meaningful if the paired query actually retrieves
-    // the passage. Mark the ones that prove nothing as vacuous.
-    for (const q of selected) {
-      const r = all.get(q.id) as EvalQueryResult;
-      if (!q.expect_absent || !q.paired_with) continue;
-      const paired = all.get(q.paired_with) as EvalQueryResult;
-      const pairedHits = new Set(paired.hits.map((h) => h.passageId));
-      r.vacuousAbsences = q.expect_absent.filter((p) => !pairedHits.has(p)).length;
+      const all = new Map<string, EvalQueryResult>();
+      for (const q of toRun.values()) {
+        const r = await runQuery(fixtureDir, baseCfg, q, dbPath, ks, db);
+        r.missingIds = missingByQuery.get(q.id) ?? [];
+        all.set(q.id, r);
+      }
+
+      // An absence check is only meaningful if the paired query actually retrieves
+      // the passage. Mark the ones that prove nothing as vacuous.
+      for (const q of selected) {
+        const r = all.get(q.id) as EvalQueryResult;
+        if (!q.expect_absent || !q.paired_with) continue;
+        const paired = all.get(q.paired_with) as EvalQueryResult;
+        const pairedHits = new Set(paired.hits.map((h) => h.passageId));
+        r.vacuousAbsences = q.expect_absent.filter((p) => !pairedHits.has(p)).length;
+      }
+      return selected.map((q) => all.get(q.id) as EvalQueryResult);
+    } finally {
+      db.close();
     }
-    return selected.map((q) => all.get(q.id) as EvalQueryResult);
   } finally {
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -228,6 +297,7 @@ export function buildReport(fixtureDir: string, config: Config, results: readonl
   const absentViolations = results.reduce((n, r) => n + r.absentViolations, 0);
   const orderViolations = results.reduce((n, r) => n + r.orderViolations, 0);
   const vacuousAbsences = results.reduce((n, r) => n + r.vacuousAbsences, 0);
+  const missingIds = [...new Set(results.flatMap((r) => r.missingIds))].sort();
   return {
     fixtureHash: fixtureHash(fixtureDir),
     config,
@@ -243,6 +313,7 @@ export function buildReport(fixtureDir: string, config: Config, results: readonl
     absentViolations,
     orderViolations,
     vacuousAbsences,
+    missingIds,
     // The hard gate is trust only. Absence and ordering are reported and diffed
     // against the baseline, but they do not fail the run on their own.
     failed: trustViolations > 0,

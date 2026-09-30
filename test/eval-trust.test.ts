@@ -6,7 +6,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { generateFixture } from '../eval/generate-fixture.ts';
 import { loadConfig } from '../src/config.ts';
-import { buildReport, countTrustViolations, runEval } from '../src/eval/run.ts';
+import { buildIndex } from '../src/index/indexer.ts';
+import { openIndex } from '../src/index/db.ts';
+import { buildReport, countTrustViolations, recomputeTrustViolations, runEval } from '../src/eval/run.ts';
 import type { EvalQuery, EvalQueryResult } from '../src/eval/types.ts';
 
 const EVAL_DIR = resolve(import.meta.dirname, '..', 'eval');
@@ -49,6 +51,7 @@ test('a deliberately planted violation makes the run fail', () => {
     orderViolations: 0,
     trustViolations: countTrustViolations([{ trust: 'low' }], 'medium'),
     vacuousAbsences: 0,
+    missingIds: [],
   };
   const report = buildReport(tmp, loadConfig(join(tmp, 'vault')), [planted]);
   assert.equal(report.trustViolations, 1);
@@ -69,11 +72,29 @@ test('absence and ordering violations do not fail the run on their own', () => {
     orderViolations: 1,
     trustViolations: 0,
     vacuousAbsences: 0,
+    missingIds: [],
   };
   const report = buildReport(tmp, loadConfig(join(tmp, 'vault')), [base]);
   assert.equal(report.absentViolations, 1);
   assert.equal(report.orderViolations, 1);
   assert.equal(report.failed, false, 'only trust is a hard gate');
+});
+
+test('the trust gate recomputes trust from the index, not the hit', () => {
+  const dir = join(tmp, 'vault3');
+  generateFixture(dir);
+  const cfg = loadConfig(dir);
+  const dbPath = join(tmp, 'trust.sqlite');
+  buildIndex(dir, cfg, { dbPath });
+  const { db } = openIndex(dbPath);
+  try {
+    // A hit that claims high trust, but whose source note is `by: web` (low).
+    const planted = [{ passageId: CLIP, noteId: '2026-09-10-web-clipping' }];
+    assert.equal(recomputeTrustViolations(db, planted, 'medium'), 1, 'a laundered trust value is caught');
+    assert.equal(recomputeTrustViolations(db, planted, 'low'), 0, 'at the low floor it is allowed');
+  } finally {
+    db.close();
+  }
 });
 
 test('a non-allowlisted override key is rejected', async () => {

@@ -84,6 +84,7 @@ function result(over: Partial<EvalQueryResult>): EvalQueryResult {
     orderViolations: 0,
     trustViolations: 0,
     vacuousAbsences: 0,
+    missingIds: [],
     ...over,
   };
 }

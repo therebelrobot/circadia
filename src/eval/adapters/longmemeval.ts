@@ -41,8 +41,10 @@ const KIND_BY_TYPE: Record<string, EvalKind> = {
   'multi-session': 'multi-hop',
   'temporal-reasoning': 'temporal',
   'knowledge-update': 'temporal',
-  abstention: 'trust',
 };
+// LongMemEval marks abstention questions with an `_abs` suffix on `question_id`;
+// there is no `abstention` question_type. They are skipped (see parseLongMemEvalText):
+// "the answer is absent" is not Circadia's trust gate, which is about provenance.
 
 function asStringArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
@@ -63,15 +65,27 @@ export function mapLongMemEvalRecord(rec: unknown, index: number): EvalQuery | n
   return { id, query, kind, expected_passages: expected, split: 'holdout' };
 }
 
-export function parseLongMemEvalText(text: string): EvalQuery[] {
+export interface AdapterParseResult {
+  queries: EvalQuery[];
+  /** records skipped because they are abstention (`_abs`) questions. */
+  skippedAbs: number;
+}
+
+export function parseLongMemEvalText(text: string): AdapterParseResult {
   const out: EvalQuery[] = [];
+  let skippedAbs = 0;
   readRecords(text).forEach((rec, i) => {
+    const id = rec !== null && typeof rec === 'object' ? (rec as Record<string, unknown>).question_id : undefined;
+    if (typeof id === 'string' && id.endsWith('_abs')) {
+      skippedAbs++;
+      return;
+    }
     const q = mapLongMemEvalRecord(rec, i);
     if (q) out.push(q);
   });
-  return out;
+  return { queries: out, skippedAbs };
 }
 
-export function parseLongMemEval(path: string): EvalQuery[] {
+export function parseLongMemEval(path: string): AdapterParseResult {
   return parseLongMemEvalText(readFileSync(path, 'utf8'));
 }

@@ -244,10 +244,16 @@ works in TypeScript and uses Mastra as their agent framework.
   output; `test/eval-fixture.test.ts` asserts the fixture itself is byte-identical.
 - **Trust violation count, with a single violation failing the run.**
   `test/eval-trust.test.ts` plants one violation and asserts `report.failed === true`;
-  the CLI maps `report.failed` to a non-zero exit. Caveat: the runner filters hits by
-  `retrieval.trustFloor` and counts violations below the same floor, so the count is
-  always zero end-to-end — the gate is wired and unit-tested but currently unreachable
-  (ADR-0010 §Consequences).
+  the CLI maps `report.failed` to a non-zero exit. The gate recomputes each hit's
+  trust from the index rather than reading the value recall reported, so it fires
+  when the trust filter regresses (a C12-style laundering path) instead of agreeing
+  with it (ADR-0010 §Consequences).
+- **Missing gold ids fail the run.** `runEval` checks every `expected_passages`,
+  `expect_absent`, and `expect_before` id against the built index; the CLI exits
+  non-zero unless `--allow-missing` (`test/eval-cli.test.ts`).
+- **A personal vault cannot write the tracked baseline.** A non-fixture target has
+  no default baseline, `--update-baseline` requires an explicit path outside the
+  repo, and output is aggregate-only by default (`test/eval-cli.test.ts`).
 - **hipporag beats typed on scoped multi-hop recall@5 and does not regress single-hop,
   met on synthetic triples.** Forced-mode aggregates: `multi-hop-scoped` recall@5
   hipporag 1.000 vs typed 0.000; `single-hop` recall@5 1.000 for both (MRR hipporag
