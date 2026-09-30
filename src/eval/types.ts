@@ -103,6 +103,13 @@ export interface EvalQueryResult {
   modeUsed: GraphMode;
   escalations: { from: GraphMode; to: GraphMode; reason: string }[];
   hits: EvalHit[];
+  /**
+   * RRF seed provenance for the query. `via` includes `'vector'` when the dense
+   * path contributed a seed list, so a test can prove the vector path ran. Not
+   * part of the portable baseline (`toBaseline` projects only hits + metrics).
+   * Optional so hand-built test doubles need not supply it.
+   */
+  seeds?: { nodeId: string; score: number; via: string[] }[];
   metrics: EvalMetrics;
   /** hits whose passage id is in `expect_absent` (should be 0). */
   absentViolations: number;

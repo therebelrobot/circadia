@@ -15,6 +15,7 @@ import {
   HttpEmbeddingsClient,
   NullEmbeddingsClient,
   createEmbeddingsClient,
+  embedQuery,
 } from '../src/retrieval/embeddings.ts';
 import { startMockEmbeddings } from './helpers/mock-embeddings.ts';
 
@@ -123,6 +124,29 @@ test('NullEmbeddingsClient throws on embed()', async () => {
   const client = new NullEmbeddingsClient();
   await assert.rejects(() => client.embed([{ id: 'a', text: 'x' }]));
   assert.equal(createEmbeddingsClient({ provider: 'none', endpoint: '', model: '', apiKeyEnv: null, batchSize: 8 }) instanceof NullEmbeddingsClient, true);
+});
+
+test('embedQuery: undefined for provider none, a vector for a supplied client', async () => {
+  const none = await embedQuery({ provider: 'none', endpoint: '', model: '', apiKeyEnv: null, batchSize: 8 }, 'q');
+  assert.equal(none, undefined, 'provider none with no client makes no embedding');
+
+  const mock = await startMockEmbeddings(() => [1, 0, 0, 0]);
+  try {
+    const client = new HttpEmbeddingsClient({
+      provider: 'http',
+      endpoint: mock.url,
+      model: 'm',
+      apiKeyEnv: null,
+      batchSize: 8,
+    });
+    // A supplied client is authoritative even when the config says none: the eval
+    // passes its trigram client while the fixture config leaves provider at none.
+    const v = await embedQuery({ provider: 'none', endpoint: '', model: '', apiKeyEnv: null, batchSize: 8 }, 'q', client);
+    assert.ok(v instanceof Float32Array, 'a supplied client produces a vector');
+    assert.deepEqual([...v], [1, 0, 0, 0]);
+  } finally {
+    await mock.close();
+  }
 });
 
 test('embedPassages: embeds, records model, re-embeds only changed passages', async () => {

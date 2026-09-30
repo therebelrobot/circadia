@@ -110,6 +110,31 @@ export function createEmbeddingsClient(cfg: Config['embeddings']): EmbeddingsCli
   return cfg.provider === 'http' ? new HttpEmbeddingsClient(cfg) : new NullEmbeddingsClient();
 }
 
+/**
+ * Embed a single query string for recall's vector-seed path. Returns `undefined`
+ * when embeddings are disabled (`provider: 'none'`) and no client is supplied, so
+ * callers can pass the result straight to `recall({ queryEmbedding })`.
+ *
+ * A caller that already owns a client (the eval's deterministic trigram client)
+ * passes it in; the provider check is then skipped because the client is
+ * authoritative. This is what lets the eval measure dense seeds even though its
+ * fixture config leaves `embeddings.provider` at the default `none`.
+ *
+ * Failures propagate. The CLI and the MCP handler catch them and continue
+ * text-only, so a down endpoint never fails a recall (AGENTS.md §3.6: the MCP
+ * path is best-effort and logs to stderr, never stdout).
+ */
+export async function embedQuery(
+  cfg: Config['embeddings'],
+  query: string,
+  client?: EmbeddingsClient,
+): Promise<Float32Array | undefined> {
+  if (!client && cfg.provider === 'none') return undefined;
+  const c = client ?? createEmbeddingsClient(cfg);
+  const [v] = await c.embed([{ id: 'query', text: query }]);
+  return v.embedding;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }

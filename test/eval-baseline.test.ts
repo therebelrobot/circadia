@@ -58,9 +58,12 @@ test('changed hits produce a non-zero delta', () => {
   assert.ok(deltas.some((d) => d.queryId === 'q-sh-pi-cluster' && d.field === 'hits'));
 });
 
-test('the baseline records the known preference ordering failure', () => {
+test('the baseline records no ordering violations', () => {
   const base = readBaseline(BASELINE_PATH);
-  assert.equal(base.orderViolations, 1, 'q-pref-sam: coffee outranks tea at baseline');
+  // Measuring the dense seed path changed q-pref-sam's ranking, so the
+  // coffee/tea ordering constraint now holds (it was 1 before query embeddings
+  // were measured). Ordering is still not a hard gate.
+  assert.equal(base.orderViolations, 0, 'q-pref-sam: the ordering constraint now holds');
   assert.equal(base.trustViolations, 0);
   assert.equal(base.failed, false, 'ordering is not a hard gate');
 });

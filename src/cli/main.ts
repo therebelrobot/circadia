@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { CONFIG_FILENAME, DEFAULT_CONFIG, STATE_DIR, deepMerge, loadConfig } from '../config.ts';
 import { buildIndex, incrementalIndex, parseVault, buildResolver, embedPassages } from '../index/indexer.ts';
 import { recall, renderForContext } from '../retrieval/recall.ts';
-import { createEmbeddingsClient } from '../retrieval/embeddings.ts';
+import { embedQuery } from '../retrieval/embeddings.ts';
 import { relate } from '../retrieval/relate.ts';
 import { timeline } from '../retrieval/timeline.ts';
 import { parseInstant } from '../vault/time.ts';
@@ -331,14 +331,10 @@ export async function main(argv: string[]): Promise<number> {
       const budget = str(args.flags, 'budget');
       // best-effort query embedding: a down server must not fail the recall
       let queryEmbedding: Float32Array | undefined;
-      if (cfg.embeddings.provider === 'http') {
-        try {
-          const client = createEmbeddingsClient(cfg.embeddings);
-          const [v] = await client.embed([{ id: 'query', text: query }]);
-          queryEmbedding = v.embedding;
-        } catch (e) {
-          console.error(`warning: embedding failed, continuing text-only: ${(e as Error).message}`);
-        }
+      try {
+        queryEmbedding = await embedQuery(cfg.embeddings, query);
+      } catch (e) {
+        console.error(`warning: embedding failed, continuing text-only: ${(e as Error).message}`);
       }
       const r = await recall(vault, cfg, query, {
         mode,

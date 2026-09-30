@@ -14,6 +14,7 @@ import { deepMerge, loadConfig } from '../config.ts';
 import { buildIndex, embedPassages } from '../index/indexer.ts';
 import { openIndex } from '../index/db.ts';
 import { recall } from '../retrieval/recall.ts';
+import { embedQuery, type EmbeddingsClient } from '../retrieval/embeddings.ts';
 import { TRUST_RANK } from '../retrieval/graph-cache.ts';
 import { parseInstant } from '../vault/time.ts';
 import type { Trust } from '../types.ts';
@@ -158,6 +159,7 @@ async function runQuery(
   dbPath: string,
   ks: readonly number[],
   db: DatabaseSync,
+  embeddingsClient: EmbeddingsClient | null,
 ): Promise<EvalQueryResult> {
   const overrides = q.config_overrides ?? {};
   for (const key of Object.keys(overrides)) {
@@ -171,6 +173,10 @@ async function runQuery(
   const cfg = Object.keys(configOverrides).length > 0 ? deepMerge(baseCfg, expandOverrides(configOverrides)) : baseCfg;
 
   const asOf = q.as_of ? parseInstant(q.as_of) : null;
+  // Dense seeds: embed the query with the same client used for the passages, so
+  // the vector path is measured deterministically (ADR-0010). `null`
+  // (embeddings: 'none') makes no query embedding and leaves the run text-only.
+  const queryEmbedding = embeddingsClient ? await embedQuery(cfg.embeddings, q.query, embeddingsClient) : undefined;
   const r = await recall(fixtureDir, cfg, q.query, {
     dbPath,
     logAccess: false,
@@ -179,6 +185,7 @@ async function runQuery(
     scope,
     topK: cfg.retrieval.topK,
     tokenBudget: cfg.retrieval.tokenBudget,
+    queryEmbedding,
   });
 
   const hits: EvalHit[] = r.hits.map((h, i) => ({
@@ -197,6 +204,7 @@ async function runQuery(
     modeUsed: r.modeUsed,
     escalations: r.escalations,
     hits,
+    seeds: r.seeds,
     metrics: metricsFor(hits, q.expected_passages, ks),
     absentViolations: hits.filter((h) => absent.has(h.passageId)).length,
     orderViolations: countOrderViolations(hits, q.expect_before ?? []),
@@ -239,11 +247,15 @@ export async function runEval(
 
   const tmpDir = opts.dbPath ? null : mkdtempSync(join(tmpdir(), 'circadia-eval-'));
   const dbPath = opts.dbPath ?? join(tmpDir as string, 'index.sqlite');
+  // One deterministic client for both passages and queries, so dense seeds are
+  // measured with the same lexical stand-in (ADR-0010). `none` leaves the index
+  // text-only and makes no query embedding.
+  const embeddingsClient = (opts.embeddings ?? 'trigram') === 'trigram' ? new TrigramEmbeddingsClient() : null;
   try {
     if (!opts.reuseIndex) {
       buildIndex(fixtureDir, baseCfg, { dbPath });
-      if ((opts.embeddings ?? 'trigram') === 'trigram') {
-        await embedPassages(dbPath, baseCfg, new TrigramEmbeddingsClient());
+      if (embeddingsClient) {
+        await embedPassages(dbPath, baseCfg, embeddingsClient);
       }
     }
     const { db } = openIndex(dbPath);
@@ -268,7 +280,7 @@ export async function runEval(
 
       const all = new Map<string, EvalQueryResult>();
       for (const q of toRun.values()) {
-        const r = await runQuery(fixtureDir, baseCfg, q, dbPath, ks, db);
+        const r = await runQuery(fixtureDir, baseCfg, q, dbPath, ks, db, embeddingsClient);
         r.missingIds = missingByQuery.get(q.id) ?? [];
         all.set(q.id, r);
       }

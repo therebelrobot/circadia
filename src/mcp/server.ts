@@ -207,6 +207,17 @@ export async function handleToolsCall(
       const topK = typeof params.top_k === 'number' ? params.top_k : undefined;
       const scope = typeof params.scope === 'string' ? params.scope : undefined;
       const session = typeof params.session === 'string' ? params.session : undefined;
+      // Best-effort query embedding: a down endpoint must not fail the tool call. The
+      // CLI already treats this as best-effort (it warns and continues text-only), so
+      // the MCP path matches it. stdout is the MCP transport, so the warning goes to
+      // stderr only — a stray stdout line would corrupt the JSON-RPC stream.
+      let queryEmbedding: Float32Array | undefined;
+      try {
+        const { embedQuery } = await import('../retrieval/embeddings.ts');
+        queryEmbedding = await embedQuery(cfg.embeddings, query);
+      } catch (e) {
+        process.stderr.write(`circadia: query embedding failed, continuing text-only: ${(e as Error).message}\n`);
+      }
       // C16: log access by default (config `mcp.logAccess`). The log stores only the query
       // hash, so this is privacy-safe, and without it MCP use never feeds ACT-R.
       const r = await recallModule.recall(vaultRoot, cfg, query, {
@@ -216,6 +227,7 @@ export async function handleToolsCall(
         scope,
         session,
         logAccess: cfg.mcp.logAccess,
+        queryEmbedding,
         // Phase 2 adjacency cache: reuse the per-mode graph across calls in this
         // long-running process. Undefined for one-shot callers (tests, CLI).
         graphCache,
@@ -228,6 +240,9 @@ export async function handleToolsCall(
           modeUsed: r.modeUsed,
           modeRequested: r.modeRequested,
           escalations: r.escalations,
+          // Structured seed provenance (README: "structured metadata ... so clients can
+          // show provenance"). `via` includes 'vector' when the dense path contributed.
+          seeds: r.seeds,
         },
       };
     }
