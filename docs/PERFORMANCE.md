@@ -56,5 +56,6 @@ Machine: Apple Silicon (darwin arm64), Node v24.14.1, recorded 2026-09-29.
   index (and therefore a dependency, via ADR) would be needed beyond it.
 - **Embedding** a 10k-passage vault against a local llama.cpp server is
   network-bound, not CPU-bound; `embedPassages` batches by
-  `embeddings.batchSize` and only (re)embeds passages whose `embedding` is
-  NULL or whose `embedding_model` differs from the configured model.
+  `embeddings.batchSize` and only (re)embeds passages and phrase nodes whose
+  `embedding` is NULL or whose `embedding_model` differs from the configured
+  model.

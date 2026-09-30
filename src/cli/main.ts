@@ -183,7 +183,7 @@ export async function main(argv: string[]): Promise<number> {
         const s = r.stats;
         console.log(
           `indexed ${s.notes} notes, ${s.passages} passages in ${s.ms} ms (keyword: ${s.fts ? 'fts5' : 'bm25-js'})` +
-          (embedded !== null ? `, embedded ${embedded} passage(s)` : '') + '\n' +
+          (embedded !== null ? `, embedded ${embedded} node(s)` : '') + '\n' +
           `extraction: ${Object.entries(s.byExtraction).map(([k, v]) => `${k}=${v}`).join(' ')}\n` +
           `edges: ${Object.entries(s.edges).map(([k, v]) => `${k}=${v}`).join(' ')}` +
           (s.placeholders ? `\nunresolved link targets: ${s.placeholders}` : '') +

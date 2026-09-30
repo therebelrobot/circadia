@@ -414,6 +414,12 @@ async function emitSynonymEdges(dbPath: string, config: Config): Promise<void> {
     const threshold = config.graph.hipporag.synonymThreshold;
     const maxEdges = config.graph.hipporag.maxSynonymEdges;
 
+    // Rebuild the similarity edges from scratch: embedPassages runs after every
+    // index, and INSERT OR REPLACE has no unique key to collide on, so without
+    // this each run would accumulate duplicate edges. The `names` synonym edges
+    // are emitted by emitTriples and are deliberately left alone.
+    db.prepare(`DELETE FROM edges WHERE origin = 'synonym' AND type = 'similar'`).run();
+
     // Get all phrase nodes with embeddings. `embedding` must be selected: the
     // map below reads it, and omitting it made this path crash (or, with no
     // phrase embeddings, silently emit nothing).
@@ -827,9 +833,11 @@ export function incrementalIndex(vaultRoot: string, config: Config, opts: { dbPa
 }
 
 /**
- * Embed passage rows that lack an embedding or were embedded by a different
- * model (Phase 2). A changed passage gets a fresh row with NULL embedding via
- * the incremental delete/re-insert, so content changes are covered by the same
+ * Embed passage and phrase rows that lack an embedding or were embedded by a
+ * different model (Phase 2). Phrases are embedded too: synonym edges are built
+ * from phrase embeddings, so without them the hipporag synonym path emits
+ * nothing. A changed passage gets a fresh row with NULL embedding via the
+ * incremental delete/re-insert, so content changes are covered by the same
  * filter. buildIndex/incrementalIndex stay synchronous; this is the async
  * follow-up the CLI and watch call after a successful index.
  */
@@ -841,13 +849,13 @@ export async function embedPassages(
   const { db } = openIndex(dbPath);
   try {
     const c = client ?? createEmbeddingsClient(config.embeddings);
-    const total = (db.prepare(`SELECT count(*) AS n FROM nodes WHERE kind = 'passage'`).get() as { n: number }).n;
+    const total = (db.prepare(`SELECT count(*) AS n FROM nodes WHERE kind IN ('passage', 'phrase')`).get() as { n: number }).n;
     if (c instanceof NullEmbeddingsClient) return { embedded: 0, total }; // provider 'none'
     const model = c.model;
     const rows = db
       .prepare(
         `SELECT id, text, embedding, embedding_model FROM nodes
-         WHERE kind = 'passage' AND (embedding IS NULL OR embedding_model IS DISTINCT FROM ?)`,
+         WHERE kind IN ('passage', 'phrase') AND (embedding IS NULL OR embedding_model IS DISTINCT FROM ?)`,
       )
       .all(model) as { id: string; text: string; embedding: Uint8Array | null; embedding_model: string | null }[];
     if (rows.length === 0) return { embedded: 0, total };

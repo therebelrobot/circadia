@@ -179,7 +179,14 @@ In Circadia:
 Embedding-based synonym edges between phrases are now implemented in Phase 5. When two phrases
 have embedding cosine similarity at least θ (configurable), a `synonym` edge is created between
 them. This is HippoRAG's synonymy edge feature, enabling semantic similarity beyond exact text
-matches.
+matches. Phrase nodes are embedded by `embedPassages()` alongside passages, so the edges form
+from a normal `circadia index` run.
+
+A synonym edge carries the **minimum trust of its two endpoint phrases**, where a phrase's trust
+is the minimum trust of the passages that mention it (default `low` when unknown). This keeps a
+phrase from a `trust: low` note from laundering content past `retrieval.trustFloor` through the
+synonym path. The edges are rebuilt from scratch on each `embedPassages()` run, so they do not
+accumulate duplicates.
 
 The recognition-memory seed filter (Phase 5) matches query embeddings against cached triples,
 then uses a cheap LLM to verify triple relevance. Verified triples contribute their passage IDs
@@ -203,10 +210,10 @@ triggered manually or during consolidation runs.
 
 ## 7. Vector seeds in detail
 
-- **Storage.** Passage embeddings are `Float32Array` bytes in `nodes.embedding`, with the
-  producing model in `nodes.embedding_model`. `circadia index` (and `watch`,
-  best-effort) fills them via `embedPassages()`, which only (re)embeds passages whose
-  embedding is NULL or whose model differs from `embeddings.model` — a changed passage
+- **Storage.** Passage and phrase embeddings are `Float32Array` bytes in `nodes.embedding`,
+  with the producing model in `nodes.embedding_model`. `circadia index` (and `watch`,
+  best-effort) fills them via `embedPassages()`, which (re)embeds passages and phrase nodes
+  whose embedding is NULL or whose model differs from `embeddings.model` — a changed passage
   gets a fresh row with a NULL embedding, so content changes are covered.
 - **Client.** `HttpEmbeddingsClient` speaks the OpenAI-compatible `/v1/embeddings` wire
   format (what llama.cpp's `llama-server --embedding` serves), batches by

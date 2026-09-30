@@ -5,6 +5,10 @@
 // edge was hardcoded 'medium', so a low-trust phrase could bridge a query to
 // content it should not reach at retrieval.trustFloor = 'medium'.
 //
+// The fixtures drive the real pipeline: embedPassages embeds the phrase nodes,
+// and emitSynonymEdges builds the edges from those embeddings. No embeddings are
+// inserted by hand.
+//
 // Temp vaults and temp index paths only; examples/vault/ is never touched.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,7 +21,8 @@ import { recall } from '../src/retrieval/recall.ts';
 import { openIndex } from '../src/index/db.ts';
 import { parseNote } from '../src/vault/parse.ts';
 import { passageHash, writeTriples } from '../src/extract/triples.ts';
-import type { EmbeddingsClient } from '../src/retrieval/embeddings.ts';
+import { HttpEmbeddingsClient, type EmbeddingsClient } from '../src/retrieval/embeddings.ts';
+import { startMockEmbeddings } from './helpers/mock-embeddings.ts';
 
 const tmp = mkdtempSync(join(tmpdir(), 'circadia-synonym-trust-'));
 
@@ -27,26 +32,37 @@ function write(dir: string, rel: string, content: string): void {
   writeFileSync(abs, content);
 }
 
-// Passages get an orthogonal vector; phrase vectors are set directly so the
-// synonym graph is deterministic and independent of the embedding provider.
-const fakeClient: EmbeddingsClient = {
-  model: 'test-model',
-  dimensions: 4,
-  embed: async (texts) => texts.map((t) => ({ id: t.id, embedding: Float32Array.from([0, 0, 0, 1]) })),
-};
+// A 32-dim space: the first slots carry the vectors we care about, and every
+// other text gets a unique one-hot in the tail, so unrelated phrases are
+// orthogonal and cannot form accidental synonym edges.
+const DIM = 32;
+function vec(...head: number[]): number[] {
+  const v = new Array<number>(DIM).fill(0);
+  head.forEach((x, i) => (v[i] = x));
+  return v;
+}
 
-function setPhraseEmbedding(dbPath: string, phraseId: string, vec: number[]): void {
-  const { db } = openIndex(dbPath);
-  try {
-    const f = Float32Array.from(vec);
-    db.prepare('UPDATE nodes SET embedding = ?, embedding_model = ? WHERE id = ?').run(
-      Buffer.from(f.buffer, f.byteOffset, f.byteLength),
-      'test-model',
-      phraseId,
-    );
-  } finally {
-    db.close();
-  }
+/** Deterministic embeddings client: `vectors` by exact text, unique one-hots otherwise. */
+function vectorClient(vectors: Record<string, number[]>): EmbeddingsClient {
+  const assigned = new Map<string, number[]>();
+  let next = 8;
+  return {
+    model: 'test-model',
+    dimensions: DIM,
+    embed: async (texts) =>
+      texts.map((t) => {
+        let v: number[] | undefined = vectors[t.text];
+        if (!v) {
+          v = assigned.get(t.text);
+          if (!v) {
+            v = new Array<number>(DIM).fill(0);
+            v[next++] = 1;
+            assigned.set(t.text, v);
+          }
+        }
+        return { id: t.id, embedding: Float32Array.from(v) };
+      }),
+  };
 }
 
 /** Write a one-triple cache entry for a note's first passage, hash-matched to the parser. */
@@ -97,11 +113,11 @@ async function buildLowTrustFixture(dir: string): Promise<{ cfg: Config; dbPath:
   const dbPath = join(dir, '.circadia', 'index.sqlite');
   buildIndex(dir, cfg, { dbPath });
 
-  setPhraseEmbedding(dbPath, 'p:soil-sensor', [1, 0, 0, 0]);
-  setPhraseEmbedding(dbPath, 'p:moisture-probe', [0.8, 0.6, 0, 0]);
-  setPhraseEmbedding(dbPath, 'p:forum-scrapes', [0.6, 0.8, 0, 0]);
-
-  await embedPassages(dbPath, cfg, fakeClient);
+  await embedPassages(dbPath, cfg, vectorClient({
+    'soil sensor': vec(1),
+    'moisture probe': vec(0.8, 0.6),
+    'forum scrapes': vec(0.6, 0.8),
+  }));
   return { cfg, dbPath };
 }
 
@@ -138,9 +154,10 @@ test('C12: a synonym edge between two trusted phrases survives trustFloor=medium
   const cfg = loadConfig(dir);
   const dbPath = join(dir, '.circadia', 'index.sqlite');
   buildIndex(dir, cfg, { dbPath });
-  setPhraseEmbedding(dbPath, 'p:alpha-sensor', [1, 0, 0, 0]);
-  setPhraseEmbedding(dbPath, 'p:beta-probe', [0.8, 0.6, 0, 0]);
-  await embedPassages(dbPath, cfg, fakeClient);
+  await embedPassages(dbPath, cfg, vectorClient({
+    'alpha sensor': vec(1),
+    'beta probe': vec(0.8, 0.6),
+  }));
 
   const edges = synonymEdges(dbPath);
   assert.equal(edgeTrust(edges, 'p:alpha-sensor', 'p:beta-probe'), 'high', 'trusted endpoints -> high edge');
@@ -166,6 +183,55 @@ test('C12: a stored synonym edge trust equals the min of its endpoint phrases', 
   assert.equal(edgeTrust(edges, 'p:moisture-probe', 'p:forum-scrapes'), 'low');
   // no direct edge between the two trusted phrases (their cosine is below threshold)
   assert.equal(edgeTrust(edges, 'p:soil-sensor', 'p:forum-scrapes'), null);
+});
+
+test('Phase 5: embedPassages embeds phrases, so synonym edges form end to end', async () => {
+  const dir = join(tmp, 'e2e');
+  write(dir, 'circadia.config.json', JSON.stringify({
+    graph: { defaultExtraction: 'hipporag', hipporag: { synonymThreshold: 0.7, maxSynonymEdges: 20 } },
+    embeddings: { provider: 'http', model: 'test-model', batchSize: 32 },
+  }));
+  write(dir, 'entities/projects/alpha.md', '---\ntype: entity\nkind: project\n---\n# Alpha Project\n\nThe alpha sensor reports temperature.\n');
+  write(dir, 'entities/projects/beta.md', '---\ntype: entity\nkind: project\n---\n# Beta Project\n\nThe beta probe reports humidity.\n');
+  cacheTriple(dir, 'entities/projects/alpha.md', 'alpha sensor', 'reports', 'temperature');
+  cacheTriple(dir, 'entities/projects/beta.md', 'beta probe', 'reports', 'humidity');
+
+  const cfg = loadConfig(dir);
+  const dbPath = join(dir, '.circadia', 'index.sqlite');
+  buildIndex(dir, cfg, { dbPath });
+
+  // No manual embedding insertion: the pipeline itself must embed the phrase
+  // nodes, or synonym edges never form in a real vault.
+  const assigned = new Map<string, number[]>();
+  let next = 8;
+  const mock = await startMockEmbeddings((t) => {
+    if (t === 'alpha sensor') return vec(1);
+    if (t === 'beta probe') return vec(0.8, 0.6);
+    let v = assigned.get(t);
+    if (!v) {
+      v = new Array<number>(DIM).fill(0);
+      v[next++] = 1;
+      assigned.set(t, v);
+    }
+    return v;
+  });
+  try {
+    const client = new HttpEmbeddingsClient({ ...cfg.embeddings, endpoint: mock.url });
+    await embedPassages(dbPath, cfg, client);
+
+    const { db } = openIndex(dbPath);
+    const phraseRows = db
+      .prepare(`SELECT id, embedding IS NOT NULL AS has_emb FROM nodes WHERE kind = 'phrase' ORDER BY id`)
+      .all() as { id: string; has_emb: number }[];
+    db.close();
+    assert.ok(phraseRows.length >= 2, 'phrase nodes exist');
+    assert.ok(phraseRows.every((r) => r.has_emb === 1), 'every phrase node got an embedding from the pipeline');
+
+    const edges = synonymEdges(dbPath);
+    assert.equal(edgeTrust(edges, 'p:alpha-sensor', 'p:beta-probe'), 'high', 'synonym edge formed without manual embedding');
+  } finally {
+    await mock.close();
+  }
 });
 
 test.after(() => rmSync(tmp, { recursive: true, force: true }));

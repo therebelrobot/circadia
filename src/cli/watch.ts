@@ -53,7 +53,7 @@ export function watchVault(vaultRoot: string, config: Config, opts: WatchOptions
       if (config.embeddings.provider === 'http') {
         embedPassages(opts.dbPath ?? join(vaultRoot, config.index.path), config)
           .then((res) => {
-            if (res.embedded > 0) console.log(`watch: embedded ${res.embedded} passage(s)`);
+            if (res.embedded > 0) console.log(`watch: embedded ${res.embedded} node(s)`);
           })
           .catch((e) => console.error(`watch: embedding failed, continuing text-only: ${(e as Error).message}`));
       }
