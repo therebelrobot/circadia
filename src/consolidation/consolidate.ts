@@ -26,6 +26,7 @@ import { resolveEntity } from './entity.ts';
 import { evaluateGate, factObjectKey } from './schema.ts';
 import { promoteTriplesToCandidates, readSeenHashes, serializeSeenHashes } from './promote.ts';
 import { applySupersede } from './supersede.ts';
+import { readAccessLog } from '../retrieval/activation.ts';
 import { renderReflection } from './reflection.ts';
 import {
   CONSOLIDATED_STATE_VERSION,
@@ -121,6 +122,20 @@ export async function consolidate(
   );
 
   const { db } = openIndex(join(vault, cfg.index.path));
+
+  // C18: reconsolidation window. A fact recalled in the same session as the episode that
+  // contradicts it was active when it was contradicted, so its queued record is prioritized
+  // for review. The access log records the passage id (`<noteId>#<n>`); the note id is the
+  // part before `#`. Only events that carry a session id participate. This is derived state
+  // (the log is not the vault), so it never changes what is written — only review order.
+  const recalledBySession = new Map<string, Set<string>>();
+  for (const e of readAccessLog(join(vault, cfg.index.accessLog))) {
+    if (!e.session) continue;
+    const noteId = e.node.split('#')[0];
+    const set = recalledBySession.get(e.session) ?? new Set<string>();
+    set.add(noteId);
+    recalledBySession.set(e.session, set);
+  }
 
   // Track consolidated facts per entity for reflection
   const entityFacts = new Map<string, Fact[]>();
@@ -228,6 +243,17 @@ export async function consolidate(
     // a supersession that would close a newer fact with an older claim.
     const validAt = noteById.get(c.episodeId)?.created ?? todayMs;
 
+    // C18: prioritize a queued contradiction when the subject fact was recalled in the same
+    // session as the contradicting episode. The episode's `session` frontmatter is the
+    // session id; the access log's `session` is the same id. A subject that did not resolve
+    // to a note (a new entity) cannot have been recalled, so it is never prioritized.
+    const episodeSession = noteById.get(c.episodeId)?.frontmatter.session;
+    const session = typeof episodeSession === 'string' ? episodeSession : undefined;
+    const priority =
+      session && subjectRef && recalledBySession.get(session)?.has(subjectRef.id)
+        ? ('reconsolidation' as const)
+        : undefined;
+
     const decision = evaluateGate(c, cfg, subjectRef, objectRef, currentFacts, validAt);
 
     if (decision.action === 'promote' && subjectRef) {
@@ -256,13 +282,13 @@ export async function consolidate(
         trackFact(entityFacts, subjectRef.path, newFact);
       } else {
         queued++;
-        newPending.push(pendingRecord(key, c, decision.reason, todayMs));
+        newPending.push(pendingRecord(key, c, decision.reason, todayMs, priority));
       }
     } else if (decision.action === 'noop') {
       // Corroboration: the fact is already current. Nothing to write.
     } else {
       queued++;
-      newPending.push(pendingRecord(key, c, decision.reason, todayMs));
+      newPending.push(pendingRecord(key, c, decision.reason, todayMs, priority));
     }
   }
 
@@ -377,6 +403,7 @@ function pendingRecord(
   c: Candidate,
   reason: string,
   queuedAt: number | null,
+  priority?: 'reconsolidation',
 ): PendingRecord {
   return {
     v: PENDING_RECORD_VERSION,
@@ -390,6 +417,8 @@ function pendingRecord(
     origin: c.origin,
     reason,
     queuedAt: queuedAt ?? Date.now(),
+    // Omit the field entirely when absent, so a non-prioritized record keeps the v1 shape.
+    ...(priority ? { priority } : {}),
   };
 }
 

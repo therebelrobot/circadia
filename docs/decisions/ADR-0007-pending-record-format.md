@@ -41,6 +41,11 @@ One **versioned, flat** JSON-line record type is shared by `consolidate` (writer
 - The `key` is `shortHash(subject, predicate, object, src)` over the **resolved**
   identity (subject note id, object wikilink target or literal, episode id). Resolution
   is deterministic for a given vault, so the key is stable across runs.
+- **v2 (C18)** adds an optional `priority` field. When the subject fact was recalled in
+  the same `session` as the contradicting episode, the record carries
+  `"priority": "reconsolidation"` and `circadia review` sorts it first. The field is
+  omitted otherwise, so a non-prioritized record keeps the v1 shape. A v1 record on disk
+  (no `priority`) is read unchanged — the addition is backward-compatible.
 - `consolidate` skips a candidate whose key is already in `pending.jsonl`,
   `rejected.jsonl`, or matches a current fact in the vault.
 - `review` writes a rejected record to `.circadia/rejected.jsonl`, so a rejected

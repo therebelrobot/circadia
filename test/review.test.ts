@@ -57,7 +57,7 @@ function makeVault(): string {
 /** A pending record with a stable key, matching the ADR-0007 shape. */
 function record(over: Partial<PendingRecord> = {}): PendingRecord {
   const base = {
-    v: 1 as const,
+    v: 2 as const,
     subject: 'pi-cluster',
     predicate: 'runs_on',
     object: '[[orchard-sensors]]',

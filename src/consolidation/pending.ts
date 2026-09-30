@@ -12,11 +12,17 @@ import { STATE_DIR } from '../config.ts';
 import type { SourceKind, Trust } from '../types.ts';
 import { shortHash } from '../vault/util.ts';
 
-/** Bump when the record shape changes; readers may branch on it. */
-export const PENDING_RECORD_VERSION = 1;
+/**
+ * Bump when the record shape changes; readers may branch on it.
+ *
+ * v2 (C18) adds the optional `priority` field. The addition is backward-compatible: a v1
+ * record on disk simply has no `priority`, and `readRecords` accepts it unchanged. Per
+ * ADR-0007 a field addition is a version bump, so the written version is 2.
+ */
+export const PENDING_RECORD_VERSION = 2;
 
 export interface PendingRecord {
-  /** record format version */
+  /** record format version (1 = pre-C18, 2 = has optional `priority`) */
   v: typeof PENDING_RECORD_VERSION;
   /** stable candidate key: hash(subject, predicate, object, src) */
   key: string;
@@ -31,6 +37,12 @@ export interface PendingRecord {
   reason: string;
   /** system time: when the candidate was queued (epoch ms) */
   queuedAt: number;
+  /**
+   * C18 reconsolidation window. Set to `"reconsolidation"` when the subject fact was
+   * recalled in the same `session` as the contradicting episode: the memory was active
+   * when it was contradicted, so it is prioritized for review. Absent otherwise.
+   */
+  priority?: 'reconsolidation';
 }
 
 /**
@@ -74,6 +86,18 @@ export function readRecords(path: string): PendingRecord[] {
 /** The set of candidate keys already present in a JSONL file. */
 export function readKeys(path: string): Set<string> {
   return new Set(readRecords(path).map((r) => r.key));
+}
+
+/**
+ * C18: order pending records for `circadia review`, reconsolidation-priority records first.
+ *
+ * A record is prioritized when its subject fact was recalled in the same session as the
+ * contradicting episode (see `consolidate`). The sort is stable, so records within each
+ * group keep their on-disk order. Returns a new array; the input is not mutated.
+ */
+export function prioritizeForReview(records: PendingRecord[]): PendingRecord[] {
+  const rank = (r: PendingRecord): number => (r.priority === 'reconsolidation' ? 0 : 1);
+  return [...records].sort((a, b) => rank(a) - rank(b));
 }
 
 /** Serialize records to JSONL (one line each, trailing newline). */

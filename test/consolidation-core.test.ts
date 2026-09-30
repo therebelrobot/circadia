@@ -290,7 +290,8 @@ test('C13: a triple candidate always queues with reason "derived from triple cac
   const pending = readFileSync(join(v, '.circadia/pending.jsonl'), 'utf8');
   // ADR-0007: the pending record is flat and versioned (no nested `candidate`).
   const decision = JSON.parse(pending.trim().split('\n').pop()!) as { v: number; reason: string; origin: string; episode: string };
-  assert.equal(decision.v, 1);
+  // ADR-0007: v2 (C18) adds the optional `priority` field; a field addition is a version bump.
+  assert.equal(decision.v, 2);
   assert.equal(decision.reason, 'derived from triple cache');
   assert.equal(decision.origin, 'triple');
   assert.equal(decision.episode, 'x');

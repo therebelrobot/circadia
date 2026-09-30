@@ -23,6 +23,7 @@ import type { Fact } from '../types.ts';
 import {
   appendRecords,
   pendingPath,
+  prioritizeForReview,
   rejectedPath,
   readRecords,
   serializeRecords,
@@ -201,7 +202,9 @@ function buildUserFact(
 export async function review(vault: string): Promise<{ promoted: number; rejected: number; edited: number }> {
   const cfg = loadConfig(vault);
   const pending = pendingPath(vault);
-  const records = readRecords(pending);
+  // C18: reconsolidation-priority records are reviewed first. The sort is stable, so the
+  // on-disk order is preserved within each group.
+  const records = prioritizeForReview(readRecords(pending));
 
   if (records.length === 0) {
     console.log('No pending candidates to review.');
@@ -263,6 +266,10 @@ export async function review(vault: string): Promise<{ promoted: number; rejecte
     console.log(`    episode: ${c.episode}`);
     console.log(`    by: ${c.by}`);
     console.log(`    reason: ${c.reason}`);
+    if (c.priority === 'reconsolidation') {
+      // C18: the subject fact was recalled in the same session as the contradicting episode.
+      console.log('    priority: reconsolidation (recalled in the same session)');
+    }
     console.log('');
 
     // Unknown input re-prompts rather than dropping the candidate (C9).

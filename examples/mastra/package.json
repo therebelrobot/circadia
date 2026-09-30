@@ -1,0 +1,19 @@
+{
+  "name": "circadia-mastra-example",
+  "version": "0.0.0",
+  "description": "Minimal Mastra agent that talks to circadia mcp over stdio",
+  "main": "index.js",
+  "scripts": {
+    "start": "node agent.mjs",
+    "smoke": "node smoke.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@mastra/core": "^1.72.0",
+    "@mastra/mcp": "^2.1.1"
+  }
+}
