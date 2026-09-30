@@ -6,7 +6,7 @@
 {"id":"q-sh-solar-inverter","query":"solar inverter","kind":"single-hop","expected_passages":["solar-inverter#0"],"split":"dev"}
 {"id":"q-sh-sensor-calibration","query":"sensor calibration","kind":"single-hop","expected_passages":["sensor-calibration#0"],"split":"dev"}
 {"id":"q-sh-probe-aging","query":"probe aging","kind":"single-hop","expected_passages":["probe-aging#0"],"split":"dev"}
-{"id":"q-sh-alpha-tool","query":"what does the alpha project run on","kind":"single-hop","expected_passages":["old-laptop#0"],"seed":"alpha-overview","split":"holdout"}
+{"id":"q-sh-alpha-tool","query":"what does the alpha project run on","kind":"single-hop","expected_passages":[["alpha-overview#facts","old-laptop#0"]],"seed":"alpha-overview","split":"holdout"}
 {"id":"q-scoped-alpha","query":"orchard sensor","kind":"single-hop","expected_passages":["alpha-overview#0"],"config_overrides":{"scope":"projects/alpha"},"split":"dev"}
 {"id":"q-scoped-beta","query":"greenhouse automation","kind":"single-hop","expected_passages":["beta-overview#0"],"config_overrides":{"scope":"projects/beta"},"split":"holdout"}
 {"id":"q-mh-pref","query":"what does the maintainer of the alpha project prefer","kind":"multi-hop","expected_passages":[["sam#facts","tea#0"]],"seed":"alpha-overview","split":"dev"}
@@ -37,14 +37,14 @@
 {"id":"q-ts-system-beta-late","query":"what does the beta project run on","kind":"temporal-scoped","temporal_axis":"system","as_of":"2026-09-15","expected_passages":["greenhouse-controller#0"],"paired_with":"q-ts-system-beta-early","config_overrides":{"scope":"tag:beta"},"split":"dev"}
 {"id":"q-ts-system-delta-early","query":"what does the delta project run on","kind":"temporal-scoped","temporal_axis":"system","as_of":"2026-06-01","expected_passages":["delta-overview#0"],"expect_absent":["solar-inverter#0"],"paired_with":"q-ts-system-delta-late","config_overrides":{"scope":"tag:delta"},"split":"holdout"}
 {"id":"q-ts-system-delta-late","query":"what does the delta project run on","kind":"temporal-scoped","temporal_axis":"system","as_of":"2026-10-15","expected_passages":["solar-inverter#0"],"paired_with":"q-ts-system-delta-early","config_overrides":{"scope":"tag:delta"},"split":"dev"}
-{"id":"q-pref-sam","query":"what does sam prefer to drink","kind":"preference","expected_passages":["tea#0"],"expect_before":[["tea#0","coffee#0"]],"split":"dev"}
-{"id":"q-pref-ada","query":"what does ada prefer","kind":"preference","expected_passages":["kettle#0"],"split":"dev"}
-{"id":"q-pref-bo","query":"what does bo prefer","kind":"preference","expected_passages":["lantern#0"],"split":"dev"}
-{"id":"q-pref-cy","query":"what does cy prefer","kind":"preference","expected_passages":["compass#0"],"split":"holdout"}
-{"id":"q-pref-dee","query":"what does dee prefer","kind":"preference","expected_passages":["abacus#0"],"split":"dev"}
-{"id":"q-pref-eli","query":"what does eli prefer","kind":"preference","expected_passages":["harmonica#0"],"split":"dev"}
-{"id":"q-pref-fay","query":"what does fay prefer","kind":"preference","expected_passages":["telescope#0"],"split":"holdout"}
-{"id":"q-pref-gus","query":"what does gus prefer","kind":"preference","expected_passages":["kayak#0"],"split":"dev"}
+{"id":"q-pref-sam","query":"what does sam prefer to drink","kind":"preference","expected_passages":[["sam#facts","tea#0"]],"expect_before":[["tea#0","coffee#0"]],"split":"dev"}
+{"id":"q-pref-ada","query":"what does ada prefer","kind":"preference","expected_passages":[["ada#facts","kettle#0"]],"split":"dev"}
+{"id":"q-pref-bo","query":"what does bo prefer","kind":"preference","expected_passages":[["bo#facts","lantern#0"]],"split":"dev"}
+{"id":"q-pref-cy","query":"what does cy prefer","kind":"preference","expected_passages":[["cy#facts","compass#0"]],"split":"holdout"}
+{"id":"q-pref-dee","query":"what does dee prefer","kind":"preference","expected_passages":[["dee#facts","abacus#0"]],"split":"dev"}
+{"id":"q-pref-eli","query":"what does eli prefer","kind":"preference","expected_passages":[["eli#facts","harmonica#0"]],"split":"dev"}
+{"id":"q-pref-fay","query":"what does fay prefer","kind":"preference","expected_passages":[["fay#facts","telescope#0"]],"split":"holdout"}
+{"id":"q-pref-gus","query":"what does gus prefer","kind":"preference","expected_passages":[["gus#facts","kayak#0"]],"split":"dev"}
 {"id":"q-r2-0","query":"electrode drift","kind":"remote-association-2hop","expected_passages":["aquifer-salinity#0"],"seed":"electrode-drift","split":"dev"}
 {"id":"q-r2-1","query":"water budgeting","kind":"remote-association-2hop","expected_passages":["turbine-gearbox#0"],"seed":"water-budgeting","split":"dev"}
 {"id":"q-r2-2","query":"radio duty","kind":"remote-association-2hop","expected_passages":["pipeline-corrosion#0"],"seed":"radio-duty","split":"holdout"}
