@@ -273,7 +273,7 @@ RFC-0001. Contract in `src/dreams/README.md`; decision in ADR-0011.
 
 **Deliverables**
 
-- [ ] **Stage 1 — ADR and contract.** ADR-0011 (disposable state category, gitignore
+- [x] **Stage 1 — ADR and contract.** ADR-0011 (disposable state category, gitignore
       enforcement, the `dream` origin at weight 0, why confirmation is CLI-only),
       `src/dreams/README.md`, and the brain-map rows.
 - [ ] **Stage 2 — REM pass, dry run.** `circadia dream [--dry-run | --sample-only]` and

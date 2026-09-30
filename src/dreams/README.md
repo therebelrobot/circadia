@@ -33,6 +33,9 @@ once and forgets it.
 - A model timeout or malformed response prunes that sample; the pass never retries in a loop
   and never fails `consolidate`.
 - `wake` deletes the log on read; a second call reports nothing left.
+- `--dry-run` and `--sample-only` write nothing at all (the C7 rule).
+- `relate` never returns a path through a `dream` edge.
+- Hop distances, in the pass and in the eval fixture tests, exclude `dream` edges.
 
 ## Gate rules
 

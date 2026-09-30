@@ -53,6 +53,10 @@ Three properties of the feature force decisions the existing ADRs do not cover:
 - Dream state is lost on a fresh checkout, by design. A re-run of a night re-samples the same
   pairs (the seed is the night's local date) and skips candidate ids already present, so
   losing the queue costs at most the un-reviewed candidates.
+- Losing dream state also loses rejections and dismissals, so after a fresh checkout a pair
+  the user rejected can be proposed again. That is acceptable for a disposable queue, but it
+  is written down here: if it ever becomes annoying, a small rejected-pair list is the one
+  piece of dream state worth keeping.
 - At the default weight 0, dreaming changes no ranking. Wake recall and review still deliver
   value, because an accepted association becomes a `fact` edge. Turning dreams on is a
   separate, measured decision (RFC-0001 Stage 5) and is not made by this ADR.
