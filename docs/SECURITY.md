@@ -86,7 +86,8 @@ Controls, required for Phase 3 and later; the defaults here are non-negotiable:
 ### T6: Supply chain
 
 - ✔ **Zero runtime dependencies.**
-- Dev dependencies are limited to `typescript` and `@types/node`.
+- Dev dependencies are limited to `typescript`, `@types/node`, and
+  `@modelcontextprotocol/sdk` (dev-only, never shipped; see ADR-0008).
 - ◻ If published, publish via GitHub Actions OIDC with SLSA provenance
   (`actions/attest-build-provenance` or `npm --provenance`). Pin actions by SHA, enable
   Dependabot for `github-actions`, and verify with `gh attestation verify`.

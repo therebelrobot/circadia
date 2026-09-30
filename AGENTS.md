@@ -33,9 +33,10 @@ node bin/circadia.mjs --help
 
 1. **Zero runtime dependencies.** Use Node built-ins only: `node:sqlite`, `node:crypto`,
    `node:fs`, `node:test`, `node:http` (test mocks only), and global `fetch`. Dev
-   dependencies stay limited to `typescript` and `@types/node`. If you believe a
-   dependency is truly needed, write an ADR in `docs/decisions/` arguing for it and stop
-   for human review.
+   dependencies stay limited to `typescript`, `@types/node`, and
+   `@modelcontextprotocol/sdk` (dev-only, for MCP conformance tests — see ADR-0008). If
+   you believe another dependency is truly needed, write an ADR in `docs/decisions/`
+   arguing for it and stop for human review.
 2. **TypeScript that Node can run with type stripping.** No build step. That means:
    - Import with `.ts` extensions (`import { x } from './y.ts'`).
    - Use `import type` for type-only imports; `verbatimModuleSyntax` is on.
