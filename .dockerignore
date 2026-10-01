@@ -1,0 +1,18 @@
+# Keep the build context small and deterministic. The build stage runs `npm ci`,
+# `npm run build`, `npm test` and `npm pack`, so it needs source, tests, examples,
+# templates, eval fixtures and docs — but not derived or local-only artifacts.
+
+node_modules
+.git
+dist
+eval/.fixture
+docs/media
+
+# Derived state. `examples/vault/.circadia/triples/` is NOT derived — it is a tracked
+# cache that `test/integration.test.ts` reads ("hipporag note loads cached triples") — so
+# it is deliberately kept. Excluding all `.circadia/` folders breaks the build-stage
+# `npm test`; only the derived artifacts are excluded here.
+**/.circadia/index.sqlite*
+**/.circadia/dreams/
+**/.circadia/access.jsonl
+**/.circadia/consolidated.json
