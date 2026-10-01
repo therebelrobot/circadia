@@ -333,7 +333,10 @@ RFC-0001. Contract in `src/dreams/README.md`; decision in ADR-0011.
   **Remaining:** the first `v*` tag push, to verify the GHCR publish and the signed
   attestation end to end. The image, workflows, Dependabot config and hardening are
   written, and the hardening is verified by `scripts/container-smoke.sh`; the publish path
-  itself has not been exercised, so this item stays unchecked.
+  itself has not been exercised, so this item stays unchecked. The image build stage does
+  not run `npm test`: the suite spawns child node processes that are too slow under QEMU
+  emulation in the multi-arch build and hang, so `container-publish.yml` and
+  `container-pr.yml` run the suite natively on the runner instead.
 - [x] **npm publish with provenance**, if published.
 
 ## Open questions

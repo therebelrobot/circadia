@@ -28,11 +28,13 @@ RUN apt-get update \
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Copy the rest of the source and run the same gates CI runs. `npm pack` runs `prepack`
-# (the publish-time tsc build, ADR-0012) and leaves circadia-<version>.tgz in /app.
+# Copy the rest of the source and build the publish artifact. Tests are NOT run here:
+# the suite spawns child node processes that are too slow under QEMU emulation in the
+# multi-arch build, so it hangs. CI runs `npm test` natively instead (container-pr.yml
+# and container-publish.yml). `npm pack` runs `prepack` (the publish-time tsc build,
+# ADR-0012) and leaves circadia-<version>.tgz in /app.
 COPY . .
 RUN npm run build \
- && npm test \
  && npm pack
 
 # ---------------------------------------------------------------------------

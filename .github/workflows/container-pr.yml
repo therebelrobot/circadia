@@ -51,6 +51,9 @@ jobs:
           package-manager-cache: false
 
       - run: npm ci
+      # The image build stage no longer runs the suite (it hangs under QEMU emulation
+      # in the multi-arch build), so run it natively here.
+      - run: npm test
 
       - name: Smoke test the image
         run: ./scripts/container-smoke.sh circadia:pr

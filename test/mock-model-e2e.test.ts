@@ -11,7 +11,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import {
   cpSync,
   mkdtempSync,
@@ -141,6 +141,10 @@ test('mock-model e2e: consolidation, supersession, and review over a temp copy o
   const v = makeTempVault(mock.url);
   const cfg = loadConfig(v);
   const today = localDateString();
+  // Tracked outside the try so a failed waitFor still kills the review child. An
+  // orphaned child keeps this test file's event loop alive, so `node --test` would
+  // hang waiting for the file process to exit instead of failing fast.
+  let reviewChild: ChildProcessWithoutNullStreams | undefined;
 
   try {
     // --- Phase A: (1) supersede, (2) accumulate, (3) untrusted queue ------------
@@ -232,6 +236,7 @@ test('mock-model e2e: consolidation, supersession, and review over a temp copy o
       ],
       { cwd: REPO, stdio: ['pipe', 'pipe', 'pipe'] },
     );
+    reviewChild = child;
     let out = '';
     child.stdout.on('data', (c) => (out += c.toString()));
     child.stderr.on('data', (c) => (out += c.toString()));
@@ -268,6 +273,9 @@ test('mock-model e2e: consolidation, supersession, and review over a temp copy o
     // Both records left the queue.
     assert.equal(existsSync(join(v, STATE_DIR, 'pending.jsonl')), false, 'the queue is emptied');
   } finally {
+    if (reviewChild && reviewChild.exitCode === null && reviewChild.signalCode === null) {
+      reviewChild.kill('SIGKILL');
+    }
     await mock.close();
   }
 });
