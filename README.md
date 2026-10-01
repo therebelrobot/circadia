@@ -305,8 +305,57 @@ Phases 1–8 of the [roadmap](docs/ROADMAP.md) are implemented and tested:
 | 7 | `circadia eval`: recall@k and MRR per mode and query kind, tuning, ablations, LongMemEval and LoCoMo adapters |
 | 8 | Dreaming: REM pass, read-once `wake`, human confirmation, weight-0 dream edges |
 
-Still to come: a multi-arch container for the MCP server. Retrieval numbers and their limits
-are in [`docs/EVAL.md`](docs/EVAL.md) and [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+### Container
+
+A multi-arch (amd64 and arm64) image runs the same stdio MCP server, published to GHCR.
+Point an MCP client at it:
+
+```json
+{
+  "mcpServers": {
+    "circadia": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm", "--read-only", "--tmpfs", "/tmp", "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges", "--network", "none",
+        "--user", "<uid>:<gid>", "-v", "<vault>:/vault",
+        "ghcr.io/therebelrobot/circadia:<version>"
+      ]
+    }
+  }
+}
+```
+
+Pin a version tag, or better an image digest. `--user <uid>:<gid>` must match the owner of
+the vault on the host so the container can write episodes and the index; find it with
+`id -u` and `id -g`.
+
+**Network.** `--network none` is correct for the default configuration, which makes no
+network calls. Drop it only when embeddings are enabled, and then attach the container to a
+network that reaches only the embedding endpoint. Note that `127.0.0.1:8080` inside the
+container is the container itself: point `embeddings.endpoint` at `http://<docker-host>:8080`
+or a service name on that network.
+
+**Nightly consolidation.** The image contains no scheduler. Run `consolidate` from a host
+cron job or systemd timer with the same image:
+
+```bash
+docker run --rm --read-only --tmpfs /tmp --cap-drop ALL \
+  --security-opt no-new-privileges --network none \
+  --user <uid>:<gid> -v <vault>:/vault \
+  ghcr.io/therebelrobot/circadia:<version> consolidate --vault /vault
+```
+
+**Verification.** The image is published with signed build provenance:
+
+```bash
+gh attestation verify oci://ghcr.io/therebelrobot/circadia:<version> --owner therebelrobot
+```
+
+The GHCR package starts private and must be made public once, in its package settings.
+
+Retrieval numbers and their limits are in [`docs/EVAL.md`](docs/EVAL.md) and
+[`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
 
 ## Command reference
 

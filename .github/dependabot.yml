@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # Keep the SHA-pinned workflow actions current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Keep the digest-pinned base image current.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

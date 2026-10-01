@@ -1,0 +1,107 @@
+# Reusable build workflow for the Circadia container images.
+#
+# Called by container-publish.yml (tag push, push: true) and available to any
+# future caller. Builds a multi-arch image, optionally pushes it to GHCR, and
+# attests build provenance for the pushed index digest.
+#
+# Self-contained: it does not reference any central workflow repository.
+name: container-build
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: Image name under ghcr.io/<owner>/ (e.g. circadia).
+        required: true
+        type: string
+      target:
+        description: Dockerfile target to build (empty = final stage).
+        required: false
+        type: string
+        default: ''
+      platforms:
+        description: Comma-separated target platforms.
+        required: false
+        type: string
+        default: linux/amd64,linux/arm64
+      push:
+        description: Push to GHCR and attest provenance.
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      digest:
+        description: The pushed image index digest.
+        value: ${{ jobs.build.outputs.digest }}
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to GHCR
+        if: ${{ inputs.push }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}
+          # No {{major}} tag while the version is 0.x: a floating "0" tag would
+          # move under users on every minor release.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+          flavor: |
+            latest=auto
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: ${{ inputs.target }}
+          platforms: ${{ inputs.platforms }}
+          push: ${{ inputs.push }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Keep the unsigned unknown/unknown manifest out of GHCR; the signed
+          # provenance comes from the attestation step below.
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Upstream now recommends actions/attest for new implementations; this
+      # repo uses actions/attest-build-provenance because docs/ROADMAP.md and
+      # docs/SECURITY.md T6 name it literally.
+      - name: Attest build provenance
+        if: ${{ inputs.push }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/${{ inputs.image-name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

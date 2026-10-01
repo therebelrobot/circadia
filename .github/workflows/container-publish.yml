@@ -1,0 +1,57 @@
+# Publish the Circadia container images to GHCR on a v* tag.
+#
+# The tag is verified against package.json before anything is built, matching
+# npm-publish.yml. The build itself lives in the reusable container-build.yml.
+name: container-publish
+
+on:
+  push:
+    tags: ['v*']
+
+permissions: {}
+
+# Never cancel a release half way.
+concurrency:
+  group: container-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Tag must match package.json version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          v="v$(node -p "require('./package.json').version")"
+          if [ "$v" != "$REF_NAME" ]; then
+            echo "::error::tag $REF_NAME does not match package.json version $v"
+            exit 1
+          fi
+
+  publish:
+    needs: verify-tag
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      matrix:
+        # One entry today. Adding the future circadia-server image is a
+        # one-entry change here.
+        include:
+          - image-name: circadia
+            target: ''
+    uses: ./.github/workflows/container-build.yml
+    with:
+      image-name: ${{ matrix.image-name }}
+      target: ${{ matrix.target }}
+      push: true

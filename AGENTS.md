@@ -31,6 +31,8 @@ npm run benchmark         # 10k-note synthetic vault: index, incremental, recall
 npm run eval              # generate the eval fixture, then run the retrieval eval
 npm run eval:check        # same, but exit non-zero on any baseline delta (CI)
 node bin/circadia.mjs eval --dream-sweep   # dream-edge weight sweep (report only)
+docker buildx build --load -t circadia:local .   # build the stdio image locally
+./scripts/container-smoke.sh circadia:local      # non-root, read-only, MCP stdio, git checks
 node bin/circadia.mjs --help
 ```
 
@@ -116,6 +118,8 @@ node bin/circadia.mjs --help
 | `eval/` | fixture generator, query set, committed baseline | `npm run eval`; `eval/.fixture/` is generated and gitignored |
 | `bin/circadia.mjs`, `tsconfig.build.json` | launcher and publish-time build | the launcher runs `src/` from a clone and `dist/` only when installed under `node_modules` (ADR-0012); `test/build.test.ts` guards it |
 | `docs/media/` | README and docs GIFs, plus their Remotion source in `blueprints/` | not shipped to npm; its own `package.json`, outside the root tests and typecheck; regenerate with `npm run gifs` there |
+| `Dockerfile`, `.dockerignore` | stdio container image | multi-arch; non-root, read-only root, vault the only writable mount; no listener, no scheduler, no `EXPOSE` (RFC-0003 covers the server image) |
+| `.github/workflows/container-*.yml` | container CI and GHCR publish | `container-build.yml` is reusable (`workflow_call`); `container-publish.yml` runs on `v*` tags; `container-pr.yml` builds amd64 and runs the smoke script; actions SHA-pinned |
 
 ## 6. How to make a change
 

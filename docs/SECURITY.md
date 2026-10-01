@@ -96,9 +96,20 @@ Controls, required for Phase 3 and later; the defaults here are non-negotiable:
 - ✔ **Zero runtime dependencies.**
 - Dev dependencies are limited to `typescript`, `@types/node`, and
   `@modelcontextprotocol/sdk` (dev-only, never shipped; see ADR-0008).
-- ◻ If published, publish via GitHub Actions OIDC with SLSA provenance
-  (`actions/attest-build-provenance` or `npm --provenance`). Pin actions by SHA, enable
-  Dependabot for `github-actions`, and verify with `gh attestation verify`.
+- ◻ **npm publish with provenance.** `npm-publish.yml` publishes via GitHub Actions OIDC
+  with automatic provenance (`npm --provenance`). Not yet exercised.
+- ✔ **SHA-pinned actions.** Every action in the container workflows is pinned to a full
+  40-character commit SHA with a `# vX.Y.Z` comment.
+- ✔ **Dependabot.** `.github/dependabot.yml` tracks `github-actions` and `docker` weekly.
+- ✔ **Container hardening.** The stdio image runs as a non-root user (uid 1000) with a
+  read-only root filesystem and the vault as the only writable mount;
+  `scripts/container-smoke.sh` verifies both.
+- ✔ **Base image pinned by digest.** The `Dockerfile` pins `node:24-bookworm-slim` by its
+  multi-arch index digest.
+- ◻ **GHCR publish and attestation.** `container-publish.yml` builds multi-arch on a `v*`
+  tag and attests build provenance with `actions/attest-build-provenance` on the index
+  digest. Not yet exercised — it needs the first `v*` tag push. Verify with
+  `gh attestation verify oci://ghcr.io/therebelrobot/circadia:<version> --owner therebelrobot`.
 
 ## Reporting
 
