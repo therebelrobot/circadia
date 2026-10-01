@@ -82,8 +82,10 @@ include `fact` (typed, hipporag):
    insert the target note's first passage, then its `#facts` passage if present, skipping
    anything already placed. Stop when the query has inserted
    `retrieval.factExpansion.maxInserted` passages in total (default 3).
-5. **Mark every inserted hit** `via: "fact-expansion"` with the predicate that brought
-   it. `renderForContext()` shows it, so the agent can see why the passage is there.
+5. **Mark every inserted hit** with
+   `via: { kind: 'fact-expansion', from: <cue entity note id>, predicate: <predicate> }`
+   (the contract is in [Architecture answers](#architecture-answers)).
+   `renderForContext()` shows it, so the agent can see why the passage is there.
 
 Each cue entity expands once per query.
 
@@ -185,6 +187,15 @@ is migrated. The one step that can't easily be undone, turning expansion on by d
 eval in front of them, in a dedicated commit. An architecture review of this RFC happens
 before step 2.
 
+A one-way door usually raises the tier. It doesn't here, because the door only exists
+for the person deciding to open it: there are no other users whose agents would adapt to
+the new results without their say. If Circadia gains other users before step 3, the
+default flip moves to a higher tier, with a release note and a way to opt out.
+
+**Who notices first** if something goes wrong: the owner, through their own agents'
+answers on their own vault. The eval and CI catch the same failures on the fixture before
+that.
+
 ### Risks
 
 | Risk | Likelihood | Blast radius | Detection | Mitigation | Rollback | Door |
@@ -198,11 +209,16 @@ before step 2.
 
 ### Architecture answers
 
-- **Contract change.** `RecallHit` in `src/types.ts` gains an optional field:
-  `via?: { kind: 'fact-expansion'; from: string; predicate: string }`. Here `from` is the
-  cue entity's note id. The MCP `recall` payload carries the field when it is present;
-  clients that ignore unknown fields are unaffected. Hits that weren't inserted have no
-  `via`. `src/mcp/README.md` documents the field.
+- **Contract change.** Two additive, optional fields:
+  - `RecallHit` in `src/types.ts` gains
+    `via?: { kind: 'fact-expansion'; from: string; predicate: string }`. `from` is the cue
+    entity's note id. Hits that weren't inserted have no `via`.
+  - `RecallResult` gains `expanded?: number`, the count of inserted hits. It's absent
+    when expansion is off.
+
+  The MCP `recall` payload carries both when present; clients that ignore unknown fields
+  are unaffected. Documenting both in `src/mcp/README.md` and `docs/RETRIEVAL.md` is a
+  Rollout step 2 deliverable.
 - **Graph cache.** Not involved. Expansion runs after ranking. It reads the `edges` table
   with the same `edgeAllowed` filter `loadGraph` uses, and doesn't touch the cached
   PageRank graph.
@@ -210,9 +226,17 @@ before step 2.
   cue entity per query. Measured on the 10k-note benchmark vault with three facts per
   note, typed mode, 40 queries that each name a note: p50 119.6 → 121.5 ms, p95
   182.4 → 177.2 ms. Expansion changed 23 of the 40 hit lists, so it was firing.
-- **Observability.** Each inserted hit carries `via`. The recall result adds
-  `expanded: number`. The eval's per-kind report is the quality monitor; CI runs
-  `eval:check`.
+- **Observability and thresholds.** Circadia is a local tool with no telemetry, by
+  design, so the monitors are tests and the eval:
+  - `expanded > maxInserted` on any recall is a bug. Criterion 6 enforces it, and the
+    implementation asserts it.
+  - In CI, `npm run eval:check` fails on **any** baseline delta (one or more). With the
+    flag off, that guards criterion 7; once the baseline is refreshed with the flag on,
+    it guards criterion 8.
+  - On a personal vault, the private eval reports, per kind, the share of queries with
+    `expanded > 0` next to recall. A kind whose recall falls while its expansion share
+    rises is the signature of crowding, and blocks step 3.
+  - There's no runtime alerting threshold, because there's no runtime to alert from.
 - **Access log.** Inserted hits are logged like any returned hit (they were shown to the
   agent), with the usual query hash and session. No new log fields.
 - **Not applicable:** schema and index migrations (no DDL change, no
@@ -223,9 +247,9 @@ before step 2.
 All are owned by the maintainer; each maps to one test.
 
 1. **Given** a query whose cue entity has a `runs_on` fact valid now, **when** recall runs
-   in typed mode with expansion on, **then** the fact's target passage appears directly
-   after the entity's hits, with `via.kind = 'fact-expansion'` and `via.predicate =
-   'runs_on'`.
+   in typed mode with expansion on, **then**, directly after the entity's first hit, come
+   the entity's `#facts` passage, then the fact's target passage. Both carry
+   `via.kind = 'fact-expansion'`, and the target carries `via.predicate = 'runs_on'`.
 2. **Given** a fact whose world-time validity ended before `asOf` (or starts after it),
    **when** an as-of recall runs, **then** that target is never inserted.
 3. **Given** a superseded fact, **when** recall runs with `includeSuperseded: false`,
@@ -259,28 +283,47 @@ All are owned by the maintainer; each maps to one test.
    - each cue entity expands once;
    - the per-hit cap holds;
    - `via` marking, and how `renderForContext()` shows it.
-   - *Gate:* flag-on eval reproduces this RFC's numbers within noise; vacuous absences
-     are 0; no kind regresses on either split in any mode.
+   - Also: document `via` and `expanded` in `src/mcp/README.md` and `docs/RETRIEVAL.md`.
+   - *Gate:* criteria 1–9 pass. Flag-on eval reproduces this RFC's numbers **exactly**
+     (criterion 8); vacuous absences are 0; no kind regresses on either split in any mode.
 3. **Measure on a personal vault.** Run the private eval with the flag on and off.
    - Turn on only if no kind regresses on either split of either tier, and trust and
      absence violations don't rise.
    - Flipping the default is a human decision in its own commit, with a line in
      RETRIEVAL.md. It's the one change here that can't easily be undone.
 
+### Stories and dependencies
+
+| Story | Depends on | Flag safety |
+| --- | --- | --- |
+| 1. Flag and config keys | none | Adds keys only; no behavior change, proven by 0 baseline deltas |
+| 2. Expansion behind the flag, plus contract docs | 1 | Default off, so merged code changes nothing until enabled; criterion 7 proves it |
+| 3. Personal-vault measurement | 2 | Read-only eval run; changes no code or default |
+| 4. Default flip, if step 3 passes | 3 | The one-way step, in its own commit, reverted by reverting that commit |
+
+All are owned by the maintainer.
+
 ## Open questions
+
+All are accepted by the maintainer, with a point at which each is decided.
 
 1. ~~A total cap.~~ Resolved: `perHit: 1`, `maxInserted: 3`, measured above. (Default
    `topK` is 8, so the cap leaves at least five ranked hits in place.)
 2. **The predicate-ordering rule** was designed against dev failures. Holdout agrees, but
    it's crude. A per-predicate synonym list in `predicates.defs` would be less brittle.
+   *Decide at step 3*, from the personal-vault multi-hop results. Also tracked as a risk
+   above.
 3. **Auto mode.** Expansion needs `fact` edges, so an auto query that stays in wikilink
    mode gets none. Should a cue entity with facts be an escalation signal on its own?
+   *Decide after step 3*, as a separate change with its own eval run.
 4. **Seed crowding.** Predicate names in `#facts` passages ("runs_on") match many queries
    lexically. Should the keyword index skip predicate names, since the graph already
-   carries them?
+   carries them? *Decide after step 3*, separately. It's an index change with its own
+   baseline refresh.
 5. **Restart-mass normalization** remains the reason graph-only neighbours can't rank.
    That matters for unconfirmed dream edges and for triple paths, and it's left for a
-   later RFC if one of those becomes worth pursuing.
+   later RFC if one of those becomes worth pursuing. *Deferred*; no decision is needed for
+   this RFC.
 
 ## History of this RFC
 
