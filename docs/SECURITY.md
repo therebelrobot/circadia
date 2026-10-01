@@ -101,9 +101,11 @@ Controls, required for Phase 3 and later; the defaults here are non-negotiable:
 - ✔ **SHA-pinned actions.** Every action in the container workflows is pinned to a full
   40-character commit SHA with a `# vX.Y.Z` comment.
 - ✔ **Dependabot.** `.github/dependabot.yml` tracks `github-actions` and `docker` weekly.
-- ✔ **Container hardening.** The stdio image runs as a non-root user (uid 1000) with a
-  read-only root filesystem and the vault as the only writable mount;
-  `scripts/container-smoke.sh` verifies both.
+- ✔ **Container hardening.** The stdio image runs as a non-root user (uid 1000); the vault
+  is the only writable host mount, plus an ephemeral `/tmp` tmpfs. The read-only root
+  filesystem comes from the `--read-only` run flag (the image is built to be run that way),
+  not from the image itself; `scripts/container-smoke.sh` verifies the non-root user and the
+  read-only root.
 - ✔ **Base image pinned by digest.** The `Dockerfile` pins `node:24-bookworm-slim` by its
   multi-arch index digest.
 - ◻ **GHCR publish and attestation.** `container-publish.yml` builds multi-arch on a `v*`

@@ -118,7 +118,7 @@ node bin/circadia.mjs --help
 | `eval/` | fixture generator, query set, committed baseline | `npm run eval`; `eval/.fixture/` is generated and gitignored |
 | `bin/circadia.mjs`, `tsconfig.build.json` | launcher and publish-time build | the launcher runs `src/` from a clone and `dist/` only when installed under `node_modules` (ADR-0012); `test/build.test.ts` guards it |
 | `docs/media/` | README and docs GIFs, plus their Remotion source in `blueprints/` | not shipped to npm; its own `package.json`, outside the root tests and typecheck; regenerate with `npm run gifs` there |
-| `Dockerfile`, `.dockerignore` | stdio container image | multi-arch; non-root, read-only root, vault the only writable mount; no listener, no scheduler, no `EXPOSE` (RFC-0003 covers the server image) |
+| `Dockerfile`, `.dockerignore` | stdio container image | multi-arch; non-root, read-only root (via the `--read-only` run flag), vault the only writable host mount plus an ephemeral `/tmp` tmpfs; no listener, no scheduler, no `EXPOSE` (RFC-0003 covers the server image) |
 | `.github/workflows/container-*.yml` | container CI and GHCR publish | `container-build.yml` is reusable (`workflow_call`); `container-publish.yml` runs on `v*` tags; `container-pr.yml` builds amd64 and runs the smoke script; actions SHA-pinned |
 
 ## 6. How to make a change

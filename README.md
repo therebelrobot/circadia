@@ -93,14 +93,16 @@ much of your machine the process can touch.
 |---|---|---|
 | setup | `npx circadia …`, or `npm install --global circadia` | pull `ghcr.io/therebelrobot/circadia` |
 | runs | on the host, as you | in a container, as a non-root user |
-| filesystem | the host's filesystem | read-only root; the vault is the only writable mount |
+| filesystem | the host's filesystem | read-only root (via `--read-only`); the vault is the only writable mount, plus an ephemeral `/tmp` tmpfs |
 | network | the host's network | none by default |
 | isolation | your user account only | the process can only write to the vault |
 
 **`npx` / global install** is the simplest: it runs on the host with the host's filesystem and
 network access. **Docker from GHCR** is the better-isolated option: the MCP server runs
-non-root with a read-only root filesystem and no network by default, and the vault is the only
-writable mount. It cannot install packages or reach the network unless you allow it.
+non-root with no network by default, and the vault is the only writable mount (plus an
+ephemeral `/tmp` tmpfs). The read-only root filesystem comes from the `--read-only` run flag,
+not the image itself — the image is built to be run that way. It cannot install packages or
+reach the network unless you allow it.
 
 ### Try it in a minute (npx)
 
@@ -149,10 +151,12 @@ circadia --help
 
 ### Run it in a container (Docker)
 
-A multi-arch (amd64 and arm64) image runs the same stdio MCP server, published to GHCR. It is
-the same program as the npm package, packaged differently; its value is isolation. The
-container runs non-root with a read-only root filesystem and no network by default, and the
-vault is the only writable mount, so the process can only write to the vault.
+A multi-arch (amd64 and arm64) image runs the same stdio MCP server, published to GHCR on
+`v*` tags. It is the same program as the npm package, packaged differently; its value is
+isolation. The container runs non-root with no network by default, and the vault is the only
+writable mount (plus an ephemeral `/tmp` tmpfs), so the process can only write to the vault.
+The read-only root filesystem comes from the `--read-only` run flag, not the image itself; the
+image is built to be run that way.
 
 Run any command in it with the hardened invocation:
 
@@ -183,7 +187,8 @@ docker run --rm --read-only --tmpfs /tmp --cap-drop ALL \
   ghcr.io/therebelrobot/circadia:<version> consolidate --vault /vault
 ```
 
-**Verification.** The image is published with signed build provenance:
+**Verification.** The image is published with signed build provenance when a `v*` tag is
+pushed:
 
 ```bash
 gh attestation verify oci://ghcr.io/therebelrobot/circadia:<version> --owner therebelrobot

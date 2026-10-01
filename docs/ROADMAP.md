@@ -327,7 +327,8 @@ RFC-0001. Contract in `src/dreams/README.md`; decision in ADR-0011.
   - SHA-pinned actions;
   - `actions/attest-build-provenance` on the index digest;
   - Dependabot for actions;
-  - non-root user, read-only root filesystem, and the vault as the only writable mount.
+  - non-root user, read-only root filesystem (via the `--read-only` run flag), and the vault
+    as the only writable host mount (plus an ephemeral `/tmp` tmpfs).
 
   **Remaining:** the first `v*` tag push, to verify the GHCR publish and the signed
   attestation end to end. The image, workflows, Dependabot config and hardening are
