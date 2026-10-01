@@ -1,6 +1,7 @@
 # RFC-0002: Entity-anchored fact expansion
 
-Status: proposed · 2026-09-30 · measured against `1bb6a8a` (vector seeds wired into MCP and eval)
+Status: proposed · 2026-10-01 · measured against `1bb6a8a` (no `src/` or `eval/` changes since,
+checked at `a86f374`) · revised after delivery triage
 
 Replaces an earlier draft titled "How graph and lexical scores combine". That draft's
 numbers were measured before vector seeds reached the eval, and they don't hold on the
@@ -77,9 +78,10 @@ include `fact` (typed, hipporag):
      on now".
 3. **Order them** by how many query tokens match the predicate's parts after light
    suffix stripping (`maintained_by` matches "maintainer"). Ties keep index order.
-4. **Insert targets.** For up to `retrieval.factExpansion.perHit` targets (default 2),
+4. **Insert targets.** For up to `retrieval.factExpansion.perHit` targets (default 1),
    insert the target note's first passage, then its `#facts` passage if present, skipping
-   anything already placed.
+   anything already placed. Stop when the query has inserted
+   `retrieval.factExpansion.maxInserted` passages in total (default 3).
 5. **Mark every inserted hit** `via: "fact-expansion"` with the predicate that brought
    it. `renderForContext()` shows it, so the agent can see why the passage is there.
 
@@ -100,8 +102,9 @@ Each cue entity expands once per query.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `retrieval.factExpansion.enabled` | `false` during rollout | Turn expansion on |
-| `retrieval.factExpansion.perHit` | `2` | Fact targets inserted per cue entity |
+| `retrieval.factExpansion.enabled` | `false` during rollout | Turn expansion on. This config key is the feature flag; Circadia has no flag service |
+| `retrieval.factExpansion.perHit` | `1` | Fact targets inserted per cue entity |
+| `retrieval.factExpansion.maxInserted` | `3` | Passages one query may insert in total |
 
 ## Experiments
 
@@ -129,6 +132,24 @@ What the table shows:
 - **Entity anchoring is what makes expansion safe.** It is the only variant with no kind
   regression.
 
+### Choosing the caps
+
+The first version allowed up to 5 inserted passages per cue entity, enough to fill the
+top 5 of a query. The caps were measured on both fixtures (plain, and with accepted
+associations), in auto and hipporag:
+
+| perHit | maxInserted | Result |
+| --- | --- | --- |
+| 2 | unlimited | the numbers above |
+| 2 | 4 | identical |
+| 2 | 3 | identical |
+| **1** | unlimited | **identical** |
+| 2 | 2 | multi-hop dev drops (0.33 → 0.17 auto; 0.50 → 0.17 hipporag); macro dev −0.03 to −0.06 |
+
+So the defaults are `perHit: 1` and `maxInserted: 3`: one fact target, plus the entity's
+own facts and the target's facts, at most three insertions per query. That's the smallest
+setting that keeps every gain.
+
 ## Consequences for dreaming
 
 RFC-0001 stays as decided: dream edges at weight 0. The flat sweep's cause (restart-mass
@@ -152,6 +173,77 @@ That's a mechanism result: the fixture's accepted associations are true by const
 But it confirms the design: **dreams earn their place in recall through review, not
 through edge weight.** An associations channel (the earlier draft's "RFC-0003") is no
 longer needed for accepted associations. It stays an option only for *unconfirmed* ones.
+
+## Delivery
+
+### Tier
+
+**Lightweight.** Circadia has one maintainer and no other users of record. Its data is
+the owner's own vault. The change is behind a config flag that defaults off, and nothing
+is migrated. The one step that can't easily be undone, turning expansion on by default
+(Rollout step 3), is raised to its own review: the owner decides, with the personal-vault
+eval in front of them, in a dedicated commit. An architecture review of this RFC happens
+before step 2.
+
+### Risks
+
+| Risk | Likelihood | Blast radius | Detection | Mitigation | Rollback | Door |
+| --- | --- | --- | --- | --- | --- | --- |
+| Expansion inserts a target that isn't valid at the query time (wrong answer, stated confidently) | Low | Every recall naming that entity | Eval: absence and vacuous counts; invariant tests | `edgeAllowed` plus world-time check; test per case | Set `enabled: false` | Two-way |
+| Expansion bypasses the trust floor or scope | Low | Security boundary (SECURITY T1, T4) | Invariant tests; eval trust gate | Only candidates already in the set are inserted | Set `enabled: false` | Two-way |
+| Expansion crowds direct answers out of the top results | Medium | Recall quality for entity-cued queries | Eval single-hop and preference kinds; no-kind-regression gate | `perHit: 1`, `maxInserted: 3` | Lower the caps or disable | Two-way |
+| Predicate ordering picks the wrong fact | Medium | Which target is shown | Eval multi-hop kind; personal-vault eval | Ordering is tie-broken by index order; open question 2 | Disable | Two-way |
+| Expanded passages raise ACT-R activation for notes the user didn't search for | Medium | Future rankings | Access-log inspection | They were returned to the agent, so logging them is honest; `via` records why | Disable | Two-way |
+| Default flipped on before personal-vault evidence | Low | All recall | Rollout step 3 gate | Owner decision in its own commit | Revert that commit | **One-way in practice** (agents adapt to the new results) |
+
+### Architecture answers
+
+- **Contract change.** `RecallHit` in `src/types.ts` gains an optional field:
+  `via?: { kind: 'fact-expansion'; from: string; predicate: string }`. Here `from` is the
+  cue entity's note id. The MCP `recall` payload carries the field when it is present;
+  clients that ignore unknown fields are unaffected. Hits that weren't inserted have no
+  `via`. `src/mcp/README.md` documents the field.
+- **Graph cache.** Not involved. Expansion runs after ranking. It reads the `edges` table
+  with the same `edgeAllowed` filter `loadGraph` uses, and doesn't touch the cached
+  PageRank graph.
+- **Load.** At most `maxInserted` (3) inserted passages and one small `edges` query per
+  cue entity per query. Measured on the 10k-note benchmark vault with three facts per
+  note, typed mode, 40 queries that each name a note: p50 119.6 → 121.5 ms, p95
+  182.4 → 177.2 ms. Expansion changed 23 of the 40 hit lists, so it was firing.
+- **Observability.** Each inserted hit carries `via`. The recall result adds
+  `expanded: number`. The eval's per-kind report is the quality monitor; CI runs
+  `eval:check`.
+- **Access log.** Inserted hits are logged like any returned hit (they were shown to the
+  agent), with the usual query hash and session. No new log fields.
+- **Not applicable:** schema and index migrations (no DDL change, no
+  `INDEX_SCHEMA_VERSION` bump), RBAC (single-user tool), vault format (unchanged).
+
+### Acceptance criteria
+
+All are owned by the maintainer; each maps to one test.
+
+1. **Given** a query whose cue entity has a `runs_on` fact valid now, **when** recall runs
+   in typed mode with expansion on, **then** the fact's target passage appears directly
+   after the entity's hits, with `via.kind = 'fact-expansion'` and `via.predicate =
+   'runs_on'`.
+2. **Given** a fact whose world-time validity ended before `asOf` (or starts after it),
+   **when** an as-of recall runs, **then** that target is never inserted.
+3. **Given** a superseded fact, **when** recall runs with `includeSuperseded: false`,
+   **then** its target is never inserted.
+4. **Given** a target below `retrieval.trustFloor`, or outside the recall scope, **when**
+   recall runs, **then** it is never inserted.
+5. **Given** a cue entity with `link`, `triple`, `synonym` and `dream` neighbours and no
+   facts, **when** recall runs, **then** nothing is inserted.
+6. **Given** a cue entity with five valid facts, **when** recall runs, **then** at most
+   `perHit` targets and at most `maxInserted` passages are inserted, and each entity
+   expands once.
+7. **Given** `factExpansion.enabled: false`, **when** the eval runs, **then** the committed
+   baseline shows 0 deltas.
+8. **Given** `factExpansion.enabled: true`, **when** the eval runs, **then** it reproduces
+   this RFC's numbers exactly. The eval is deterministic (ADR-0010), so "within noise"
+   means identical; any difference is investigated, not tolerated.
+9. **Given** the 10k-note benchmark vault with facts, **when** 40 entity-cued queries run,
+   **then** p50 latency with expansion on is no more than 10% above expansion off.
 
 ## Rollout
 
@@ -177,10 +269,8 @@ longer needed for accepted associations. It stays an option only for *unconfirme
 
 ## Open questions
 
-1. **A total cap.** One cue entity can insert up to 1 + 2 × 2 = 5 passages, the whole
-   top 5 at default settings. That's fine for "what does X run on", but maybe too much when
-   a query names two entities. Should inserted passages be capped at, say, half of `topK`?
-   The eval can measure it.
+1. ~~A total cap.~~ Resolved: `perHit: 1`, `maxInserted: 3`, measured above. (Default
+   `topK` is 8, so the cap leaves at least five ranked hits in place.)
 2. **The predicate-ordering rule** was designed against dev failures. Holdout agrees, but
    it's crude. A per-predicate synonym list in `predicates.defs` would be less brittle.
 3. **Auto mode.** Expansion needs `fact` edges, so an auto query that stays in wikilink
