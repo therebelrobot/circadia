@@ -86,6 +86,22 @@ vault holds the content and the SQLite index holds only pointers, links and scor
 You need **Node.js 22.18 or newer**. Nothing else: SQLite is built into Node, and there are
 no runtime dependencies to install.
 
+There are two first-class ways to run Circadia. They run the same program; they differ in how
+much of your machine the process can touch.
+
+| | `npx` / global install | Docker from GHCR |
+|---|---|---|
+| setup | `npx circadia …`, or `npm install --global circadia` | pull `ghcr.io/therebelrobot/circadia` |
+| runs | on the host, as you | in a container, as a non-root user |
+| filesystem | the host's filesystem | read-only root; the vault is the only writable mount |
+| network | the host's network | none by default |
+| isolation | your user account only | the process can only write to the vault |
+
+**`npx` / global install** is the simplest: it runs on the host with the host's filesystem and
+network access. **Docker from GHCR** is the better-isolated option: the MCP server runs
+non-root with a read-only root filesystem and no network by default, and the vault is the only
+writable mount. It cannot install packages or reach the network unless you allow it.
+
 ### Try it in a minute (npx)
 
 ```bash
@@ -131,11 +147,57 @@ npm install --global circadia
 circadia --help
 ```
 
+### Run it in a container (Docker)
+
+A multi-arch (amd64 and arm64) image runs the same stdio MCP server, published to GHCR. It is
+the same program as the npm package, packaged differently; its value is isolation. The
+container runs non-root with a read-only root filesystem and no network by default, and the
+vault is the only writable mount, so the process can only write to the vault.
+
+Run any command in it with the hardened invocation:
+
+```bash
+docker run --rm --read-only --tmpfs /tmp --cap-drop ALL \
+  --security-opt no-new-privileges --network none \
+  --user <uid>:<gid> -v <vault>:/vault \
+  ghcr.io/therebelrobot/circadia:<version> index --vault /vault
+```
+
+Pin a version tag, or better an image digest. `--user <uid>:<gid>` must match the owner of the
+vault on the host so the container can write episodes and the index; find it with `id -u` and
+`id -g`.
+
+**Network.** `--network none` is correct for the default configuration, which makes no network
+calls. Drop it only when embeddings are enabled, and then attach the container to a network
+that reaches only the embedding endpoint. Note that `127.0.0.1:8080` inside the container is
+the container itself: point `embeddings.endpoint` at `http://<docker-host>:8080` or a service
+name on that network.
+
+**Nightly consolidation.** The image contains no scheduler. Run `consolidate` from a host cron
+job or systemd timer with the same image:
+
+```bash
+docker run --rm --read-only --tmpfs /tmp --cap-drop ALL \
+  --security-opt no-new-privileges --network none \
+  --user <uid>:<gid> -v <vault>:/vault \
+  ghcr.io/therebelrobot/circadia:<version> consolidate --vault /vault
+```
+
+**Verification.** The image is published with signed build provenance:
+
+```bash
+gh attestation verify oci://ghcr.io/therebelrobot/circadia:<version> --owner therebelrobot
+```
+
+The GHCR package starts private and must be made public once, in its package settings.
+
 ### Connect it to your agent (MCP)
 
 `circadia mcp` is an MCP server over stdio. It exposes `recall`, `remember`, `timeline`,
 `relate`, `get_note`, and the dream tools (`wake`, `endorse_dream`, `dismiss_dream`). Add it
-to any MCP client's server list:
+to any MCP client's server list. Pick either transport.
+
+On the host with `npx`:
 
 ```json
 {
@@ -149,6 +211,26 @@ to any MCP client's server list:
 ```
 
 With a global install, use `"command": "circadia"` and drop `-y` and `circadia` from `args`.
+
+In the sandboxed container (the flags are explained under
+[Run it in a container](#run-it-in-a-container-docker)):
+
+```json
+{
+  "mcpServers": {
+    "circadia": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm", "--read-only", "--tmpfs", "/tmp", "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges", "--network", "none",
+        "--user", "<uid>:<gid>", "-v", "<vault>:/vault",
+        "ghcr.io/therebelrobot/circadia:<version>"
+      ]
+    }
+  }
+}
+```
+
 The server speaks only stdio, so it has no network port to secure. Agents can write episodes
 but never facts ([`docs/SECURITY.md`](docs/SECURITY.md)). For a TypeScript agent, see the
 [Mastra example](examples/mastra/).
@@ -304,55 +386,6 @@ Phases 1–8 of the [roadmap](docs/ROADMAP.md) are implemented and tested:
 | 6 | Git-backed `--as-of` for prose, `history`, access-log compaction |
 | 7 | `circadia eval`: recall@k and MRR per mode and query kind, tuning, ablations, LongMemEval and LoCoMo adapters |
 | 8 | Dreaming: REM pass, read-once `wake`, human confirmation, weight-0 dream edges |
-
-### Container
-
-A multi-arch (amd64 and arm64) image runs the same stdio MCP server, published to GHCR.
-Point an MCP client at it:
-
-```json
-{
-  "mcpServers": {
-    "circadia": {
-      "command": "docker",
-      "args": [
-        "run", "-i", "--rm", "--read-only", "--tmpfs", "/tmp", "--cap-drop", "ALL",
-        "--security-opt", "no-new-privileges", "--network", "none",
-        "--user", "<uid>:<gid>", "-v", "<vault>:/vault",
-        "ghcr.io/therebelrobot/circadia:<version>"
-      ]
-    }
-  }
-}
-```
-
-Pin a version tag, or better an image digest. `--user <uid>:<gid>` must match the owner of
-the vault on the host so the container can write episodes and the index; find it with
-`id -u` and `id -g`.
-
-**Network.** `--network none` is correct for the default configuration, which makes no
-network calls. Drop it only when embeddings are enabled, and then attach the container to a
-network that reaches only the embedding endpoint. Note that `127.0.0.1:8080` inside the
-container is the container itself: point `embeddings.endpoint` at `http://<docker-host>:8080`
-or a service name on that network.
-
-**Nightly consolidation.** The image contains no scheduler. Run `consolidate` from a host
-cron job or systemd timer with the same image:
-
-```bash
-docker run --rm --read-only --tmpfs /tmp --cap-drop ALL \
-  --security-opt no-new-privileges --network none \
-  --user <uid>:<gid> -v <vault>:/vault \
-  ghcr.io/therebelrobot/circadia:<version> consolidate --vault /vault
-```
-
-**Verification.** The image is published with signed build provenance:
-
-```bash
-gh attestation verify oci://ghcr.io/therebelrobot/circadia:<version> --owner therebelrobot
-```
-
-The GHCR package starts private and must be made public once, in its package settings.
 
 Retrieval numbers and their limits are in [`docs/EVAL.md`](docs/EVAL.md) and
 [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
