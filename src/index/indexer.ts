@@ -669,9 +669,44 @@ export function incrementalIndex(vaultRoot: string, config: Config, opts: { dbPa
   const changed: { path: string; abs: string; mtime: number }[] = [];
   const removed: string[] = [];
   const upsertFile = db.prepare('INSERT OR REPLACE INTO files(path, mtime, sha256, commit_hash) VALUES (?, ?, ?, ?)');
-  for (const f of files) {
-    const p = prev.get(f.path);
-    if (!p) {
+  // The snapshot loop writes one row per file on disk. On a 10k-note vault that is
+  // 10k autocommits per incremental run, which dominates the cost of a one-note
+  // change. Wrap it in a single transaction so the snapshot commits once. This
+  // transaction is committed before the later BEGIN below, so there is never more
+  // than one open transaction at a time.
+  db.exec('BEGIN');
+  try {
+    for (const f of files) {
+      const p = prev.get(f.path);
+      if (!p) {
+        let commitHash: string | null = null;
+        if (isRepo) {
+          try {
+            const hash = execFileSync(
+              'git',
+              ['log', '-1', '--format=%H', '--', f.path],
+              { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
+            ).trim() || null;
+            commitHash = hash;
+          } catch {
+            commitHash = null;
+          }
+        }
+        changed.push(f);
+        upsertFile.run(f.path, f.mtime, sha256OfFile(f.abs), commitHash);
+        continue;
+      }
+      if (p.mtime === f.mtime) {
+        // unchanged: preserve the original commit_hash
+        upsertFile.run(f.path, f.mtime, p.sha256, p.commit_hash);
+        continue;
+      }
+      const hash = sha256OfFile(f.abs);
+      if (hash === p.sha256) {
+        // mtime-only change (touch): content identical, preserve commit_hash
+        upsertFile.run(f.path, f.mtime, hash, p.commit_hash);
+        continue;
+      }
       let commitHash: string | null = null;
       if (isRepo) {
         try {
@@ -686,35 +721,13 @@ export function incrementalIndex(vaultRoot: string, config: Config, opts: { dbPa
         }
       }
       changed.push(f);
-      upsertFile.run(f.path, f.mtime, sha256OfFile(f.abs), commitHash);
-      continue;
+      upsertFile.run(f.path, f.mtime, hash, commitHash);
     }
-    if (p.mtime === f.mtime) {
-      // unchanged: preserve the original commit_hash
-      upsertFile.run(f.path, f.mtime, p.sha256, p.commit_hash);
-      continue;
-    }
-    const hash = sha256OfFile(f.abs);
-    if (hash === p.sha256) {
-      // mtime-only change (touch): content identical, preserve commit_hash
-      upsertFile.run(f.path, f.mtime, hash, p.commit_hash);
-      continue;
-    }
-    let commitHash: string | null = null;
-    if (isRepo) {
-      try {
-        const hash = execFileSync(
-          'git',
-          ['log', '-1', '--format=%H', '--', f.path],
-          { cwd: vaultRoot, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }
-        ).trim() || null;
-        commitHash = hash;
-      } catch {
-        commitHash = null;
-      }
-    }
-    changed.push(f);
-    upsertFile.run(f.path, f.mtime, hash, commitHash);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    db.close();
+    throw e;
   }
   for (const path of prev.keys()) if (!onDisk.has(path)) removed.push(path);
 

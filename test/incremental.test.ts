@@ -289,4 +289,47 @@ test('cli: index is incremental by default; --full forces a full rebuild', async
   }
 });
 
+test('incremental: one changed note in a 2,000-note vault leaves files identical to a full build', () => {
+  const v = join(tmp, 't12');
+  mkdirSync(join(v, 'entities', 'people'), { recursive: true });
+  writeFileSync(join(v, 'circadia.config.json'), JSON.stringify(CONFIG));
+  const N = 2000;
+  for (let i = 0; i < N; i++) {
+    const id = `n${String(i).padStart(4, '0')}`;
+    writeFileSync(
+      join(v, 'entities', 'people', `${id}.md`),
+      `---\ntype: entity\nkind: person\n---\n# ${id}\n\n${id} is a person.\n`,
+    );
+  }
+  const cfg = loadConfig(v);
+  const dbPath = dbFor(v);
+  const full = buildIndex(v, cfg, { dbPath });
+  assert.equal(full.stats.notes, N);
+
+  // change exactly one note, then run the incremental path
+  writeFileSync(
+    join(v, 'entities', 'people', 'n0000.md'),
+    '---\ntype: entity\nkind: person\n---\n# n0000\n\nn0000 was edited.\n',
+  );
+  const inc = incrementalIndex(v, cfg, { dbPath });
+  assert.equal(inc.stats.changed, 1, 'exactly one file changed');
+  assert.equal(inc.stats.removed, 0);
+
+  // a fresh full build of the same vault, at a separate path
+  const fullDbPath = join(v, '.circadia', 'full.sqlite');
+  buildIndex(v, cfg, { dbPath: fullDbPath });
+
+  const readFiles = (p: string) => {
+    const { db } = openIndex(p);
+    const rows = db.prepare('SELECT path, mtime, sha256, commit_hash FROM files ORDER BY path').all();
+    db.close();
+    return rows;
+  };
+  assert.deepEqual(
+    readFiles(dbPath),
+    readFiles(fullDbPath),
+    'incremental files table matches a full build after one changed note',
+  );
+});
+
 test.after(() => rmSync(tmp, { recursive: true, force: true }));
