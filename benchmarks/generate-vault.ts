@@ -2,11 +2,13 @@
 // Usage: node --experimental-strip-types benchmarks/generate-vault.ts <outDir> [--notes N] [--links L] [--facts F]
 //
 // Writes N entity notes (default 10,000) with a total of L wikilinks
-// (default 50,000) distributed round-robin, plus F facts per note (default 3,
-// the shape RFC-0002 criterion 9 measures). Notes carry valid frontmatter so
-// they parse cleanly at the default `typed` extraction mode. Deterministic
-// (fixed PRNG seeds) so benchmark runs are comparable; facts use a separate
-// seed, so adding facts does not move the wikilink targets.
+// (default 50,000) distributed round-robin, plus F facts per note (default 0).
+// Facts are opt-in: the default vault has no facts and no `fact` edges, which
+// keeps docs/PERFORMANCE.md comparable with its pre-facts history. Pass
+// `--facts 3` for the shape RFC-0002 criterion 9 measures. Notes carry valid
+// frontmatter so they parse cleanly at the default `typed` extraction mode.
+// Deterministic (fixed PRNG seeds) so benchmark runs are comparable; facts use
+// a separate seed, so adding facts does not move the wikilink targets.
 
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,9 +18,10 @@ export interface GenOptions {
   notes: number;
   links: number;
   /**
-   * Facts per note. RFC-0002 criterion 9 measures a vault with three facts per
-   * note, so the default is 3. Facts use their own PRNG seed, so changing this
-   * does not move the wikilink targets.
+   * Facts per note. Opt-in: the default is 0, so the generated vault has no
+   * facts and no `fact` edges (the pre-facts shape). RFC-0002 criterion 9
+   * measures a vault with three facts per note, so pass 3 explicitly. Facts use
+   * their own PRNG seed, so changing this does not move the wikilink targets.
    */
   factsPerNote?: number;
 }
@@ -28,7 +31,7 @@ const FACT_PREDICATES = ['runs_on', 'depends_on', 'measures'] as const;
 
 export function generateVault(outDir: string, opts: GenOptions): void {
   const { notes, links } = opts;
-  const factsPerNote = opts.factsPerNote ?? 3;
+  const factsPerNote = opts.factsPerNote ?? 0;
   const rand = makeRng(42);
   const factRand = makeRng(1337);
   const id = (i: number) => `note-${String(i).padStart(5, '0')}`;
@@ -98,7 +101,7 @@ if (process.argv[1] && process.argv[1].endsWith('generate-vault.ts')) {
   generateVault(outDir, {
     notes: num('--notes', 10_000),
     links: num('--links', 50_000),
-    factsPerNote: num('--facts', 3),
+    factsPerNote: num('--facts', 0),
   });
   console.log(`generated vault at ${outDir}`);
 }

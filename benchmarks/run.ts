@@ -1,6 +1,10 @@
 // Benchmark: synthetic vault -> full index -> incremental index (10 notes,
 // 1 note) -> recall latency p50/p95 per mode -> peak RSS.
-// Usage: npm run benchmark [-- --notes N --links L --queries Q]
+// Usage: npm run benchmark [-- --notes N --links L --queries Q --facts F]
+//
+// Facts are opt-in and default to 0, so the default vault has no facts and no
+// `fact` edges (the pre-facts shape docs/PERFORMANCE.md is comparable with).
+// RFC-0002 criterion 9 needs facts, so run it as `npm run benchmark -- --facts 3`.
 //
 // The single-note incremental time is the roadmap acceptance criterion:
 // "editing one note reindexes in under 200 ms on a 10k-note vault".
@@ -21,6 +25,7 @@ const num = (flag: string, dflt: number): number => {
 const NOTES = num('--notes', 10_000);
 const LINKS = num('--links', 50_000);
 const QUERIES = num('--queries', 100);
+const FACTS = num('--facts', 0);
 
 const tmp = mkdtempSync(join(tmpdir(), 'circadia-bench-'));
 const vault = join(tmp, 'vault');
@@ -38,13 +43,13 @@ const percentile = (sorted: number[], p: number): number => {
   return sorted[idx];
 };
 
-console.log(`circadia benchmark: ${NOTES} notes, ${LINKS} links, ${QUERIES} queries/mode`);
+console.log(`circadia benchmark: ${NOTES} notes, ${LINKS} links, ${FACTS} facts/note, ${QUERIES} queries/mode`);
 console.log(`machine: ${process.platform} ${process.arch}, node ${process.version}`);
 bump();
 
 // 1. generate + full index
 const tGen = performance.now();
-generateVault(vault, { notes: NOTES, links: LINKS });
+generateVault(vault, { notes: NOTES, links: LINKS, factsPerNote: FACTS });
 const genMs = performance.now() - tGen;
 bump();
 
@@ -100,8 +105,9 @@ for (const mode of ['wikilink', 'typed'] as const) {
 
 // 5. RFC-0002 criterion 9: 40 entity-cued queries, typed mode. p50 with fact
 // expansion on must be no more than 10% above expansion off. Each query names a
-// note, so the cue-entity path fires; the vault has three facts per note. Unlike
-// section [4], recall is awaited here, so the timing covers the whole call.
+// note, so the cue-entity path fires; this needs facts, so run the benchmark
+// with `--facts 3` (the vault has three facts per note). Unlike section [4],
+// recall is awaited here, so the timing covers the whole call.
 const ENTITY_QUERIES = 40;
 const entityQueries: string[] = [];
 for (let i = 0; i < ENTITY_QUERIES; i++) {
