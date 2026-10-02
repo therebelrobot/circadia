@@ -1,12 +1,16 @@
 // RFC-0002 criterion 8: with `factExpansion.enabled: true`, the eval reproduces the
-// RFC's macro recall@5 numbers exactly. The eval is deterministic (ADR-0010), so
-// "within noise" means identical. The fixture is generated into a temp dir; the
-// committed baseline and examples/vault are never touched.
+// RFC's numbers exactly. The eval is deterministic (ADR-0010), so "within noise"
+// means identical. The fixture is generated into a temp dir; the committed baseline
+// and examples/vault are never touched.
 //
 // The RFC's table row "current scoring + entity-anchored expansion" is:
-//   auto 0.556 / 0.500, typed 0.583 / 0.500, hipporag 0.583 / 0.500  (dev / holdout)
-// over the six unscoped kinds. The RFC's bracketed MRR does not match the committed
-// baseline even for the flag-off "current" row, so only recall@5 is asserted here.
+//   macro recall@5 over the six unscoped kinds:
+//     auto 0.556 / 0.500, typed 0.583 / 0.500, hipporag 0.583 / 0.500  (dev / holdout)
+//   all-kinds overall MRR (the bracketed value; the `split` aggregate):
+//     auto 0.368 / 0.465, typed 0.352 / 0.453, hipporag 0.381 / 0.482  (dev / holdout)
+// The MRR label was corrected in 4f1d35e: the bracketed values are the all-kinds
+// overall MRR (matching eval/baseline.json's `dev`/`holdout` groups), not the
+// six-unscoped-kind macro MRR.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -51,7 +55,16 @@ function macroRecall5(results: Awaited<ReturnType<typeof runEval>>): Record<stri
   return Object.fromEntries(Object.entries(bySplit).map(([s, e]) => [s, e.sum / e.n]));
 }
 
-test('criterion 8: flag-on eval reproduces the RFC recall@5 numbers exactly', async () => {
+/**
+ * All-kinds overall MRR per split — the RFC's bracketed MRR. This is the `split`
+ * aggregate (mean MRR over every non-trust query in the split), the same value
+ * eval/baseline.json records under its `dev`/`holdout` groups.
+ */
+function overallMrr(results: Awaited<ReturnType<typeof runEval>>): Record<string, number> {
+  return Object.fromEntries(aggregate(results, 'split').map((a) => [a.group, a.mrr]));
+}
+
+test('criterion 8: flag-on eval reproduces the RFC recall@5 and overall MRR numbers exactly', async () => {
   const dir = join(tmp, 'vault');
   generateFixture(dir);
   const base = loadConfig(dir);
@@ -63,6 +76,12 @@ test('criterion 8: flag-on eval reproduces the RFC recall@5 numbers exactly', as
     typed: { dev: 0.583, holdout: 0.5 },
     hipporag: { dev: 0.583, holdout: 0.5 },
   };
+  // The RFC's bracketed all-kinds overall MRR (dev / holdout).
+  const expectedMrr: Record<string, { dev: number; holdout: number }> = {
+    auto: { dev: 0.368, holdout: 0.465 },
+    typed: { dev: 0.352, holdout: 0.453 },
+    hipporag: { dev: 0.381, holdout: 0.482 },
+  };
 
   for (const mode of ['auto', 'typed', 'hipporag'] as const) {
     const cfg = deepMerge(base, {
@@ -73,6 +92,9 @@ test('criterion 8: flag-on eval reproduces the RFC recall@5 numbers exactly', as
     const macro = macroRecall5(results);
     assert.equal(Number(macro.dev.toFixed(3)), expected[mode].dev, `${mode} dev recall@5`);
     assert.equal(Number(macro.holdout.toFixed(3)), expected[mode].holdout, `${mode} holdout recall@5`);
+    const mrr = overallMrr(results);
+    assert.equal(Number(mrr.dev.toFixed(3)), expectedMrr[mode].dev, `${mode} dev overall MRR`);
+    assert.equal(Number(mrr.holdout.toFixed(3)), expectedMrr[mode].holdout, `${mode} holdout overall MRR`);
   }
 });
 

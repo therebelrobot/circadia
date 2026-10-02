@@ -8,7 +8,8 @@
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadConfig } from '../src/config.ts';
+import { deepMerge, loadConfig } from '../src/config.ts';
+import type { Config } from '../src/config.ts';
 import { buildIndex, incrementalIndex } from '../src/index/indexer.ts';
 import { recall } from '../src/retrieval/recall.ts';
 import { generateVault } from './generate-vault.ts';
@@ -98,6 +99,44 @@ for (const mode of ['wikilink', 'typed'] as const) {
   console.log(`\n[4] recall ${mode}: p50 ${recallStats[mode].p50.toFixed(1)} ms, p95 ${recallStats[mode].p95.toFixed(1)} ms, max ${recallStats[mode].max.toFixed(1)} ms`);
 }
 
+// 5. RFC-0002 criterion 9: 40 entity-cued queries, typed mode. p50 with fact
+// expansion on must be no more than 10% above expansion off. Each query names a
+// note, so the cue-entity path fires; the vault has three facts per note. Unlike
+// section [4], recall is awaited here, so the timing covers the whole call.
+const ENTITY_QUERIES = 40;
+const entityQueries: string[] = [];
+for (let i = 0; i < ENTITY_QUERIES; i++) {
+  const n = Math.floor((i * 7919) % NOTES); // deterministic spread
+  entityQueries.push(`note-${String(n).padStart(5, '0')}`);
+}
+const cfgOn = deepMerge(cfg, { retrieval: { factExpansion: { enabled: true } } });
+// Warm the index/page cache so the first measured query is not a cold-start outlier.
+await recall(vault, cfg, entityQueries[0], { dbPath, mode: 'typed', logAccess: false });
+// Interleave off/on per query so both see the same cache state. A sequential
+// off-then-on pass would let warmup mask a real regression.
+const timesOff: number[] = [];
+const timesOn: number[] = [];
+let entityFired = 0;
+for (const q of entityQueries) {
+  const tOff = performance.now();
+  await recall(vault, cfg, q, { dbPath, mode: 'typed', logAccess: false });
+  timesOff.push(performance.now() - tOff);
+  const tOn = performance.now();
+  const r = await recall(vault, cfgOn, q, { dbPath, mode: 'typed', logAccess: false });
+  timesOn.push(performance.now() - tOn);
+  if (r.expanded && r.expanded > 0) entityFired++;
+}
+timesOff.sort((a, b) => a - b);
+timesOn.sort((a, b) => a - b);
+bump();
+const p50Off = percentile(timesOff, 50);
+const p50On = percentile(timesOn, 50);
+const entityRatio = p50Off > 0 ? p50On / p50Off : 1;
+const perfPass = entityRatio <= 1.1;
+console.log(
+  `\n[5] RFC-0002 criterion 9: entity-cued p50 typed — off ${p50Off.toFixed(1)} ms, on ${p50On.toFixed(1)} ms (ratio ${entityRatio.toFixed(3)}), expansion fired on ${entityFired}/${ENTITY_QUERIES} — bound <= 1.10: ${perfPass ? 'PASS' : 'FAIL'}`,
+);
+
 console.log(`\npeak RSS: ${peakRss} MB`);
 console.log('\nsummary');
 console.log('  metric                              value');
@@ -107,6 +146,10 @@ console.log(`  incremental (10 notes)              ${Math.round(inc10Ms)} ms`);
 console.log(`  incremental (1 note)                ${inc1Ms.toFixed(1)} ms  (acceptance < 200 ms: ${pass})`);
 console.log(`  recall wikilink p50 / p95           ${recallStats.wikilink.p50.toFixed(1)} / ${recallStats.wikilink.p95.toFixed(1)} ms`);
 console.log(`  recall typed p50 / p95              ${recallStats.typed.p50.toFixed(1)} / ${recallStats.typed.p95.toFixed(1)} ms`);
+console.log(`  entity-cued p50 off / on            ${p50Off.toFixed(1)} / ${p50On.toFixed(1)} ms  (criterion 9 <= 1.10x: ${perfPass ? 'PASS' : 'FAIL'})`);
 console.log(`  peak RSS                            ${peakRss} MB`);
+
+// Criterion 9 is a hard bound: `npm run benchmark` exits non-zero when it fails.
+if (!perfPass) process.exitCode = 1;
 
 rmSync(tmp, { recursive: true, force: true });

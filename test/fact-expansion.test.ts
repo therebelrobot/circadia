@@ -1,7 +1,9 @@
 // RFC-0002 entity-anchored fact expansion (Rollout step 2). One test per acceptance
 // criterion 1–7, plus the `expanded > maxInserted` assertion. Criterion 8 (flag-on eval
-// reproduces the RFC's numbers) lives in test/fact-expansion-eval.test.ts; criterion 9
-// (benchmark latency) is a benchmark measurement, not a unit test.
+// reproduces the RFC's numbers) lives in test/fact-expansion-eval.test.ts. Criterion 9
+// (10k-note p50 bound) is enforced by `npm run benchmark` (benchmarks/run.ts section
+// [5]); the fast unit test here covers the mechanism the bound depends on — bounded
+// insertions and one `edges` query per cue entity.
 //
 // The vault is built in a temp dir; examples/vault is never touched. `dbPath` points at
 // the temp vault and `logAccess: false` keeps the access log clean.
@@ -11,11 +13,13 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
 import { CONFIG_FILENAME, DEFAULT_CONFIG, deepMerge, loadConfig } from '../src/config.ts';
 import { buildIndex } from '../src/index/indexer.ts';
 import { openIndex } from '../src/index/db.ts';
-import { assertExpandedWithinCap, recall, renderForContext } from '../src/retrieval/recall.ts';
+import { assertExpandedWithinCap, expandFacts, recall, renderForContext } from '../src/retrieval/recall.ts';
 import { handleToolsCall } from '../src/mcp/server.ts';
+import type { RecallHit } from '../src/types.ts';
 
 const NOW = Date.UTC(2026, 5, 1, 12, 0, 0); // 2026-06-01
 
@@ -187,6 +191,59 @@ test('criterion 6: the per-hit and total caps hold, and no passage is duplicated
 test('criterion 6: expanded > maxInserted is a bug (the assertion fires)', () => {
   assert.throws(() => assertExpandedWithinCap(4, 3), /over maxInserted 3/);
   assert.doesNotThrow(() => assertExpandedWithinCap(3, 3));
+});
+
+test('criterion 9 mechanism: one edges query per cue entity, at most maxInserted insertions', () => {
+  // The latency bound depends on expansion doing bounded work: one small `edges`
+  // query per cue entity (not per hit or per candidate) and at most `maxInserted`
+  // insertions. A stub db records every prepared statement, so this proves the
+  // bound without a 10k-note vault. The full p50 bound is enforced by
+  // `npm run benchmark` (benchmarks/run.ts section [5]).
+  const prepared: string[] = [];
+  const edgesBySrc: Record<string, unknown[]> = {
+    alpha: [
+      {
+        src: 'alpha',
+        dst: 'beta',
+        origin: 'fact',
+        weight: 1,
+        valid_from: null,
+        valid_to: null,
+        recorded_at: null,
+        expired_at: null,
+        trust: 'high',
+        declared_created: null,
+        predicate: 'runs_on',
+      },
+    ],
+  };
+  const db = {
+    prepare(sql: string) {
+      prepared.push(sql);
+      return { all: (src: string) => edgesBySrc[src] ?? [] };
+    },
+  } as unknown as DatabaseSync;
+
+  const hit = (passageId: string, noteId: string): RecallHit => ({
+    passageId,
+    noteId,
+    path: `${noteId}.md`,
+    title: noteId,
+    heading: null,
+    text: '',
+    score: 1,
+    components: { graph: 0, activation: 0, importance: 0, seed: 0 },
+    trust: 'high',
+  });
+  const hits = [hit('alpha#0', 'alpha'), hit('alpha#facts', 'alpha'), hit('beta#0', 'beta'), hit('beta#facts', 'beta')];
+  const cfg = deepMerge(DEFAULT_CONFIG, {
+    retrieval: { factExpansion: { enabled: true, perHit: 1, maxInserted: 3 } },
+  });
+
+  const r = expandFacts(db, cfg, 'typed', ['alpha'], null, NOW, 'alpha runs on', hits);
+  assert.equal(r.expanded, 3, 'inserts the entity facts, the target, and the target facts');
+  assert.ok(r.expanded <= cfg.retrieval.factExpansion.maxInserted, 'total cap holds');
+  assert.equal(prepared.length, 1, 'one edges query per cue entity, not per hit');
 });
 
 test('criterion 7: with the flag off, recall carries no via and no expanded', withVault(async (v) => {
