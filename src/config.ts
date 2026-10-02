@@ -108,6 +108,19 @@ export interface Config {
     includeSuperseded: boolean;
     /** log each returned hit to the access log (reconsolidation / base-level activation) */
     logAccess: boolean;
+    /**
+     * RFC-0002 entity-anchored fact expansion. Off by default during rollout; this key is
+     * the feature flag (Circadia has no flag service). When on, recall inserts a cue
+     * entity's `#facts` passage and up to `perHit` fact targets, capped at `maxInserted`
+     * passages per query.
+     */
+    factExpansion: {
+      enabled: boolean;
+      /** fact targets inserted per cue entity */
+      perHit: number;
+      /** passages one query may insert in total */
+      maxInserted: number;
+    };
   };
   /**
    * Phase 8 dreaming (RFC-0001). A user who never sets any of these gets no dreaming at
@@ -229,6 +242,11 @@ export const DEFAULT_CONFIG: Config = {
     trustFloor: 'low',
     includeSuperseded: false,
     logAccess: true,
+    factExpansion: {
+      enabled: false,
+      perHit: 1,
+      maxInserted: 3,
+    },
   },
   dreaming: {
     enabled: false,
@@ -312,6 +330,13 @@ export function validateConfig(c: Config): string[] {
   if (!(c.graph.damping > 0 && c.graph.damping < 1)) errs.push('graph.damping must be in (0, 1)');
   if (!['high', 'medium', 'low'].includes(c.retrieval.trustFloor)) {
     errs.push('retrieval.trustFloor must be high, medium, or low');
+  }
+  const fe = c.retrieval.factExpansion;
+  if (!Number.isInteger(fe.perHit) || fe.perHit < 0) {
+    errs.push('retrieval.factExpansion.perHit must be a non-negative integer');
+  }
+  if (!Number.isInteger(fe.maxInserted) || fe.maxInserted < 0) {
+    errs.push('retrieval.factExpansion.maxInserted must be a non-negative integer');
   }
   const d = c.dreaming;
   if (!Number.isInteger(d.samplesPerNight) || d.samplesPerNight < 0) {

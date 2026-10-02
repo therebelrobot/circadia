@@ -83,8 +83,11 @@ include `fact` (typed, hipporag):
    anything already placed. Stop when the query has inserted
    `retrieval.factExpansion.maxInserted` passages in total (default 3).
 5. **Mark every inserted hit** with
-   `via: { kind: 'fact-expansion', from: <cue entity note id>, predicate: <predicate> }`
-   (the contract is in [Architecture answers](#architecture-answers)).
+   `via: { kind: 'fact-expansion', from: <cue entity note id> }` (the contract is in
+   [Architecture answers](#architecture-answers)). The fact target also carries
+   `predicate: <predicate>`. The entity's own `#facts` passage is inserted before any
+   single predicate is chosen, so it has no `predicate`; omitting the field is honest,
+   where a sentinel would name a predicate that doesn't exist.
    `renderForContext()` shows it, so the agent can see why the passage is there.
 
 Each cue entity expands once per query.
@@ -173,7 +176,7 @@ regressing.
 
 That's a mechanism result: the fixture's accepted associations are true by construction.
 But it confirms the design: **dreams earn their place in recall through review, not
-through edge weight.** An associations channel (the earlier draft's "RFC-0003") is no
+through edge weight.** An associations channel (he earlier draft's associations-channel RFC) is no
 longer needed for accepted associations. It stays an option only for *unconfirmed* ones.
 
 ## Delivery
@@ -211,8 +214,10 @@ that.
 
 - **Contract change.** Two additive, optional fields:
   - `RecallHit` in `src/types.ts` gains
-    `via?: { kind: 'fact-expansion'; from: string; predicate: string }`. `from` is the cue
-    entity's note id. Hits that weren't inserted have no `via`.
+    `via?: { kind: 'fact-expansion'; from: string; predicate?: string }`. `from` is the cue
+    entity's note id. `predicate` is present on a fact target and absent on the entity's
+    own `#facts` passage, which is inserted before a predicate is chosen. Hits that
+    weren't inserted have no `via`.
   - `RecallResult` gains `expanded?: number`, the count of inserted hits. It's absent
     when expansion is off.
 
@@ -249,7 +254,8 @@ All are owned by the maintainer; each maps to one test.
 1. **Given** a query whose cue entity has a `runs_on` fact valid now, **when** recall runs
    in typed mode with expansion on, **then**, directly after the entity's first hit, come
    the entity's `#facts` passage, then the fact's target passage. Both carry
-   `via.kind = 'fact-expansion'`, and the target carries `via.predicate = 'runs_on'`.
+   `via.kind = 'fact-expansion'`; the target carries `via.predicate = 'runs_on'`, and the
+   entity's `#facts` passage carries no `via.predicate`.
 2. **Given** a fact whose world-time validity ended before `asOf` (or starts after it),
    **when** an as-of recall runs, **then** that target is never inserted.
 3. **Given** a superseded fact, **when** recall runs with `includeSuperseded: false`,
@@ -282,7 +288,8 @@ All are owned by the maintainer; each maps to one test.
    - trust floor and scope respected;
    - each cue entity expands once;
    - the per-hit cap holds;
-   - `via` marking, and how `renderForContext()` shows it.
+   - `via` marking (including the `#facts` passage's absent `predicate`), and how
+     `renderForContext()` shows it.
    - Also: document `via` and `expanded` in `src/mcp/README.md` and `docs/RETRIEVAL.md`.
    - *Gate:* criteria 1–9 pass. Flag-on eval reproduces this RFC's numbers **exactly**
      (criterion 8); vacuous absences are 0; no kind regresses on either split in any mode.

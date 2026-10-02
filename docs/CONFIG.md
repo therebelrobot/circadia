@@ -51,6 +51,9 @@ load.
 | `retrieval.trustFloor` | `"low"` | **traversal** floor: drop edges and passages below this trust (`low` \| `medium` \| `high`). Distinct from `dreaming.trustFloor`, the **sampling** floor |
 | `retrieval.includeSuperseded` | `false` | traverse superseded fact edges |
 | `retrieval.logAccess` | `true` | append returned hits to the access log |
+| `retrieval.factExpansion.enabled` | `false` | RFC-0002 entity-anchored fact expansion. This key is the feature flag (Circadia has no flag service); off during rollout |
+| `retrieval.factExpansion.perHit` | `1` | fact targets inserted per cue entity; must be a non-negative integer |
+| `retrieval.factExpansion.maxInserted` | `3` | passages one query may insert in total; must be a non-negative integer |
 
 ## dreaming (Phase 8)
 
