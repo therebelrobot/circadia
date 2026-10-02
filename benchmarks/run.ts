@@ -9,7 +9,6 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync, readdirSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deepMerge, loadConfig } from '../src/config.ts';
-import type { Config } from '../src/config.ts';
 import { buildIndex, incrementalIndex } from '../src/index/indexer.ts';
 import { recall } from '../src/retrieval/recall.ts';
 import { generateVault } from './generate-vault.ts';
