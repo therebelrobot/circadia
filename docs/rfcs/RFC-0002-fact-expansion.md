@@ -117,7 +117,7 @@ These came from a scratch copy of `src/` with switches in `runRung()`; nothing w
 committed. They ran against the Phase 7 fixture and query set at `1bb6a8a` through
 `runEval`, with trigram embeddings for passages and queries.
 
-Macro recall@5 over the six unscoped kinds, with MRR in brackets (dev / holdout):
+Macro recall@5 over the six unscoped kinds, with all-kinds overall MRR in brackets (dev / holdout):
 
 | Variant | auto | typed | hipporag |
 | --- | --- | --- | --- |
