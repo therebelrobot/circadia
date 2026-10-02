@@ -243,6 +243,19 @@ export async function handleToolsCall(
           // Structured seed provenance (README: "structured metadata ... so clients can
           // show provenance"). `via` includes 'vector' when the dense path contributed.
           seeds: r.seeds,
+          // RFC-0002: per-hit `via` marks fact-expansion insertions, and `expanded` is the
+          // count. Both are absent when expansion is off, so a flag-off payload is
+          // unchanged. Clients that ignore unknown fields are unaffected.
+          hits: r.hits.map((h) => ({
+            passageId: h.passageId,
+            noteId: h.noteId,
+            path: h.path,
+            title: h.title,
+            trust: h.trust,
+            score: h.score,
+            ...(h.via ? { via: h.via } : {}),
+          })),
+          ...(r.expanded !== undefined ? { expanded: r.expanded } : {}),
         },
       };
     }

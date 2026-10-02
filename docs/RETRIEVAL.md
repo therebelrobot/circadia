@@ -147,6 +147,36 @@ score = w.graph · (ppr / max_ppr)
 Every hit carries `components: { graph, activation, importance, seed }`, so a ranking can
 always be explained.
 
+## 4.1 Entity-anchored fact expansion (RFC-0002)
+
+Off by default (`retrieval.factExpansion.enabled: false`). When on, recall adds one step
+between ranking (§3 step 5) and the token budget (§3 step 6). It does not change scoring.
+
+When a query names an entity (a cue entity, §3 step 1) and the mode traverses `fact` edges
+(`typed`, `hipporag`), recall walks the ranked hits and, at the first hit whose note is
+that cue entity, inserts:
+
+1. the entity's `#facts` passage, right after the hit; then
+2. up to `retrieval.factExpansion.perHit` fact targets (default 1): the target note's
+   first passage, then its `#facts` passage if present.
+
+It stops after `retrieval.factExpansion.maxInserted` passages (default 3) per query, and
+each cue entity expands once. Only `fact` edges are followed — never `dream`, `triple`,
+`synonym` or `link`. Only passages already in the candidate set are inserted, so the trust
+floor and the recall scope have already applied. A fact edge must pass `edgeAllowed` and be
+valid in world time at `asOf ?? now`, so an expired or future target is never inserted for
+an as-of query.
+
+Every inserted hit carries `via: { kind: 'fact-expansion', from, predicate? }`. `from` is
+the cue entity's note id. `predicate` is present on a fact target and absent on the
+entity's own `#facts` passage, which is inserted before a predicate is chosen. Hits that
+were not inserted have no `via`. `RecallResult.expanded` is the count of inserted hits; it
+is absent when the flag is off. `renderForContext()` shows `via` in each hit's source line,
+so the agent can see why the passage is there. The MCP `recall` payload carries both
+(`src/mcp/README.md`).
+
+`expanded > maxInserted` is a bug; the implementation asserts it.
+
 ## 5. As-of semantics
 
 `--as-of T` answers "as the vault stood, and as the world was, at T".

@@ -21,7 +21,7 @@ import { MODE_ORIGINS } from './modes.ts';
 import { addEdge, makeGraph, personalizedPageRank, type Graph } from './ppr.ts';
 import { appendAccess, baseLevelFromParts, queryHash, readAccessLog, readAccessLogFrom, retrievalProbability } from './activation.ts';
 import { loadAccessSummaries, presentationsForActivation, type NodePresentations } from './log-compact.ts';
-import { loadGraph, TRUST_RANK, type GraphCache } from './graph-cache.ts';
+import { edgeAllowed, loadGraph, TRUST_RANK, type EdgeRow, type GraphCache } from './graph-cache.ts';
 import { topKByCosine } from './embeddings.ts';
 
 export interface RecallOptions {
@@ -104,6 +104,8 @@ function rrf(lists: { via: string; ids: string[] }[]): Map<string, { score: numb
 interface RungResult {
   hits: RecallHit[];
   margin: number;
+  /** RFC-0002: hits inserted by fact expansion (0 when the flag is off). */
+  expanded: number;
 }
 
 /**
@@ -178,6 +180,164 @@ function filterGraph(g: Graph, allowed: Set<string>): Graph {
   return out;
 }
 
+/**
+ * RFC-0002: `expanded > maxInserted` on any recall is a bug. The expansion loop caps
+ * itself, so this is a safety net; criterion 6's test proves the cap holds, and this
+ * assertion is what makes an over-cap result fail loudly instead of silently.
+ */
+export function assertExpandedWithinCap(expanded: number, maxInserted: number): void {
+  if (expanded > maxInserted) {
+    throw new Error(`fact expansion inserted ${expanded} passages, over maxInserted ${maxInserted}`);
+  }
+}
+
+/** Light suffix stripping so `maintained_by` matches "maintainer" (RFC-0002 step 3). */
+function lightStem(w: string): string {
+  for (const suf of ['ing', 'ed', 'er', 'es', 's']) {
+    if (w.length > suf.length + 1 && w.endsWith(suf)) return w.slice(0, -suf.length);
+  }
+  return w;
+}
+
+/** Query tokens, each with its light stem, for predicate matching. */
+function queryTokenSet(query: string): Set<string> {
+  const out = new Set<string>();
+  for (const w of query.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
+    if (!w) continue;
+    out.add(w);
+    out.add(lightStem(w));
+  }
+  return out;
+}
+
+/** How many of a predicate's parts match a query token (raw or stemmed). */
+function predicateMatch(predicate: string, tokens: Set<string>): number {
+  let n = 0;
+  for (const part of predicate.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)) {
+    if (tokens.has(part) || tokens.has(lightStem(part))) n++;
+  }
+  return n;
+}
+
+/** World-time validity at `t`: `valid_from <= t < valid_to` (null bounds are open). */
+function worldValidAt(e: EdgeRow, t: number): boolean {
+  if (e.valid_from !== null && e.valid_from > t) return false;
+  if (e.valid_to !== null && e.valid_to <= t) return false;
+  return true;
+}
+
+/**
+ * RFC-0002 entity-anchored fact expansion. After ranking and before the token budget,
+ * insert a cue entity's `#facts` passage and up to `perHit` fact targets, capped at
+ * `maxInserted` passages per query. Only passages already in the candidate set are
+ * inserted, so the trust floor and the recall scope have already applied. Only `fact`
+ * edges are followed — never `dream`, `triple`, `synonym` or `link`.
+ *
+ * `hits` is the full ranked candidate list (post trust/as-of filter), not the budgeted
+ * output, so a target that ranked below the top K can still be inserted.
+ */
+export function expandFacts(
+  db: DatabaseSync,
+  cfg: Config,
+  mode: GraphMode,
+  entities: readonly string[],
+  asOf: number | null,
+  now: number,
+  query: string,
+  hits: RecallHit[],
+): { hits: RecallHit[]; expanded: number } {
+  const fe = cfg.retrieval.factExpansion;
+  // Expansion needs fact edges; wikilink has none, so it is a no-op there.
+  if (!fe.enabled || fe.maxInserted <= 0 || entities.length === 0 || !MODE_ORIGINS[mode].includes('fact')) {
+    return { hits, expanded: 0 };
+  }
+
+  // The candidate set: only passages already ranked (and thus already past the trust
+  // floor, the as-of created filter, and the scope) may be inserted.
+  const byId = new Map(hits.map((h) => [h.passageId, h]));
+  const entitySet = new Set(entities);
+  const tokens = queryTokenSet(query);
+  const worldNow = asOf ?? now;
+
+  const out: RecallHit[] = [];
+  // `placed` tracks the output, not the candidate set: a target that ranked below the
+  // top K is still in the candidate set and must be insertable, while a passage already
+  // in the output is never duplicated.
+  const placed = new Set<string>();
+  const expandedEntities = new Set<string>();
+  let expanded = 0;
+
+  for (const h of hits) {
+    if (placed.has(h.passageId)) continue; // already inserted as a target
+    out.push(h);
+    placed.add(h.passageId);
+    if (expanded >= fe.maxInserted) continue;
+    // Each cue entity expands once, at the position of its first (highest-ranked) hit.
+    if (!entitySet.has(h.noteId) || expandedEntities.has(h.noteId)) continue;
+    expandedEntities.add(h.noteId);
+
+    // 1. the entity's own `#facts` passage, right after the hit. It is inserted before a
+    // predicate is chosen, so it carries no `via.predicate`.
+    const factsId = `${h.noteId}#facts`;
+    const factsHit = byId.get(factsId);
+    if (factsHit && !placed.has(factsId)) {
+      out.push({ ...factsHit, via: { kind: 'fact-expansion', from: h.noteId } });
+      placed.add(factsId);
+      expanded++;
+    }
+
+    // 2. the entity's fact edges that pass edgeAllowed (trust, supersession, system time)
+    // and are valid in world time at the query time. `edgeAllowed` keeps ended-but-true
+    // history for a now-query, which is right for traversal but wrong for "runs on now".
+    const edges = db
+      .prepare(
+        `SELECT e.src, e.dst, e.origin, e.weight, e.valid_from, e.valid_to, e.recorded_at,
+                e.expired_at, e.trust, n.created AS declared_created, e.type AS predicate
+         FROM edges e LEFT JOIN nodes n ON n.id = e.declared_in
+         WHERE e.src = ? AND e.origin = 'fact' AND e.dst IS NOT NULL`,
+      )
+      .all(h.noteId) as unknown as (EdgeRow & { predicate: string })[];
+
+    // 3. order by predicate token match; ties keep index order.
+    const ordered = edges
+      .filter((e) => edgeAllowed(e, asOf, cfg) && worldValidAt(e, worldNow))
+      .map((e, i) => ({ e, i, score: predicateMatch(e.predicate, tokens) }))
+      .sort((a, b) => b.score - a.score || a.i - b.i)
+      .map((x) => x.e);
+    // 4. insert up to `perHit` targets: the target's first passage, then its `#facts`.
+    let insertedTargets = 0;
+    for (const e of ordered) {
+      if (insertedTargets >= fe.perHit || expanded >= fe.maxInserted) break;
+      const targetNote = e.dst as string;
+      let insertedThis = false;
+      const firstId = `${targetNote}#0`;
+      if (!placed.has(firstId)) {
+        const t = byId.get(firstId);
+        if (t) {
+          out.push({ ...t, via: { kind: 'fact-expansion', from: h.noteId, predicate: e.predicate } });
+          placed.add(firstId);
+          expanded++;
+          insertedThis = true;
+        }
+      }
+      const targetFactsId = `${targetNote}#facts`;
+      if (expanded < fe.maxInserted && !placed.has(targetFactsId)) {
+        const t = byId.get(targetFactsId);
+        if (t) {
+          out.push({ ...t, via: { kind: 'fact-expansion', from: h.noteId, predicate: e.predicate } });
+          placed.add(targetFactsId);
+          expanded++;
+          insertedThis = true;
+        }
+      }
+      if (insertedThis) insertedTargets++;
+    }
+  }
+
+  assertExpandedWithinCap(expanded, fe.maxInserted);
+  return { hits: out, expanded };
+}
+
 function runRung(
   db: DatabaseSync,
   cfg: Config,
@@ -189,6 +349,8 @@ function runRung(
   topK: number,
   tokenBudget: number,
   scopeIds: Set<string> | null,
+  entities: readonly string[],
+  query: string,
   graphCache?: GraphCache,
 ): RungResult {
   const loaded = graphCache?.getGraph(mode, asOf, cfg) ?? loadGraph(db, mode, asOf, cfg);
@@ -206,7 +368,7 @@ function runRung(
 
   const ranked = [...ppr.entries()].sort((a, b) => b[1] - a[1]).slice(0, 400);
   const ids = ranked.map(([id]) => id);
-  if (ids.length === 0) return { hits: [], margin: 0 };
+  if (ids.length === 0) return { hits: [], margin: 0, expanded: 0 };
 
   const rows = db
     .prepare(
@@ -228,7 +390,7 @@ function runRung(
   const w = cfg.retrieval.weights;
   const rp = cfg.retrieval;
 
-  const hits: RecallHit[] = rows
+  const rankedHits: RecallHit[] = rows
     .filter((r) => TRUST_RANK[(r.trust ?? 'low') as Trust] >= TRUST_RANK[cfg.retrieval.trustFloor])
     // as-of: passages from notes created after asOf weren't in memory yet
     .filter((r) => asOf === null || r.created === null || r.created <= asOf)
@@ -250,6 +412,11 @@ function runRung(
     })
     .sort((a, b) => b.score - a.score);
 
+  // RFC-0002: entity-anchored fact expansion runs after ranking and before the token
+  // budget, so inserted hits compete for the same top-K and budget as ranked ones.
+  const expandedResult = expandFacts(db, cfg, mode, entities, asOf, now, query, rankedHits);
+  const hits = expandedResult.hits;
+
   const out: RecallHit[] = [];
   let budget = tokenBudget;
   for (const h of hits) {
@@ -263,7 +430,7 @@ function runRung(
   // the margin is 0 so `auto` keeps escalating (a lone seed can still be the wrong
   // rung). Two or more hits use the relative top-1/top-2 gap.
   const margin = out.length >= 2 && out[0].score > 0 ? (out[0].score - out[1].score) / out[0].score : 0;
-  return { hits: out, margin };
+  return { hits: out, margin, expanded: expandedResult.expanded };
 }
 
 /**
@@ -416,10 +583,10 @@ export async function recall(vaultRoot: string, cfg: Config, query: string, opts
     }
 
     let modeUsed = ladder[0];
-    let result: RungResult = { hits: [], margin: 0 };
+    let result: RungResult = { hits: [], margin: 0, expanded: 0 };
     for (let i = 0; i < ladder.length; i++) {
       modeUsed = ladder[i];
-      result = runRung(db, cfg, modeUsed, seeds, asOf, activationNow, presentations, topK, tokenBudget, scopeIds, opts.graphCache);
+      result = runRung(db, cfg, modeUsed, seeds, asOf, activationNow, presentations, topK, tokenBudget, scopeIds, entities, query, opts.graphCache);
       if (modeRequested !== 'auto' || i === ladder.length - 1) break;
       const a = cfg.graph.query.auto;
       const reasons: string[] = [];
@@ -454,6 +621,9 @@ export async function recall(vaultRoot: string, cfg: Config, query: string, opts
       seeds: [...fused.entries()].map(([nodeId, v]) => ({ nodeId, score: v.score, via: v.via })).sort((a, b) => b.score - a.score),
       keywordBackend: backend,
       asOfProse,
+      // RFC-0002: absent when expansion is off, so a flag-off result is byte-identical to
+      // the pre-expansion shape.
+      ...(cfg.retrieval.factExpansion.enabled ? { expanded: result.expanded } : {}),
     };
   } finally {
     db.close();
@@ -466,7 +636,12 @@ export async function recall(vaultRoot: string, cfg: Config, query: string, opts
  */
 export function renderForContext(r: RecallResult): string {
   const parts = r.hits.map((h) => {
-    const head = `### ${h.title}${h.heading && h.heading !== h.title ? ` › ${h.heading}` : ''}\n_source: ${h.path} · trust: ${h.trust}_`;
+    // RFC-0002: show why an expanded passage is present, so the agent can see the fact
+    // edge that pulled it in. The entity's own `#facts` passage has no predicate.
+    const via = h.via
+      ? ` · via: fact-expansion from ${h.via.from}${h.via.predicate ? ` (${h.via.predicate})` : ''}`
+      : '';
+    const head = `### ${h.title}${h.heading && h.heading !== h.title ? ` › ${h.heading}` : ''}\n_source: ${h.path} · trust: ${h.trust}${via}_`;
     if (h.trust === 'low') {
       // neutralise any attempt by the content to close the fence early
       const body = h.text.replace(/<\/?\s*untrusted-data/gi, (m) => m.replace('<', '&lt;'));

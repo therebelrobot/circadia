@@ -98,6 +98,13 @@ export interface RecallHit {
   score: number;
   components: { graph: number; activation: number; importance: number; seed: number };
   trust: Trust;
+  /**
+   * RFC-0002: set only on hits inserted by entity-anchored fact expansion. `from` is the
+   * cue entity's note id. `predicate` is present on a fact target and absent on the
+   * entity's own `#facts` passage, which is inserted before a predicate is chosen.
+   * Hits that were not inserted have no `via`.
+   */
+  via?: { kind: 'fact-expansion'; from: string; predicate?: string };
 }
 
 /**
@@ -121,4 +128,10 @@ export interface RecallResult {
   keywordBackend: 'fts5' | 'bm25-js';
   /** C17: set only for an as-of query; absent for a now-query. */
   asOfProse?: AsOfProse;
+  /**
+   * RFC-0002: the number of hits inserted by entity-anchored fact expansion. Absent when
+   * `retrieval.factExpansion.enabled` is false, so a flag-off result is byte-identical to
+   * the pre-expansion shape.
+   */
+  expanded?: number;
 }
