@@ -842,8 +842,11 @@ export async function main(argv: string[]): Promise<number> {
           );
           if (report.missingIds.length > 0) console.log(`missing gold ids: ${report.missingIds.join(', ')}`);
           for (const a of report.aggregates.filter((x) => x.group.includes(':'))) {
+            // RFC-0002: show the per-kind expansion share only when expansion ran,
+            // so flag-off output is byte-identical to the pre-expansion report.
+            const share = a.expansionShare === undefined ? '' : `  expand=${a.expansionShare.toFixed(3)}`;
             console.log(
-              `  ${a.group.padEnd(28)} n=${String(a.count).padStart(3)}  recall@5=${(a.recallAtK['5'] ?? 0).toFixed(3)}  mrr=${a.mrr.toFixed(3)}`,
+              `  ${a.group.padEnd(28)} n=${String(a.count).padStart(3)}  recall@5=${(a.recallAtK['5'] ?? 0).toFixed(3)}  mrr=${a.mrr.toFixed(3)}${share}`,
             );
           }
           if (deltas) console.log(`baseline: ${deltas.length} delta(s) vs ${baselinePath}`);

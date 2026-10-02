@@ -212,6 +212,9 @@ async function runQuery(
     trustViolations: recomputeTrustViolations(db, hits, cfg.retrieval.trustFloor),
     vacuousAbsences: 0,
     missingIds: [],
+    // RFC-0002: absent when expansion is off, so a flag-off result is
+    // byte-identical to the pre-expansion shape (and the committed baseline).
+    ...(cfg.retrieval.factExpansion.enabled ? { expanded: r.expanded ?? 0 } : {}),
   };
 }
 

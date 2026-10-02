@@ -120,6 +120,12 @@ export interface EvalQueryResult {
   /** `expect_absent` checks whose paired query did not retrieve the passage. */
   vacuousAbsences: number;
   /**
+   * RFC-0002: hits inserted by fact expansion for this query. Present only when
+   * `retrieval.factExpansion.enabled` is on, mirroring `RecallResult.expanded`,
+   * so a flag-off result is byte-identical to the pre-expansion shape.
+   */
+  expanded?: number;
+  /**
    * Gold ids this query names (`expected_passages`, `expect_absent`, `expect_before`)
    * that are not passages in the built index. A non-empty list means the query can
    * never score, so the CLI fails the run unless `--allow-missing` is passed.
@@ -134,6 +140,15 @@ export interface EvalAggregate {
   recallAtK: Record<string, number>;
   precisionAtK: Record<string, number>;
   mrr: number;
+  /**
+   * RFC-0002: share of this group's queries whose recall result had
+   * `expanded > 0` (at least one fact-expansion insertion). Present only when
+   * fact expansion is enabled; absent otherwise, so the committed baseline
+   * (generated with the flag off) is unchanged. A kind whose recall falls while
+   * this share rises is the crowding signature that blocks RFC-0002 rollout
+   * step 3.
+   */
+  expansionShare?: number;
 }
 
 /** The whole run. `failed` is true only on a trust-gate violation. */

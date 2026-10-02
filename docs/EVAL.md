@@ -173,3 +173,25 @@ The sweep is deterministic and strictly read-only (ADR-0010): it builds one
 index per configuration in a temp directory, prepares the decoys-only
 configuration in a temp copy of the fixture, and writes nothing under the vault
 or the committed baseline.
+
+## 9. Fact-expansion share (RFC-0002)
+
+When `retrieval.factExpansion.enabled` is on, the eval reports one extra signal
+next to the recall metrics: the **expansion share**, the fraction of a group's
+queries whose recall result had `expanded > 0` (at least one fact-expansion
+insertion). It is reported per `kind` and per `kind:split` in the human output
+as `expand=<share>`, and in the `--json` report as `expansionShare` on each
+`EvalAggregate` and `expanded` on each `EvalQueryResult`.
+
+The signal exists for RFC-0002 rollout step 3: on a personal vault, a kind whose
+recall falls while its expansion share rises is the signature of crowding, and
+blocks turning the default on. It is a diagnostic, not a gate — the hard gates
+(trust, missing gold ids, baseline deltas under `--check`) are unchanged.
+
+**Flag-off output is unchanged.** `expanded` is present on a result only when
+the flag is on, and `expansionShare` is present on an aggregate only when at
+least one of its results carries `expanded`. With the flag off (the default),
+neither field is emitted, so the committed baseline and `npm run eval:check`
+are byte-identical to the pre-expansion report. The signal adds no I/O, no
+clock, and no logging, so the determinism contract (ADR-0010) and the
+read-only guarantee hold.

@@ -127,13 +127,23 @@ export function aggregate(
       recall[String(k)] = mean(list.map((r) => r.metrics.recallAtK[String(k)] ?? 0));
       precision[String(k)] = mean(list.map((r) => r.metrics.precisionAtK[String(k)] ?? 0));
     }
-    out.push({
+    const agg: EvalAggregate = {
       group,
       count: list.length,
       recallAtK: recall,
       precisionAtK: precision,
       mrr: mean(list.map((r) => r.metrics.mrr)),
-    });
+    };
+    // RFC-0002: report the share of queries with at least one fact-expansion
+    // insertion, but only when expansion ran. `expanded` is present on every
+    // result of a flag-on run and absent on every result of a flag-off run, so
+    // the field is omitted entirely when off and the committed baseline is
+    // unchanged. The denominator is the queries that carry the signal.
+    const withExpansion = list.filter((r) => r.expanded !== undefined);
+    if (withExpansion.length > 0) {
+      agg.expansionShare = withExpansion.filter((r) => (r.expanded ?? 0) > 0).length / withExpansion.length;
+    }
+    out.push(agg);
   }
   // stable order so reports are byte-identical across runs
   out.sort((a, b) => a.group.localeCompare(b.group));

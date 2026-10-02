@@ -98,4 +98,49 @@ test('criterion 8: flag-on eval reproduces the RFC recall@5 and overall MRR numb
   }
 });
 
+// W1: the eval reports the per-kind fact-expansion share so RFC-0002 rollout
+// step 3 can be evaluated. The signal must be present when the flag is on and
+// absent (not merely zero) when it is off, so the committed baseline is
+// unchanged.
+test('W1: per-kind expansion share is reported when the flag is on and absent when off', async () => {
+  const dir = join(tmp, 'vault-share');
+  generateFixture(dir);
+  const base = loadConfig(dir);
+  const queries = readQueries();
+  const dbPath = join(tmp, 'index-share.sqlite');
+
+  // Flag off: no expansion fields anywhere, so the committed baseline is unchanged.
+  const off = await runEval(dir, queries, { config: base, dbPath });
+  for (const r of off) assert.equal('expanded' in r, false, `${r.id} has no expanded when off`);
+  for (const a of aggregate(off, 'kind')) {
+    assert.equal('expansionShare' in a, false, `${a.group} has no expansionShare when off`);
+  }
+
+  // Flag on, forced typed so fact edges are traversed: every result carries
+  // `expanded`, and each kind aggregate reports the share of queries with
+  // expanded > 0.
+  const cfg = deepMerge(base, {
+    graph: { query: { mode: 'typed' } },
+    retrieval: { factExpansion: { enabled: true } },
+  });
+  const on = await runEval(dir, queries, { config: cfg, dbPath, reuseIndex: true });
+  for (const r of on) assert.equal(typeof r.expanded, 'number', `${r.id} carries expanded when on`);
+
+  const byKind = new Map<string, typeof on>();
+  for (const r of on) {
+    if (r.kind === 'trust') continue; // aggregate() excludes trust queries
+    const list = byKind.get(r.kind) ?? [];
+    list.push(r);
+    byKind.set(r.kind, list);
+  }
+  let sawExpansion = false;
+  for (const a of aggregate(on, 'kind')) {
+    const list = byKind.get(a.group) as typeof on;
+    const expected = list.filter((r) => (r.expanded ?? 0) > 0).length / list.length;
+    assert.equal(a.expansionShare, expected, `${a.group} expansion share`);
+    if (expected > 0) sawExpansion = true;
+  }
+  assert.ok(sawExpansion, 'at least one kind has a non-zero expansion share');
+});
+
 test.after(() => rmSync(tmp, { recursive: true, force: true }));
