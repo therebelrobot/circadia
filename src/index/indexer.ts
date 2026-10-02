@@ -674,6 +674,12 @@ export function incrementalIndex(vaultRoot: string, config: Config, opts: { dbPa
   // change. Wrap it in a single transaction so the snapshot commits once. This
   // transaction is committed before the later BEGIN below, so there is never more
   // than one open transaction at a time.
+  //
+  // The loop is also mtime-pruned: a file whose mtime matches the snapshot is
+  // already correct in the `files` table, so it is skipped rather than rewritten.
+  // That turns ~10k no-op upserts into the handful of files that actually changed.
+  // (The walk itself still stats every file — a content edit does not change a
+  // directory's mtime, so there is no safe way to skip the stat.)
   db.exec('BEGIN');
   try {
     for (const f of files) {
@@ -697,8 +703,9 @@ export function incrementalIndex(vaultRoot: string, config: Config, opts: { dbPa
         continue;
       }
       if (p.mtime === f.mtime) {
-        // unchanged: preserve the original commit_hash
-        upsertFile.run(f.path, f.mtime, p.sha256, p.commit_hash);
+        // unchanged: the row already holds this (path, mtime, sha256, commit_hash),
+        // so skip the write. This is the mtime prune that keeps a one-note change
+        // from rewriting the whole snapshot.
         continue;
       }
       const hash = sha256OfFile(f.abs);
