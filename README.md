@@ -240,6 +240,30 @@ The server speaks only stdio, so it has no network port to secure. Agents can wr
 but never facts ([`docs/SECURITY.md`](docs/SECURITY.md)). For a TypeScript agent, see the
 [Mastra example](examples/mastra/).
 
+### Several agents
+
+One vault shared by several agents lets them pollute each other: a throwaway spike becomes a
+project fact, and one agent's recalls raise another's activation. A **workspace** gives each
+agent its own vault while keeping shared memory in a defined place.
+
+```bash
+circadia workspace init ~/memory                 # registry + a global vault
+circadia workspace add --workspace ~/memory --project work
+circadia workspace add --workspace ~/memory --project work --agent coder
+circadia mcp --workspace ~/memory --project work --agent coder   # pin one agent
+```
+
+A workspace is a folder of ordinary vaults plus `circadia.workspace.json`, which places each
+vault on two axes, **project** and **agent**. An agent bound to `(work, coder)` reads from
+its **lineage** — `work.coder`, `work`, `coder`, `global` — and never from a sibling such as
+`work.architect`. Recall runs once per vault in the lineage and merges the results, labeling
+each hit with its layer. Shared memory is marked by **where it lives**: a fact in `work` is
+shared with every agent on `work`, and a fact in `global` with every agent. Agents write
+episodes to their own cell by default; a human moves a fact into a shared layer with
+`circadia lift`. Plain `--vault` keeps working unchanged. See
+[`docs/WORKSPACES.md`](docs/WORKSPACES.md) and
+[RFC-0004](docs/rfcs/RFC-0004-workspaces.md).
+
 ### Build from source
 
 ```bash

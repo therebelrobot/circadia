@@ -1,0 +1,9 @@
+{"id":"q-ws-agent-layer","query":"local sqlite cache rebuilds","binding":{"project":"work","agent":"coder"},"expected":[{"passage":"coder-work-note#0","vault":"work.coder","layer":"agent"}],"split":"dev"}
+{"id":"q-ws-project-layer","query":"work project postgres datastore","binding":{"project":"work","agent":"coder"},"expected":[{"passage":"work-overview#0","vault":"work","layer":"project"}],"split":"dev"}
+{"id":"q-ws-global-agent-layer","query":"coder runs test suite before committing","binding":{"project":"work","agent":"coder"},"expected":[{"passage":"coder-habit#0","vault":"coder","layer":"global-agent"}],"split":"dev"}
+{"id":"q-ws-global-layer","query":"operator prefers tabs","binding":{"project":"work","agent":"coder"},"expected":[{"passage":"operator#0","vault":"global","layer":"global"}],"split":"dev"}
+{"id":"q-ws-fallthrough-project","query":"work project postgres datastore","binding":{"project":"work","agent":"coder"},"expected":[{"passage":"work-overview#0","vault":"work","layer":"project"}],"split":"holdout"}
+{"id":"q-ws-fallthrough-global","query":"operator prefers tabs","binding":{"project":"work","agent":"coder"},"expected":[{"passage":"operator#0","vault":"global","layer":"global"}],"split":"holdout"}
+{"id":"q-ws-blocked-trust","query":"NIMBUSVANE technique","binding":{"project":"work","agent":"coder"},"expected":[],"expect_absent":["2026-09-10-blocked-clipping#0"],"split":"dev"}
+{"id":"q-ws-sibling-absent","query":"ZEPHYRQUARTZ sibling token","binding":{"project":"work","agent":"coder"},"expected":[],"expect_absent":["architect-secret#0"],"split":"dev"}
+{"id":"q-ws-layers-project","query":"local sqlite cache rebuilds","binding":{"project":"work","agent":"coder"},"layers":["project"],"expected":[],"expect_absent":["coder-work-note#0"],"split":"dev"}

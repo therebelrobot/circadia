@@ -189,7 +189,43 @@ fact. A human accepts one in `circadia review`, which writes an ordinary `by:: u
 Dream edges enter the graph at weight 0 until the eval says they help. See RFC-0001 and
 ADR-0011.
 
-## 11. Why these technology choices
+## 11. Workspaces: context, interference and transactive memory
+
+A **workspace** is a folder of ordinary vaults plus a registry that places each vault on
+two axes, **project** and **agent** (RFC-0004). An agent is bound to one cell, for example
+`(work, coder)`, and reads from its **lineage**: the cells on its own row and column that
+exist — `work.coder`, `work`, `coder`, `global`. It never reads a sibling such as
+`work.architect`. Three findings drive the design.
+
+**Findings.**
+
+- **Encoding specificity and context-dependent memory** (Tulving & Thomson 1973; Godden &
+  Baddeley 1975). Retrieval works best when the retrieval context matches the encoding
+  context; a cue that was encoded underwater is recalled best underwater. [S19, S20]
+- **Interference** (proactive and retroactive interference; Anderson & Neely 1996). Similar
+  memories from different contexts compete at retrieval, and the competition is what makes
+  the wrong one win. [S21]
+- **Transactive memory** (Wegner 1987). A group remembers well when members specialize and
+  a shared directory records who knows what. [S22]
+
+**Decision.**
+
+| finding | decision |
+|---|---|
+| Encoding specificity: match the retrieval context to the encoding context (S19, S20) | The binding *is* the context. The coder recalls first from what was encoded as the coder on this project, so the cue and the memory share a context. |
+| Interference: similar memories from different contexts compete (S21) | Separate vaults remove the competition between siblings rather than trying to out-score it. `(work, coder)` never reads `(work, architect)`, so the architect's throwaway spike cannot outrank the coder's own decision. |
+| Transactive memory: specialists plus a shared directory (S22) | The `project` and `global` layers are the shared directory; the agent layers are the specialists. A fact in `work` is shared with every agent on `work`; a fact in `global` is shared with every agent. |
+
+**Decision.** Federated recall runs once per vault in the lineage and merges the ranked
+lists by weighted reciprocal-rank fusion, because PageRank scores from different graphs are
+not comparable. The merge uses ranks — the same tool recall already uses to fuse seeds, one
+level up. Location is the sharing marker: there is no `shared: true` field to forget or
+spoof, and isolation never depends on a filter being applied. Shared memory is reached only
+by a permitted agent writing an episode there, a human running `circadia lift`, or a human
+editing the vault directly — all of which end at that layer's own schema-fit gate or at a
+human. See [RFC-0004](rfcs/RFC-0004-workspaces.md) and ADR-0013.
+
+## 12. Why these technology choices
 
 - **SQLite via `node:sqlite`**: zero dependencies, one file, runs on a Raspberry Pi,
   recursive CTEs for path queries. See ADR-0004.

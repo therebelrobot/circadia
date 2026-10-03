@@ -48,6 +48,50 @@ new_vault() {
   echo "$d"
 }
 
+# Write a one-note marker vault so a recall can name the layer that answered.
+write_marker() {
+  local vault="$1" token="$2"
+  cat > "$vault/entities/ro-marker.md" <<EOF
+---
+type: entity
+kind: concept
+---
+# Ro marker
+
+$token
+EOF
+}
+
+# A workspace fixture (RFC-0004 §8): a registry plus four vaults, each a copy of
+# examples/vault with a unique marker note. The caller indexes every vault while it is
+# still writable, then mounts the lineage with the shared layers read-only.
+new_workspace() {
+  local ws
+  ws="$(mktemp -d)"
+  TMP_DIRS+=("$ws")
+  cat > "$ws/circadia.workspace.json" <<'JSON'
+{
+  "workspace": 1,
+  "vaults": {
+    "global": {},
+    "work": { "project": "work" },
+    "coder": { "agent": "coder" },
+    "work.coder": { "project": "work", "agent": "coder" }
+  }
+}
+JSON
+  for id in global work coder work.coder; do
+    cp -R "$EXAMPLE_VAULT/." "$ws/$id/"
+    rm -f "$ws/$id/.circadia/index.sqlite" "$ws/$id/.circadia/index.sqlite-wal" "$ws/$id/.circadia/index.sqlite-shm"
+  done
+  write_marker "$ws/global" "zzroglobalmarker"
+  write_marker "$ws/work" "zzroprojectmarker"
+  write_marker "$ws/coder" "zzroagentmarker"
+  write_marker "$ws/work.coder" "zzrowritermarker"
+  chmod -R a+rwX "$ws"
+  echo "$ws"
+}
+
 echo "== 1. non-root =="
 uid="$(docker run --rm --entrypoint id "$IMAGE" -u)"
 if [[ -n "$uid" && "$uid" != "0" ]]; then
@@ -148,6 +192,20 @@ fi
 echo "== 7. size =="
 size="$(docker image inspect "$IMAGE" --format '{{.Size}}')"
 echo "INFO: image size ${size} bytes ($(( size / 1024 / 1024 )) MiB)"
+
+echo "== 8. workspace mounts (lineage only, shared layers :ro) =="
+# RFC-0004 §8 / test plan item 12. The pinned server must recall from a read-only layer
+# (its index opened immutable, no access-log write) and write only to the writable cell.
+# A read-only layer's index is kept current by a host-side job, so build it here first.
+ws="$(new_workspace)"
+for id in global work coder work.coder; do
+  docker run --rm -v "$ws/$id:/vault" "$IMAGE" index --vault /vault >/dev/null
+done
+if node "$HELPER" mcp-workspace "$IMAGE" "$ws" work.coder global,work,coder zzroglobalmarker global; then
+  pass "pinned workspace: recall from a :ro layer, remember to the writable cell, :ro layers unchanged"
+else
+  fail "workspace mount check"
+fi
 
 echo
 if [[ "$FAILURES" -eq 0 ]]; then

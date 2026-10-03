@@ -47,13 +47,26 @@ export function normKey(s: string): string {
   return s.trim().toLowerCase();
 }
 
+/**
+ * Maximum length of a slug. A slug becomes a filename component (episode names,
+ * phrase node ids), and a path component over 255 bytes raises ENAMETOOLONG. 100 is a
+ * conservative cap that leaves room for the date prefix and a collision suffix.
+ */
+export const SLUG_MAX_LENGTH = 100;
+
 export function slugify(s: string): string {
-  return s
+  const slug = s
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
+  if (slug.length <= SLUG_MAX_LENGTH) return slug;
+  // Truncate and append a deterministic hash of the FULL slug, so two long inputs that
+  // share a prefix do not collide on the same filename. The result is exactly
+  // SLUG_MAX_LENGTH chars: body + '-' + 8 hex.
+  const suffix = createHash('sha256').update(slug).digest('hex').slice(0, 8);
+  return `${slug.slice(0, SLUG_MAX_LENGTH - suffix.length - 1)}-${suffix}`;
 }
 
 export function shortHash(...parts: (string | number | null)[]): string {

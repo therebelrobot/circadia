@@ -8,6 +8,12 @@ export type GraphMode = 'wikilink' | 'typed' | 'hipporag';
 export type QueryMode = GraphMode | 'auto';
 export type FactStatus = 'current' | 'superseded' | 'historical';
 
+/**
+ * RFC-0004: the four layers of a workspace lattice. Defined here (not in
+ * src/workspace/) so shared types can reference it without a circular import.
+ */
+export type Layer = 'agent' | 'project' | 'global-agent' | 'global';
+
 /** Edge origins. Which origins a mode uses is defined in src/retrieval/modes.ts. */
 export type EdgeOrigin =
   | 'contains' // note -> passage (always)
@@ -105,6 +111,13 @@ export interface RecallHit {
    * Hits that were not inserted have no `via`.
    */
   via?: { kind: 'fact-expansion'; from: string; predicate?: string };
+  /**
+   * RFC-0004: set only on federated (workspace) recall hits. `vault` is the vault id the
+   * passage came from and `layer` is its layer in the binding's lineage. Absent on a
+   * single-vault recall, so that result shape is unchanged.
+   */
+  vault?: string;
+  layer?: Layer;
 }
 
 /**

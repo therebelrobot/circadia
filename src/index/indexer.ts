@@ -20,6 +20,14 @@ import { extractionModeFor, MODE_RANK } from '../extract/scope.ts';
 import { loadTriples, passageHash } from '../extract/triples.ts';
 import { createEmbeddingsClient, NullEmbeddingsClient, type EmbeddingsClient, cosineSimilarity } from '../retrieval/embeddings.ts';
 import { INDEX_SCHEMA_VERSION, openIndex, setMeta, getMeta } from './db.ts';
+import { singleCardinalityProblems } from '../consolidation/schema.ts';
+
+/**
+ * Test instrumentation (B3): the number of index runs started in this process.
+ * `buildIndex` and `incrementalIndex` each increment it once at entry. Production code
+ * never reads it; a test uses it to assert a write path reindexes exactly once.
+ */
+export let indexRunCount = 0;
 
 export interface IndexStats {
   notes: number;
@@ -533,11 +541,14 @@ function deleteNoteRows(ctx: IndexCtx, noteIds: string[]): void {
 }
 
 export function buildIndex(vaultRoot: string, config: Config, opts: { dbPath?: string } = {}): IndexResult {
+  indexRunCount++;
   const t0 = performance.now();
   const notes = parseVault(vaultRoot, config);
   const problems: Problem[] = notes.flatMap((n) => n.problems);
   const { resolver, problems: resolveProblems } = buildResolver(notes);
   problems.push(...resolveProblems);
+  // B1: flag a single-cardinality predicate that has more than one current fact.
+  for (const n of notes) problems.push(...singleCardinalityProblems(config, n));
 
   const { db, fts } = openIndex(opts.dbPath ?? join(vaultRoot, config.index.path), { fresh: true });
   const ctx = makeCtx(db, fts, config, resolver, problems);
@@ -628,6 +639,7 @@ function configHash(config: Config): string {
  * when no index exists or the schema is older than the current version.
  */
 export function incrementalIndex(vaultRoot: string, config: Config, opts: { dbPath?: string } = {}): IndexResult {
+  indexRunCount++;
   const dbPath = opts.dbPath ?? join(vaultRoot, config.index.path);
   if (!existsSync(dbPath)) return buildIndex(vaultRoot, config, opts);
 
@@ -776,6 +788,8 @@ export function incrementalIndex(vaultRoot: string, config: Config, opts: { dbPa
   for (const id of affectedIds) reResolveNoteIds.delete(id);
 
   const problems: Problem[] = [];
+  // B1: flag a single-cardinality predicate that has more than one current fact.
+  for (const n of changedNotes) problems.push(...singleCardinalityProblems(config, n));
   const ctx = makeCtx(db, fts, config, resolverFromDb(db), problems);
 
   db.exec('BEGIN');

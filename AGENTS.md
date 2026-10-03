@@ -18,7 +18,7 @@ without breaking its invariants. Read it fully before editing anything.
 ## 2. Commands
 
 ```bash
-npm test                  # node:test, ~19s. 368 tests.
+npm test                  # node:test, ~19s. 387 tests.
 npm run typecheck         # tsc --noEmit, strict + erasableSyntaxOnly
 npm run example:index     # index examples/vault (incremental; --full for a full rebuild)
 node bin/circadia.mjs watch --vault examples/vault   # reindex on change (Ctrl-C to stop)
@@ -32,7 +32,11 @@ npm run eval              # generate the eval fixture, then run the retrieval ev
 npm run eval:check        # same, but exit non-zero on any baseline delta (CI)
 node bin/circadia.mjs eval --dream-sweep   # dream-edge weight sweep (report only)
 docker buildx build --load -t circadia:local .   # build the stdio image locally
-./scripts/container-smoke.sh circadia:local      # non-root, read-only, MCP stdio, git checks
+./scripts/container-smoke.sh circadia:local      # non-root, read-only, MCP stdio, git, workspace :ro mounts
+node bin/circadia.mjs workspace init <dir>          # registry + global vault (RFC-0004)
+node bin/circadia.mjs workspace list --workspace <dir> --json
+node bin/circadia.mjs recall --workspace <dir> --project work --agent coder "query"
+node bin/circadia.mjs mcp --workspace <dir> --project work --agent coder   # pinned binding
 node bin/circadia.mjs --help
 ```
 
@@ -90,6 +94,10 @@ node bin/circadia.mjs --help
 - **Query text is never logged.** The access log stores a hash (`q`), not the query.
 - **The index is only an index.** Passage text is copied into SQLite for FTS, but nothing
   may write to the index that isn't derived from the vault or the triple cache.
+- **The server resolves the destination vault.** In a workspace, no caller-supplied string
+  chooses a vault or a path: `project`/`agent` are looked up in the registry, vault ids
+  match a strict pattern, and a path is always `join(workspace, id)` after that lookup.
+  Nothing is ever auto-created over MCP (RFC-0004 §3, SECURITY.md T3).
 
 ## 5. Repo map and responsibilities
 
@@ -105,7 +113,7 @@ node bin/circadia.mjs --help
 | `src/vault/walk.ts` | file discovery | skips dot-folders, `_meta/`, `vault.ignore` globs |
 | `src/extract/scope.ts` | per-note extraction mode | precedence: frontmatter > first scope rule > default |
 | `src/extract/triples.ts` | hipporag triple cache + `TripleExtractor` contract | Phase 5 implements an extractor |
-| `src/index/db.ts` | SQLite schema, FTS5 probe | bump `INDEX_SCHEMA_VERSION` on schema changes |
+| `src/index/db.ts` | SQLite schema, FTS5 probe | bump `INDEX_SCHEMA_VERSION` on schema changes; `openIndex(file, { readOnly })` opens a `:ro` layer with SQLite's `immutable=1` URI (a WAL `-shm` sidecar can't be created on a read-only mount; RFC-0004 open question 6) |
 | `src/index/indexer.ts` | full rebuild + incremental update + `embedPassages` + dream-edge emission | `buildIndex` (full) and `incrementalIndex` (diffs the `files` table) stay synchronous; `embedPassages` is the async follow-up. `emitDreamEdges()` rebuilds `dream` edges from `.circadia/dreams/candidates.jsonl` on every index (RFC-0001 Stage 4) |
 | `src/retrieval/*` | keyword, PPR, ACT-R, modes, recall, embeddings, relate, timeline, graph cache | `recall.ts` is the orchestrator; `graph-cache.ts` owns edge loading/filtering (`loadGraph`) shared by recall and the cache |
 | `src/cli/main.ts` | CLI | `main(argv)` is async and returns an exit code, so it's testable (`await main(...)`) |
@@ -113,7 +121,8 @@ node bin/circadia.mjs --help
 | `benchmarks/` | synthetic vault generator + benchmark runner | `npm run benchmark`; results in `docs/PERFORMANCE.md` |
 | `src/consolidation/` | episode replay → candidate extraction → schema-fit gate → promote/queue/supersede | `schema.ts` `evaluateGate` is pure (facts are read in `consolidate.ts`); untrusted sources and triple candidates always queue (ADR-0006) |
 | `src/dreams/` | REM pass → candidate associations → read-once wake recall | writes only under `.circadia/dreams/`; never writes the vault; dream edges ship at weight 0 (ADR-0011); contract in its README |
-| `src/mcp/` | MCP server (stdio) | contract in its README |
+| `src/mcp/` | MCP server (stdio) | contract in its README; `runWorkspaceServer` implements RFC-0004 pinned and request-selected bindings |
+| `src/workspace/` | RFC-0004 workspaces | `registry.ts` (load/validate, lineage, write policy), `recall.ts` (federated RRF merge), `lift.ts`; contract in `docs/WORKSPACES.md` |
 | `src/eval/` | eval runner, metrics, ablations, baseline, tuning, adapters, dream sweep | strictly read-only; determinism contract in ADR-0010 |
 | `eval/` | fixture generator, query set, committed baseline | `npm run eval`; `eval/.fixture/` is generated and gitignored |
 | `bin/circadia.mjs`, `tsconfig.build.json` | launcher and publish-time build | the launcher runs `src/` from a clone and `dist/` only when installed under `node_modules` (ADR-0012); `test/build.test.ts` guards it |

@@ -195,3 +195,43 @@ neither field is emitted, so the committed baseline and `npm run eval:check`
 are byte-identical to the pre-expansion report. The signal adds no I/O, no
 clock, and no logging, so the determinism contract (ADR-0010) and the
 read-only guarantee hold.
+
+## 10. The workspace eval (RFC-0004 Stage 8)
+
+`eval/generate-fixture.ts` also emits a **workspace-shaped fixture** via
+`generateWorkspaceFixture()`: several ordinary vaults plus `circadia.workspace.json`,
+placing each on the project/agent lattice (`docs/WORKSPACES.md`). It is generated
+separately from the single-vault fixture, so the Phase 7 fixture hash and baseline are
+untouched. The vaults are `global`, `work` (project), `coder` (global-agent),
+`work.coder` (agent) and `work.architect` (a sibling cell that is never in the coder
+binding's lineage).
+
+The cases live in `eval/workspace.queries.jsonl` and are run by
+`src/eval/workspace.ts` (`runWorkspaceEval`). Each case names a binding, the vault and
+layer that holds its answer, and the passage ids that must **not** be recalled. A single
+sibling hit fails the case, like a trust violation (RFC-0004 test plan item 13). The
+cases are:
+
+- `q-ws-agent-layer` — resolves to the agent layer (`work.coder`).
+- `q-ws-project-layer` — resolves to the project layer (`work`).
+- `q-ws-global-agent-layer` — resolves to the global-agent layer (`coder`).
+- `q-ws-global-layer` — resolves to the global layer (`global`).
+- `q-ws-fallthrough-project` / `q-ws-fallthrough-global` — the answer is not in the
+  agent layer, so recall falls through to the parent project layer and to `global`.
+- `q-ws-blocked-trust` — a low-trust web clipping in `work.coder` is blocked by that
+  layer's `retrieval.trustFloor: "medium"` (a layer's access policy).
+- `q-ws-sibling-absent` — the negative case: a token planted only in `work.architect`
+  must never be recalled by the coder binding.
+- `q-ws-layers-project` — `layers: ["project"]` narrows the lineage, so the agent-layer
+  hit is absent.
+
+`test/eval-workspace.test.ts` generates the fixture into a temp directory, builds each
+vault's derived index, and asserts every case resolves cleanly (no missing, mislabeled,
+absent, or errored hits), that the sibling vault is not in the lineage, and that the
+fixture is byte-identical across two runs. It never touches `examples/vault/` or the
+tracked single-vault fixture.
+
+**`layerWeights` tuning is report-only.** `sweepLayerWeights()` re-runs the cases under
+each weight set and reports how many still resolve. It never writes the registry or a
+baseline; turning a weight into a default is a human decision, as `eval --tune` is today
+(RFC-0004 Stage 8).

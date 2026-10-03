@@ -1,6 +1,7 @@
 // `circadia` CLI. Zero dependencies; hand-rolled argument parsing.
 
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, copyFileSync, mkdtempSync, rmSync, realpathSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +13,24 @@ import { relate } from '../retrieval/relate.ts';
 import { timeline } from '../retrieval/timeline.ts';
 import { parseInstant } from '../vault/time.ts';
 import { resolveCommit, isGitRepo } from '../vault/git.ts';
-import type { GraphMode, Problem, QueryMode, RecallHit } from '../types.ts';
+import type { GraphMode, Layer, Problem, QueryMode, RecallHit } from '../types.ts';
+import {
+  VAULT_ID_RE,
+  WORKSPACE_FILENAME,
+  cellIndex,
+  cellKey,
+  layerOf,
+  loadWorkspace,
+  resolveBinding,
+  resolveLineage,
+  selfVaultId,
+  validateRegistry,
+  type Cell,
+  type LineageEntry,
+  type WorkspaceRegistry,
+} from '../workspace/registry.ts';
+import { workspaceRecall } from '../workspace/recall.ts';
+import { lift } from '../workspace/lift.ts';
 import type { EvalAggregate, EvalQuery, EvalReport } from '../eval/types.ts';
 import type { BaselineDelta } from '../eval/baseline.ts';
 import { getMeta, openIndex } from '../index/db.ts';
@@ -42,8 +60,18 @@ commands
   history <id>          show all versions of a note across commits
   access-log compact    compact access log into per-node summaries for ACT-R learning
   eval                  run the retrieval eval set (recall@k, MRR, ablations, tuning)
+  workspace <sub>       init | add | adopt | list — manage a workspace of vaults
+  lift                  move one fact from one vault to a shared layer (CLI-only)
 options
   --vault <dir>         vault root (default: current directory)
+  --workspace <dir>     workspace root (mutually exclusive with --vault)
+                        index/consolidate/dream/lint with no --project/--agent run every vault
+  --project <name>      (workspace) bind to a project axis
+  --agent <name>        (workspace) bind to an agent axis
+  --select-per-request  (mcp) resolve the cell from each tool call instead of pinning
+  --from <id>           (lift) source vault id
+  --to <id>             (lift) target vault id
+  --layers <a,b>        (recall) narrow the lineage to these layers
   --full                (index) force a full rebuild instead of incremental
   --poll                (watch) poll for changes every 2 s instead of fs.watch
   --mode <m>            recall mode: wikilink | typed | hipporag | auto
@@ -89,7 +117,7 @@ interface Args {
 export function parseArgs(argv: string[]): Args {
   const flags = new Map<string, string | true>();
   const pos: string[] = [];
-  const valued = new Set(['vault', 'mode', 'as-of', 'top', 'budget', 'scope', 'queries', 'baseline', 'split', 'fixture', 'adapter', 'report']);
+  const valued = new Set(['vault', 'workspace', 'project', 'agent', 'from', 'to', 'layers', 'mode', 'as-of', 'top', 'budget', 'scope', 'queries', 'baseline', 'split', 'fixture', 'adapter', 'report']);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '-h') flags.set('help', true);
@@ -211,6 +239,226 @@ function cmdInit(dir: string): void {
   console.log(`initialised vault at ${root}`);
 }
 
+interface WorkspaceContext {
+  dir: string;
+  registry: WorkspaceRegistry;
+  binding: Cell;
+  lineage: LineageEntry[];
+}
+
+/** Resolve a workspace binding and its lineage, or throw with the registry's problems. */
+function workspaceContext(dir: string, project: string | null, agent: string | null): WorkspaceContext {
+  const { registry } = loadWorkspace(dir);
+  const { binding, problems } = resolveBinding(registry, project, agent);
+  const errs = problems.filter((p) => p.severity === 'error');
+  if (errs.length) throw new Error(errs.map((p) => p.message).join('; '));
+  const lineage = resolveLineage(registry, dir, binding);
+  if (lineage.length === 0) {
+    throw new Error(`binding (${project ?? '*'}, ${agent ?? '*'}) has no vaults in its lineage`);
+  }
+  return { dir, registry, binding, lineage };
+}
+
+/**
+ * RFC-0004 §8: a write command with `--workspace` and a binding acts on the bound cell
+ * only, never the lineage. Resolve the binding and return its vault id.
+ */
+function boundVaultId(registry: WorkspaceRegistry, project: string | null, agent: string | null): string {
+  const { binding, problems } = resolveBinding(registry, project, agent);
+  const errs = problems.filter((p) => p.severity === 'error');
+  if (errs.length) throw new Error(errs.map((p) => p.message).join('; '));
+  const id = selfVaultId(registry, binding);
+  if (id === null) throw new Error(`binding (${project ?? '*'}, ${agent ?? '*'}) has no vault`);
+  return id;
+}
+
+/** A per-vault runner for a workspace-wide write command. */
+type VaultRunner = (vaultPath: string, defaults?: Record<string, unknown>) => Promise<number> | number;
+
+/**
+ * RFC-0004 §8: with `--workspace` and no binding, `index`, `consolidate`, `dream` and
+ * `lint` iterate every registered vault in id order. Each vault is processed with its own
+ * index, lock and commit; a failure in one does not stop the rest. The command exits
+ * non-zero if any vault failed and prints a per-vault summary.
+ */
+async function runWorkspaceWide(
+  wsDir: string,
+  registry: WorkspaceRegistry,
+  run: VaultRunner,
+): Promise<number> {
+  const ids = Object.keys(registry.vaults).sort();
+  const results: { id: string; code: number; error?: string }[] = [];
+  for (const id of ids) {
+    // T3: the id is a registry key; validate it before it is joined into a path.
+    if (!VAULT_ID_RE.test(id)) {
+      results.push({ id, code: 1, error: 'invalid vault id' });
+      continue;
+    }
+    console.log(`\n=== vault ${id} ===`);
+    try {
+      const code = await run(join(wsDir, id), registry.defaults);
+      results.push({ id, code });
+    } catch (e) {
+      const message = (e as Error).message;
+      console.error(`error: vault ${id}: ${message}`);
+      results.push({ id, code: 1, error: message });
+    }
+  }
+  const failed = results.filter((r) => r.code !== 0);
+  console.log(`\nworkspace summary: ${results.length - failed.length}/${results.length} vault(s) ok`);
+  for (const r of results) {
+    console.log(`  ${r.code === 0 ? 'ok  ' : 'FAIL'} ${r.id}${r.error ? `  (${r.error})` : ''}`);
+  }
+  return failed.length > 0 ? 1 : 0;
+}
+
+/**
+ * Dispatch a write command: `--vault` (or cwd) runs one vault; `--workspace` with a
+ * binding runs the bound cell; `--workspace` with no binding iterates every vault.
+ */
+async function dispatchWrite(args: Args, vault: string, run: VaultRunner): Promise<number> {
+  const wsDir = str(args.flags, 'workspace');
+  if (!wsDir) return run(vault);
+  const root = resolve(wsDir);
+  const project = str(args.flags, 'project') ?? null;
+  const agent = str(args.flags, 'agent') ?? null;
+  const { registry } = loadWorkspace(root);
+  if (project === null && agent === null) return runWorkspaceWide(root, registry, run);
+  return run(join(root, boundVaultId(registry, project, agent)), registry.defaults);
+}
+
+/**
+ * Resolve the single vault a per-vault command (`review`, `wake`) acts on. With
+ * `--workspace` and no binding these commands refuse: they are interactive or read-once
+ * and have no workspace-wide meaning (RFC-0004 §8).
+ */
+function requireBoundVault(args: Args, vault: string, cmd: string): { path: string; defaults?: Record<string, unknown> } {
+  const wsDir = str(args.flags, 'workspace');
+  if (!wsDir) return { path: vault };
+  const root = resolve(wsDir);
+  const project = str(args.flags, 'project') ?? null;
+  const agent = str(args.flags, 'agent') ?? null;
+  if (project === null && agent === null) {
+    throw new Error(`${cmd} needs a binding: pass --project and/or --agent with --workspace (it is a per-vault command, not workspace-wide)`);
+  }
+  const { registry } = loadWorkspace(root);
+  return { path: join(root, boundVaultId(registry, project, agent)), defaults: registry.defaults };
+}
+
+/** The vault id a `workspace add`/`adopt` would use for a coordinate. */
+function idForCoords(project: string | null, agent: string | null): string {
+  // RFC-0004 T3: a vault id is a flat directory name. Validate each axis before it is
+  // joined into a path, so `--project '../evil'` can never escape the workspace root.
+  if (project !== null && !VAULT_ID_RE.test(project)) {
+    throw new Error(`--project "${project}" must match ${VAULT_ID_RE.source}`);
+  }
+  if (agent !== null && !VAULT_ID_RE.test(agent)) {
+    throw new Error(`--agent "${agent}" must match ${VAULT_ID_RE.source}`);
+  }
+  if (project && agent) return `${project}.${agent}`;
+  if (project) return project;
+  if (agent) return agent;
+  throw new Error('workspace add/adopt needs --project and/or --agent');
+}
+
+function writeRegistry(dir: string, registry: WorkspaceRegistry): void {
+  writeFileSync(join(dir, WORKSPACE_FILENAME), JSON.stringify(registry, null, 2) + '\n');
+}
+
+/**
+ * RFC-0004 §7: one git repo per vault, so `--as-of` prose works (`git show <hash>:<path>`
+ * resolves from the repo root). `circadia init` does not run git init; the workspace
+ * commands do, because the workspace's as-of guarantee depends on it.
+ */
+function gitInitVault(dir: string): void {
+  try {
+    execFileSync('git', ['init'], { cwd: dir, stdio: 'ignore' });
+  } catch (e) {
+    throw new Error(`git init failed in ${dir}: ${(e as Error).message}`);
+  }
+}
+
+/**
+ * Reject a coordinate whose cell is already occupied by a different vault id, matching
+ * `validateRegistry`'s `workspace.duplicate-cell` rule before anything is written.
+ */
+function assertCellFree(registry: WorkspaceRegistry, id: string, project: string | null, agent: string | null): void {
+  const key = cellKey({ project, agent });
+  const existing = cellIndex(registry).get(key);
+  if (existing !== undefined && existing !== id) {
+    throw new Error(`cell (${project ?? '*'}, ${agent ?? '*'}) is already occupied by vault "${existing}"`);
+  }
+}
+
+function cmdWorkspaceInit(dir: string): void {
+  const root = resolve(dir);
+  if (existsSync(join(root, WORKSPACE_FILENAME))) throw new Error(`${root} already has ${WORKSPACE_FILENAME}`);
+  mkdirSync(root, { recursive: true });
+  const registry: WorkspaceRegistry = { workspace: 1, vaults: { global: {} } };
+  writeRegistry(root, registry);
+  cmdInit(join(root, 'global'));
+  gitInitVault(join(root, 'global'));
+  console.log(`initialised workspace at ${root} with vault "global"`);
+}
+
+function cmdWorkspaceAdd(dir: string, project: string | null, agent: string | null): void {
+  const root = resolve(dir);
+  const { registry } = loadWorkspace(root);
+  const id = idForCoords(project, agent);
+  if (registry.vaults[id]) throw new Error(`vault "${id}" is already registered`);
+  assertCellFree(registry, id, project, agent);
+  cmdInit(join(root, id));
+  gitInitVault(join(root, id));
+  registry.vaults[id] = { ...(project ? { project } : {}), ...(agent ? { agent } : {}) };
+  writeRegistry(root, registry);
+  console.log(`added vault "${id}" (${project ?? '*'}, ${agent ?? '*'})`);
+}
+
+function cmdWorkspaceAdopt(dir: string, id: string, project: string | null, agent: string | null): void {
+  // RFC-0004 T3: the positional id is a directory name. Reject anything that is not a
+  // flat vault id before it reaches join()/existsSync()/the registry.
+  if (!VAULT_ID_RE.test(id)) throw new Error(`vault id "${id}" must match ${VAULT_ID_RE.source}`);
+  const root = resolve(dir);
+  const { registry } = loadWorkspace(root);
+  if (registry.vaults[id]) throw new Error(`vault "${id}" is already registered`);
+  assertCellFree(registry, id, project, agent);
+  if (!existsSync(join(root, id, CONFIG_FILENAME))) {
+    throw new Error(`${join(root, id)} is not a vault (no ${CONFIG_FILENAME})`);
+  }
+  registry.vaults[id] = { ...(project ? { project } : {}), ...(agent ? { agent } : {}) };
+  writeRegistry(root, registry);
+  console.log(`adopted vault "${id}" (${project ?? '*'}, ${agent ?? '*'})`);
+}
+
+function cmdWorkspaceList(dir: string, json: boolean): number {
+  const root = resolve(dir);
+  const file = join(root, WORKSPACE_FILENAME);
+  if (!existsSync(file)) throw new Error(`no ${WORKSPACE_FILENAME} in ${root}`);
+  const registry = JSON.parse(readFileSync(file, 'utf8')) as WorkspaceRegistry;
+  const problems = validateRegistry(registry, root);
+  const errors = problems.filter((p) => p.severity === 'error');
+  if (json) {
+    console.log(JSON.stringify({ registry, problems }, null, 2));
+    return errors.length ? 1 : 0;
+  }
+  console.log(`workspace ${root}`);
+  console.log('vaults:');
+  for (const [id, coords] of Object.entries(registry.vaults)) {
+    const layer = layerOf({ project: coords.project ?? null, agent: coords.agent ?? null });
+    console.log(`  ${id.padEnd(20)} project=${coords.project ?? '*'} agent=${coords.agent ?? '*'}  (${layer})`);
+  }
+  console.log('write policy:');
+  console.log(`  default: ${(registry.writes?.default ?? ['self']).join(', ')}`);
+  for (const [name, targets] of Object.entries(registry.writes?.agents ?? {})) {
+    console.log(`  ${name}: ${targets.join(', ')}`);
+  }
+  if (problems.length) {
+    console.log('problems:');
+    for (const p of problems) console.log(`  ${p.severity === 'error' ? 'ERROR' : 'warn '} [${p.code}] ${p.message}`);
+  }
+  return errors.length ? 1 : 0;
+}
+
 function cmdStats(vault: string): void {
   const cfg = loadConfig(vault);
   const { db } = openIndex(join(vault, cfg.index.path));
@@ -226,11 +474,141 @@ function cmdStats(vault: string): void {
   }
 }
 
+/** `index` for one vault. Extracted so a workspace-wide run can call it per vault. */
+async function runIndex(
+  vault: string,
+  defaults: Record<string, unknown> | undefined,
+  args: Args,
+  json: boolean,
+  warnings: boolean,
+): Promise<number> {
+  const cfg = loadConfig(vault, defaults);
+  const r = args.flags.has('full') ? buildIndex(vault, cfg) : incrementalIndex(vault, cfg);
+  // best-effort embeddings: a down server must not fail the index
+  let embedded: number | null = null;
+  if (cfg.embeddings.provider === 'http') {
+    try {
+      const res = await embedPassages(join(vault, cfg.index.path), cfg);
+      embedded = res.embedded;
+    } catch (e) {
+      console.error(`warning: embedding failed, continuing text-only: ${(e as Error).message}`);
+    }
+  }
+  // embedPassages emits synonym edges, so r.stats.edges is stale after it
+  // runs. Re-read the counts so the summary reflects what is on disk.
+  let edges = r.stats.edges;
+  if (embedded !== null) {
+    const { db } = openIndex(join(vault, cfg.index.path));
+    try {
+      const counts: Record<string, number> = {};
+      for (const row of db.prepare(`SELECT origin, count(*) AS n FROM edges GROUP BY origin`).all() as { origin: string; n: number }[]) {
+        counts[row.origin] = row.n;
+      }
+      edges = counts;
+    } finally {
+      db.close();
+    }
+  }
+  if (json) console.log(JSON.stringify({ stats: { ...r.stats, edges }, problems: r.problems, embedded }, null, 2));
+  else {
+    const s = r.stats;
+    console.log(
+      `indexed ${s.notes} notes, ${s.passages} passages in ${s.ms} ms (keyword: ${s.fts ? 'fts5' : 'bm25-js'})` +
+      (embedded !== null ? `, embedded ${embedded} node(s)` : '') + '\n' +
+      `extraction: ${Object.entries(s.byExtraction).map(([k, v]) => `${k}=${v}`).join(' ')}\n` +
+      `edges: ${Object.entries(edges).map(([k, v]) => `${k}=${v}`).join(' ')}` +
+      (s.placeholders ? `\nunresolved link targets: ${s.placeholders}` : '') +
+      (s.phrases ? `\nphrase nodes: ${s.phrases}` : ''),
+    );
+    const errs = r.problems.filter((p) => p.severity === 'error');
+    if (errs.length || warnings) printProblems(r.problems, warnings);
+  }
+  return 0;
+}
+
+/** `lint` for one vault. Returns 1 when the vault has errors. */
+function runLint(vault: string, defaults: Record<string, unknown> | undefined, json: boolean, warnings: boolean): number {
+  const cfg = loadConfig(vault, defaults);
+  const notes = parseVault(vault, cfg);
+  const problems = [...notes.flatMap((n) => n.problems), ...buildResolver(notes).problems];
+  // resolution + predicate checks live in the indexer; run it against a scratch db
+  const r = buildIndex(vault, cfg, { dbPath: ':memory:' });
+  const seen = new Set(problems.map((p) => `${p.path}:${p.line}:${p.code}:${p.message}`));
+  for (const p of r.problems) if (!seen.has(`${p.path}:${p.line}:${p.code}:${p.message}`)) problems.push(p);
+  if (json) console.log(JSON.stringify(problems, null, 2));
+  else printProblems(problems, warnings);
+  return problems.some((p) => p.severity === 'error') ? 1 : 0;
+}
+
+/** `consolidate` for one vault. */
+async function runConsolidate(vault: string, defaults: Record<string, unknown> | undefined, args: Args): Promise<number> {
+  const cfg = loadConfig(vault, defaults);
+  const dryRun = args.flags.has('dry-run');
+  const commit = !args.flags.has('no-commit');
+  const { consolidate } = await import('../consolidation/consolidate.ts');
+  const result = await consolidate(vault, cfg, { dryRun, commit, dream: args.flags.has('dream') });
+
+  console.log(`consolidated: ${result.promoted} promoted, ${result.queued} queued, ${result.superseded} superseded`);
+  console.log(`processed episodes: ${result.processedEpisodes.length}`);
+  console.log(`pending queue: ${result.pendingPath}`);
+
+  if (dryRun) {
+    // C7: the diff is computed in-process from the change set; git is never invoked,
+    // so a dry run cannot stage or alter the working tree.
+    console.log('\n--- would-be changes (unified diff) ---');
+    console.log(result.diff && result.diff.length > 0 ? result.diff : '(no changes)');
+  }
+  return 0;
+}
+
+/** `dream` for one vault. */
+async function runDream(vault: string, defaults: Record<string, unknown> | undefined, args: Args, json: boolean): Promise<number> {
+  const cfg = loadConfig(vault, defaults);
+  const dryRun = args.flags.has('dry-run');
+  const sampleOnly = args.flags.has('sample-only');
+  const { runRem } = await import('../dreams/rem.ts');
+  const result = await runRem(vault, cfg, { dryRun, sampleOnly });
+
+  if (json) {
+    console.log(JSON.stringify(result, null, 2));
+    return 0;
+  }
+  if (result.skipped) {
+    console.log(`dream: skipped (${result.skipped})`);
+    return 0;
+  }
+  if (sampleOnly) {
+    console.log(`dream: sampled ${result.pairs.length} pair(s) (no model calls)`);
+    for (const p of result.pairs) console.log(`  ${p.a} × ${p.b}`);
+    return 0;
+  }
+  console.log(`dream: ${result.samples} sample(s), ${result.kept} kept, ${result.pruned} pruned`);
+  if (Object.keys(result.errors).length > 0) {
+    console.log(`errors: ${Object.entries(result.errors).map(([k, v]) => `${k}=${v}`).join(' ')}`);
+  }
+  if (result.samples > 0 && result.kept === 0 && result.pruned === result.samples) {
+    console.log('every sample failed or was pruned; see the error classes above');
+  }
+  if (dryRun) {
+    console.log('\n--- would-be log (dry run; nothing written) ---');
+    console.log(JSON.stringify(result.log, null, 2));
+    console.log('\n--- would-be candidates ---');
+    console.log(result.candidates.length > 0 ? result.candidates.map((c) => JSON.stringify(c)).join('\n') : '(none)');
+  } else {
+    console.log(`log: ${STATE_DIR}/dreams/log/${result.night}.json`);
+    console.log(`candidates appended: ${result.candidates.length}`);
+  }
+  return 0;
+}
+
 export async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
   if (!args.cmd || args.flags.has('help')) {
     console.log(HELP);
     return args.cmd ? 0 : 1;
+  }
+  if (args.flags.has('workspace') && args.flags.has('vault')) {
+    throw new Error('--vault and --workspace are mutually exclusive');
   }
   const vault = resolve(str(args.flags, 'vault') ?? process.cwd());
   const json = args.flags.has('json');
@@ -242,48 +620,7 @@ export async function main(argv: string[]): Promise<number> {
       return 0;
     }
     case 'index': {
-      const cfg = loadConfig(vault);
-      const r = args.flags.has('full') ? buildIndex(vault, cfg) : incrementalIndex(vault, cfg);
-      // best-effort embeddings: a down server must not fail the index
-      let embedded: number | null = null;
-      if (cfg.embeddings.provider === 'http') {
-        try {
-          const res = await embedPassages(join(vault, cfg.index.path), cfg);
-          embedded = res.embedded;
-        } catch (e) {
-          console.error(`warning: embedding failed, continuing text-only: ${(e as Error).message}`);
-        }
-      }
-      // embedPassages emits synonym edges, so r.stats.edges is stale after it
-      // runs. Re-read the counts so the summary reflects what is on disk.
-      let edges = r.stats.edges;
-      if (embedded !== null) {
-        const { db } = openIndex(join(vault, cfg.index.path));
-        try {
-          const counts: Record<string, number> = {};
-          for (const row of db.prepare(`SELECT origin, count(*) AS n FROM edges GROUP BY origin`).all() as { origin: string; n: number }[]) {
-            counts[row.origin] = row.n;
-          }
-          edges = counts;
-        } finally {
-          db.close();
-        }
-      }
-      if (json) console.log(JSON.stringify({ stats: { ...r.stats, edges }, problems: r.problems, embedded }, null, 2));
-      else {
-        const s = r.stats;
-        console.log(
-          `indexed ${s.notes} notes, ${s.passages} passages in ${s.ms} ms (keyword: ${s.fts ? 'fts5' : 'bm25-js'})` +
-          (embedded !== null ? `, embedded ${embedded} node(s)` : '') + '\n' +
-          `extraction: ${Object.entries(s.byExtraction).map(([k, v]) => `${k}=${v}`).join(' ')}\n` +
-          `edges: ${Object.entries(edges).map(([k, v]) => `${k}=${v}`).join(' ')}` +
-          (s.placeholders ? `\nunresolved link targets: ${s.placeholders}` : '') +
-          (s.phrases ? `\nphrase nodes: ${s.phrases}` : ''),
-        );
-        const errs = r.problems.filter((p) => p.severity === 'error');
-        if (errs.length || warnings) printProblems(r.problems, warnings);
-      }
-      return 0;
+      return dispatchWrite(args, vault, (v, d) => runIndex(v, d, args, json, warnings));
     }
     case 'watch': {
       const cfg = loadConfig(vault);
@@ -297,20 +634,61 @@ export async function main(argv: string[]): Promise<number> {
       return 0;
     }
     case 'lint': {
-      const cfg = loadConfig(vault);
-      const notes = parseVault(vault, cfg);
-      const problems = [...notes.flatMap((n) => n.problems), ...buildResolver(notes).problems];
-      // resolution + predicate checks live in the indexer; run it against a scratch db
-      const r = buildIndex(vault, cfg, { dbPath: ':memory:' });
-      const seen = new Set(problems.map((p) => `${p.path}:${p.line}:${p.code}:${p.message}`));
-      for (const p of r.problems) if (!seen.has(`${p.path}:${p.line}:${p.code}:${p.message}`)) problems.push(p);
-      if (json) console.log(JSON.stringify(problems, null, 2));
-      else printProblems(problems, warnings);
-      return problems.some((p) => p.severity === 'error') ? 1 : 0;
+      return dispatchWrite(args, vault, (v, d) => runLint(v, d, json, warnings));
     }
     case 'recall': {
       const query = args.pos.join(' ').trim();
       if (!query) throw new Error('recall needs a query');
+      const wsDir = str(args.flags, 'workspace');
+      if (wsDir) {
+        const ctx = workspaceContext(resolve(wsDir), str(args.flags, 'project') ?? null, str(args.flags, 'agent') ?? null);
+        const layersRaw = str(args.flags, 'layers');
+        let layers: Layer[] | undefined;
+        if (layersRaw) {
+          layers = layersRaw.split(',').map((s) => s.trim()).filter(Boolean) as Layer[];
+          for (const l of layers) {
+            if (!['agent', 'project', 'global-agent', 'global'].includes(l)) {
+              throw new Error(`--layers must be agent, project, global-agent, or global (got "${l}")`);
+            }
+          }
+        }
+        const asOfRaw = str(args.flags, 'as-of');
+        let asOf: number | null = null;
+        if (asOfRaw) {
+          asOf = parseInstant(asOfRaw);
+          if (asOf === null) throw new Error(`cannot parse --as-of "${asOfRaw}"`);
+        }
+        const top = str(args.flags, 'top');
+        const budget = str(args.flags, 'budget');
+        const r = await workspaceRecall(ctx.registry, ctx.lineage, query, {
+          mode: str(args.flags, 'mode') as QueryMode | undefined,
+          asOf,
+          topK: top ? Number(top) : undefined,
+          tokenBudget: budget ? Number(budget) : undefined,
+          logAccess: !args.flags.has('no-log'),
+          scope: str(args.flags, 'scope'),
+          layers,
+        });
+        if (json) console.log(JSON.stringify(r, null, 2));
+        else if (args.flags.has('context')) console.log(renderForContext(r as unknown as Parameters<typeof renderForContext>[0]));
+        else {
+          console.log(`mode: ${r.modeRequested} → ${r.modeUsed}   keyword: ${r.keywordBackend}   vaults: ${Object.keys(r.byVault).length}`);
+          for (const [id, info] of Object.entries(r.byVault)) {
+            if (info.error) console.log(`  ${id}: unavailable (${info.error})`);
+            else console.log(`  ${id}: ${info.modeUsed}  seeds ${info.seeds.length}`);
+          }
+          r.hits.forEach((h: RecallHit, i: number) => {
+            const c = h.components;
+            console.log(
+              `\n${i + 1}. ${h.title}${h.heading && h.heading !== h.title ? ' › ' + h.heading : ''}  [${h.layer}: ${h.vault}]  [${h.path}]  trust=${h.trust}\n` +
+              `   score ${h.score.toFixed(3)} (graph ${c.graph.toFixed(2)} · activation ${c.activation.toFixed(2)} · importance ${c.importance.toFixed(2)})\n` +
+              h.text.split('\n').slice(0, 4).map((l) => `   │ ${l}`).join('\n'),
+            );
+          });
+          if (r.hits.length === 0) console.log('\n(no hits)');
+        }
+        return 0;
+      }
       const cfg = loadConfig(vault);
       const asOfRaw = str(args.flags, 'as-of');
       let asOf: number | null = null;
@@ -510,73 +888,26 @@ export async function main(argv: string[]): Promise<number> {
       return 0;
     }
     case 'consolidate': {
-      const cfg = loadConfig(vault);
-      const dryRun = args.flags.has('dry-run');
-      const commit = !args.flags.has('no-commit');
-      const { consolidate } = await import('../consolidation/consolidate.ts');
-      const result = await consolidate(vault, cfg, { dryRun, commit, dream: args.flags.has('dream') });
-
-      console.log(`consolidated: ${result.promoted} promoted, ${result.queued} queued, ${result.superseded} superseded`);
-      console.log(`processed episodes: ${result.processedEpisodes.length}`);
-      console.log(`pending queue: ${result.pendingPath}`);
-
-      if (dryRun) {
-        // C7: the diff is computed in-process from the change set; git is never invoked,
-        // so a dry run cannot stage or alter the working tree.
-        console.log('\n--- would-be changes (unified diff) ---');
-        console.log(result.diff && result.diff.length > 0 ? result.diff : '(no changes)');
-      }
-      return 0;
+      return dispatchWrite(args, vault, (v, d) => runConsolidate(v, d, args));
     }
     case 'dream': {
-      const cfg = loadConfig(vault);
-      const dryRun = args.flags.has('dry-run');
-      const sampleOnly = args.flags.has('sample-only');
-      const { runRem } = await import('../dreams/rem.ts');
-      const result = await runRem(vault, cfg, { dryRun, sampleOnly });
-
-      if (json) {
-        console.log(JSON.stringify(result, null, 2));
-        return 0;
-      }
-      if (result.skipped) {
-        console.log(`dream: skipped (${result.skipped})`);
-        return 0;
-      }
-      if (sampleOnly) {
-        console.log(`dream: sampled ${result.pairs.length} pair(s) (no model calls)`);
-        for (const p of result.pairs) console.log(`  ${p.a} × ${p.b}`);
-        return 0;
-      }
-      console.log(`dream: ${result.samples} sample(s), ${result.kept} kept, ${result.pruned} pruned`);
-      if (Object.keys(result.errors).length > 0) {
-        console.log(`errors: ${Object.entries(result.errors).map(([k, v]) => `${k}=${v}`).join(' ')}`);
-      }
-      if (result.samples > 0 && result.kept === 0 && result.pruned === result.samples) {
-        console.log('every sample failed or was pruned; see the error classes above');
-      }
-      if (dryRun) {
-        console.log('\n--- would-be log (dry run; nothing written) ---');
-        console.log(JSON.stringify(result.log, null, 2));
-        console.log('\n--- would-be candidates ---');
-        console.log(result.candidates.length > 0 ? result.candidates.map((c) => JSON.stringify(c)).join('\n') : '(none)');
-      } else {
-        console.log(`log: ${STATE_DIR}/dreams/log/${result.night}.json`);
-        console.log(`candidates appended: ${result.candidates.length}`);
-      }
-      return 0;
+      return dispatchWrite(args, vault, (v, d) => runDream(v, d, args, json));
     }
     case 'wake': {
-      const cfg = loadConfig(vault);
+      // RFC-0004 §8: `wake` is read-once and per-vault; it refuses the unbound form.
+      const { path: wakeVault, defaults } = requireBoundVault(args, vault, 'wake');
+      const cfg = loadConfig(wakeVault, defaults);
       const { wake, renderWake, wakeJson } = await import('../dreams/wake.ts');
-      const result = wake(vault, cfg);
+      const result = wake(wakeVault, cfg);
       if (json) console.log(JSON.stringify(wakeJson(result), null, 2));
       else console.log(renderWake(result));
       return 0;
     }
     case 'review': {
+      // RFC-0004 §8: `review` is interactive and per-vault; it refuses the unbound form.
+      const { path: reviewVault } = requireBoundVault(args, vault, 'review');
       const { review } = await import('./review.ts');
-      const result = await review(vault);
+      const result = await review(reviewVault);
       console.log(`review complete: ${result.promoted} promoted, ${result.rejected} rejected, ${result.edited} edited`);
       if (result.dreamAccepted > 0 || result.dreamRejected > 0) {
         console.log(`dreams: ${result.dreamAccepted} accepted, ${result.dreamRejected} rejected`);
@@ -648,6 +979,18 @@ export async function main(argv: string[]): Promise<number> {
       const mcpModule = await import('../mcp/server.ts');
       // stdout is the JSON-RPC channel for the MCP transport; a banner there is a
       // malformed first message to the client. Log to stderr instead.
+      const wsDir = str(args.flags, 'workspace');
+      if (wsDir) {
+        const selectPerRequest = args.flags.has('select-per-request');
+        console.error(`starting MCP workspace server at ${resolve(wsDir)}${selectPerRequest ? ' (request-selected)' : ''}`);
+        await mcpModule.runWorkspaceServer({
+          workspaceDir: resolve(wsDir),
+          project: str(args.flags, 'project') ?? null,
+          agent: str(args.flags, 'agent') ?? null,
+          selectPerRequest,
+        });
+        return 0;
+      }
       console.error(`starting MCP server for vault at ${vault}`);
       await mcpModule.runServer(vault);
       return 0;
@@ -875,6 +1218,47 @@ export async function main(argv: string[]): Promise<number> {
       } finally {
         rmSync(tmpDir, { recursive: true, force: true });
       }
+    }
+    case 'workspace': {
+      const sub = args.pos[0];
+      const wsFlag = str(args.flags, 'workspace');
+      const project = str(args.flags, 'project') ?? null;
+      const agent = str(args.flags, 'agent') ?? null;
+      switch (sub) {
+        case 'init':
+          cmdWorkspaceInit(wsFlag ?? args.pos[1] ?? process.cwd());
+          return 0;
+        case 'add':
+          cmdWorkspaceAdd(wsFlag ?? args.pos[1] ?? process.cwd(), project, agent);
+          return 0;
+        case 'adopt': {
+          const id = args.pos[1];
+          if (!id) throw new Error('workspace adopt needs a vault id');
+          // `adopt` takes the id positionally, so the positional fallback would use the
+          // id as the workspace root. Require --workspace explicitly (RFC-0004 T3).
+          if (!wsFlag) throw new Error('workspace adopt needs --workspace <dir>');
+          cmdWorkspaceAdopt(wsFlag, id, project, agent);
+          return 0;
+        }
+        case 'list':
+          return cmdWorkspaceList(wsFlag ?? args.pos[1] ?? process.cwd(), json);
+        default:
+          console.error('workspace needs a subcommand: init | add | adopt | list');
+          return 1;
+      }
+    }
+    case 'lift': {
+      const wsDir = str(args.flags, 'workspace');
+      if (!wsDir) throw new Error('lift needs --workspace <dir>');
+      const fromId = str(args.flags, 'from');
+      const toId = str(args.flags, 'to');
+      const ref = args.pos[0];
+      if (!fromId || !toId || !ref) throw new Error('lift needs --from <id> --to <id> <note>^<fact>');
+      const { registry } = loadWorkspace(resolve(wsDir));
+      const r = await lift(registry, resolve(wsDir), fromId, toId, ref);
+      if (json) console.log(JSON.stringify(r, null, 2));
+      else console.log(`lifted ${r.claim}\n  → ${r.targetVault}/${r.episodePath}  (origin: ${r.origin})`);
+      return 0;
     }
     default:
       console.error(`unknown command "${args.cmd}"\n`);

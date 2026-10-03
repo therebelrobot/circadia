@@ -373,7 +373,11 @@ Each vault in a workspace is a complete Circadia vault. In particular:
   in a subfolder of a larger repo would get `null` for every note and silently fall back
   to current text for `--as-of`. One repo per vault avoids this and keeps each vault's
   history and `history <note>` output to its own changes. `workspace init` and
-  `workspace add` run `git init` per vault, as `circadia init` does.
+  `workspace add` run `git init` per vault. Note that single-vault `circadia init` does
+  **not** run `git init` (it only scaffolds folders, config and templates); the workspace
+  commands do, because the `--as-of` prose guarantee above depends on each vault being its
+  own repository. `workspace adopt` does not, since the adopted vault already exists and
+  may already have its own history.
 
 ### 8. CLI
 
@@ -589,10 +593,16 @@ Stages 1–3 are useful on their own: pinned agents with isolation and layered r
 5. **Team cells.** A vault shared by a subset of agents (architect and QA, not coder)
    doesn't fit the lattice. A named "team" coordinate would be a third axis. Wait for a
    real need.
-6. **Read-only SQLite on read-only mounts.** The index runs in WAL mode; opening a WAL
-   database on a read-only filesystem can fail when the `-shm` file can't be created.
-   Verify `node:sqlite` read-only opens against a `:ro` bind mount on Node 22.18 before
-   documenting §8's mount pattern, and fall back to `immutable=1` URIs if needed.
+6. **Read-only SQLite on read-only mounts.** **Resolved (stage 6).** The index runs in WAL
+   mode; opening a WAL database on a read-only filesystem fails with `unable to open
+   database file` when the `-shm` file can't be created, and `mode=ro` does not help. The
+   fallback the question anticipated is the answer: `openIndex` opens a read-only layer with
+   SQLite's `immutable=1` URI, which skips the WAL sidecar. Verified against a `:ro` bind
+   mount in `scripts/container-smoke.sh` (section 8) and by a unit test in
+   `test/workspace.test.ts`. The constraint — `immutable=1` assumes the file never changes
+   while open, so a read-only layer's index is rebuilt by a host-side job and the container
+   restarted to see it — is documented in `docs/WORKSPACES.md` §Containers and
+   `docs/SECURITY.md` T4.
 7. **Dreaming across the lineage, read-only.** Per-vault dreaming loses the
    agent-to-project pairs that made up 9 of 13 samples in the discovery experiment. One
    option: a vault's REM pass may draw partners from its lineage vaults, read-only, and

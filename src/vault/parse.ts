@@ -71,6 +71,18 @@ export function parseNote(path: string, text: string, mtime: number, config: Con
     err('note.bad-graph', 'graph must be wikilink, typed, or hipporag');
   }
 
+  // RFC-0004: episode frontmatter gains optional `agent` (a slug) and `origin` (a string).
+  // Additive; schema stays v1. `agent` is validated as a slug so a free-text value can
+  // never masquerade as a registered agent name.
+  if (fm.agent !== undefined && fm.agent !== null) {
+    if (typeof fm.agent !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(fm.agent)) {
+      err('note.bad-agent', 'agent must be a lowercase slug (a-z, 0-9, -)');
+    }
+  }
+  if (fm.origin !== undefined && fm.origin !== null && typeof fm.origin !== 'string') {
+    err('note.bad-origin', 'origin must be a string');
+  }
+
   const factsH = config.vault.factsHeading.toLowerCase();
   const historyH = config.vault.historyHeading.toLowerCase();
   const defaultRecordedAt = updated ?? created ?? mtime;

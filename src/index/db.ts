@@ -91,10 +91,19 @@ export function probeFts5(db: DatabaseSync): boolean {
   }
 }
 
-export function openIndex(file: string, opts: { fresh?: boolean } = {}): IndexDb {
-  if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
-  const db = new DatabaseSync(file);
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = OFF;');
+/**
+ * Open the index. `readOnly` opens a vault mounted read-only (RFC-0004 §8): SQLite in WAL
+ * mode needs to create `-shm`/`-wal` beside the database, which fails on a read-only
+ * filesystem ("unable to open database file"). `immutable=1` tells SQLite the file cannot
+ * change, so it skips the WAL sidecar entirely. Verified against a `:ro` bind mount in
+ * `scripts/container-smoke.sh` (RFC-0004 open question 6). A read-only open skips the WAL
+ * pragma and schema creation; the index must already exist and be current.
+ */
+export function openIndex(file: string, opts: { fresh?: boolean; readOnly?: boolean } = {}): IndexDb {
+  const readOnly = opts.readOnly === true && file !== ':memory:';
+  if (file !== ':memory:' && !readOnly) mkdirSync(dirname(file), { recursive: true });
+  const db = new DatabaseSync(readOnly ? sqliteImmutableUri(file) : file);
+  if (!readOnly) db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = OFF;');
   if (opts.fresh) {
     db.exec(`
       DROP TABLE IF EXISTS passages_fts;
@@ -102,14 +111,21 @@ export function openIndex(file: string, opts: { fresh?: boolean } = {}): IndexDb
       DROP TABLE IF EXISTS nodes; DROP TABLE IF EXISTS files;
       DROP TABLE IF EXISTS meta;`);
   }
-  db.exec(SCHEMA_SQL);
+  if (!readOnly) db.exec(SCHEMA_SQL);
   const fts = probeFts5(db);
-  if (fts) {
+  if (fts && !readOnly) {
     db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS passages_fts USING fts5(
       passage_id UNINDEXED, title, heading, text, tokenize = 'porter unicode61'
     );`);
   }
   return { db, fts };
+}
+
+/** A `file:` URI that opens `file` immutable, so SQLite never needs a WAL sidecar. */
+function sqliteImmutableUri(file: string): string {
+  // Percent-encode `?` and `#` so a vault path can't be read as URI syntax.
+  const encoded = encodeURI(file).replace(/\?/g, '%3F').replace(/#/g, '%23');
+  return `file:${encoded}?immutable=1`;
 }
 
 export function getMeta(db: DatabaseSync, key: string): string | null {

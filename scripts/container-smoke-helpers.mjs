@@ -6,6 +6,11 @@
 // Subcommands:
 //   mcp <image> <vault>          connect to the container's MCP server over stdio and
 //                                exercise initialize / tools/list / recall / remember
+//   mcp-workspace <image> <ws> <writableId> <roIdsCsv> <query> <expectedLayer>
+//                                connect a pinned workspace server with the lineage mounted
+//                                (writable cell rw, shared layers :ro), recall from a
+//                                read-only layer, remember to the writable cell, and assert
+//                                nothing under the :ro layers changed
 //   mock-model <portfile>        serve POST /v1/chat/completions with canned candidates;
 //                                write the chosen port to <portfile>, then keep serving
 //   set-endpoint <vault> <url>   point a temp vault's extraction config at <url>
@@ -14,7 +19,7 @@
 // writes examples/vault/.
 
 import { createServer } from 'node:http';
-import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -86,6 +91,83 @@ async function mcp(image, vault) {
   }
 }
 
+/** A stable listing of every file under `dir` (path, size, mtime), for change detection. */
+function snapshot(dir) {
+  const out = [];
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else {
+        const st = statSync(p);
+        out.push(`${p}:${st.size}:${st.mtimeMs}`);
+      }
+    }
+  };
+  walk(dir);
+  return out.sort().join('\n');
+}
+
+/**
+ * RFC-0004 §8 / test plan item 12: mount the lineage only, with every layer the agent may
+ * not write mounted `:ro`. The pinned server must recall from a read-only layer (its index
+ * opened immutable, no access-log write) and write only to the writable cell.
+ */
+async function mcpWorkspace(image, workspaceDir, writableId, roIdsCsv, query, expectedLayer) {
+  const roIds = roIdsCsv.split(',').filter(Boolean);
+  const before = Object.fromEntries(roIds.map((id) => [id, snapshot(join(workspaceDir, id))]));
+
+  const args = [
+    'run', '-i', '--rm',
+    '--read-only', '--tmpfs', '/tmp',
+    '--network', 'none',
+    '-v', `${join(workspaceDir, 'circadia.workspace.json')}:/workspace/circadia.workspace.json:ro`,
+    '-v', `${join(workspaceDir, writableId)}:/workspace/${writableId}`,
+  ];
+  for (const id of roIds) args.push('-v', `${join(workspaceDir, id)}:/workspace/${id}:ro`);
+  args.push(image, 'mcp', '--workspace', '/workspace', '--project', 'work', '--agent', 'coder');
+
+  const transport = new StdioClientTransport({ command: 'docker', args });
+  const client = new Client({ name: 'circadia-container-smoke-ws', version: '0.0.0' });
+  try {
+    // connect() performs the initialize handshake; a bad binding refuses to start, so a
+    // successful connect proves the server resolved the pinned binding.
+    await client.connect(transport);
+
+    const tools = await client.listTools();
+    if (tools.tools.length !== 8) throw new Error(`expected 8 tools, got ${tools.tools.length}`);
+
+    const recall = await client.callTool({ name: 'recall', arguments: { query } });
+    if (recall.isError) throw new Error('recall returned isError');
+    // The SDK strips unknown result fields, so read the rendered text: renderForContext()
+    // labels each hit `· [<layer>: <vault>]`.
+    const text = recall.content?.[0]?.text ?? '';
+    if (!text.includes(`[${expectedLayer}: `)) {
+      throw new Error(`no hit from read-only layer "${expectedLayer}"; rendered:\n${text}`);
+    }
+
+    const beforeEpisodes = episodeFiles(join(workspaceDir, writableId));
+    const remember = await client.callTool({
+      name: 'remember',
+      arguments: { text: 'The coder noted the workspace container smoke test ran.' },
+    });
+    if (remember.isError) throw new Error('remember returned isError');
+    const afterEpisodes = episodeFiles(join(workspaceDir, writableId));
+    const created = afterEpisodes.filter((p) => !beforeEpisodes.includes(p));
+    if (created.length !== 1) {
+      throw new Error(`expected 1 new episode in ${writableId}, got ${created.length}`);
+    }
+
+    // No write reached a read-only layer: no access log, no WAL sidecar, nothing.
+    for (const id of roIds) {
+      const after = snapshot(join(workspaceDir, id));
+      if (after !== before[id]) throw new Error(`read-only layer ${id} changed during the run`);
+    }
+  } finally {
+    await client.close();
+  }
+}
+
 function mockModel(portfile) {
   const content = JSON.stringify({
     candidates: [
@@ -116,6 +198,7 @@ function setEndpoint(vault, url) {
 const [cmd, ...rest] = process.argv.slice(2);
 try {
   if (cmd === 'mcp') await mcp(rest[0], rest[1]);
+  else if (cmd === 'mcp-workspace') await mcpWorkspace(rest[0], rest[1], rest[2], rest[3], rest[4], rest[5]);
   else if (cmd === 'mock-model') mockModel(rest[0]);
   else if (cmd === 'set-endpoint') setEndpoint(rest[0], rest[1]);
   else {

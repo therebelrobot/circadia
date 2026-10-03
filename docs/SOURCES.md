@@ -1,6 +1,6 @@
 # Sources
 
-Everything this design draws on, grouped by role. IDs `S1`–`S18` and `D1`–`D13` are cited
+Everything this design draws on, grouped by role. IDs `S1`–`S22` and `D1`–`D13` are cited
 from `ARCHITECTURE.md`. The benchmark numbers quoted in the landscape section are
 **vendor-reported** and rarely comparable across systems. See the methodology caveats in L14
 and L15.
@@ -27,6 +27,10 @@ and L15.
 | S16 | Rasmussen et al., *Zep: A Temporal Knowledge Graph Architecture for Agent Memory* — https://arxiv.org/html/2501.13956v1 · Zep blog on bi-temporal edges — https://blog.getzep.com/beyond-static-knowledge-graphs/ | bi-temporal fact model; invalidation instead of deletion |
 | S17 | *Agent Memory Systems and Knowledge Graphs: Letta, Mem0, Graphiti, and Cognee* — https://codepointer.substack.com/p/agent-memory-systems-and-knowledge · Graphiti temporal model — https://www.mintlify.com/getzep/graphiti/concepts/temporal-model | Graphiti's `valid_at` / `invalid_at` / `expired_at` semantics |
 | S18 | Node.js issue #56951, *Add SQLite FTS5 Extension* — https://github.com/nodejs/node/issues/56951 · openclaw #20987, *node:sqlite compiled without FTS5* — https://github.com/openclaw/openclaw/issues/20987 | FTS5 probe + BM25 fallback |
+| S19 | Tulving & Thomson (1973), *Encoding specificity and retrieval processes in episodic memory*, Psychological Review 80:352 — https://psycnet.apa.org/record/1974-02424-001 | retrieval context must match encoding context → the binding is the context |
+| S20 | Godden & Baddeley (1975), *Context-dependent memory in two natural environments: on land and underwater*, British Journal of Psychology 66:325 — https://bpspsychub.onlinelibrary.wiley.com/doi/10.1111/j.2044-8295.1975.tb01468.x | context-dependent recall → recall first from the bound cell |
+| S21 | Anderson & Neely (1996), *Interference and inhibition in memory retrieval*, in *Memory*, Academic Press — https://www.sciencedirect.com/science/article/abs/pii/B9780121025700500106 | proactive/retroactive interference → separate vaults remove sibling competition |
+| S22 | Wegner (1987), *Transactive memory: A contemporary analysis of the group mind*, in *Theories of Group Behavior* — https://link.springer.com/chapter/10.1007/978-1-4612-4634-3_9 | specialists plus a shared directory → agent layers + project/global layers |
 
 ## Dreaming (REM) → design
 

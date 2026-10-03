@@ -116,6 +116,26 @@ LLM used for hipporag triple extraction and for consolidation.
 | `predicates.strict` | `false` | unknown predicates are errors (true) or warnings (false) |
 | `predicates.defs` | `{}` | `name → { object?: entity\|literal\|any, inverse?, values?, description?, cardinality? }`. `cardinality` is `many` (default) or `single`. `many` accumulates objects; `single` treats a second, different object as a contradiction the consolidation gate resolves (queue, or supersede when a `by: user` episode states it explicitly). Set `single` only where replacement makes sense, e.g. `runs_on`, `status` |
 
+## Workspaces (`circadia.workspace.json`)
+
+A workspace is a folder of ordinary vaults plus a registry file. It is **not** a vault
+config: it lives at the workspace root, next to the vault directories, and holds no
+secrets and no memory. See [WORKSPACES.md](WORKSPACES.md) and
+[RFC-0004](rfcs/RFC-0004-workspaces.md).
+
+| key | default | meaning |
+|---|---|---|
+| `workspace` | — | must be `1` |
+| `vaults` | — | `id → { project?, agent? }`. At most one vault per cell. Ids match `^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)?$` |
+| `writes.default` | `["self"]` | layers `remember` may target: `self`, `project`, `global-agent`, `global`. The default gives complete isolation |
+| `writes.agents.<name>` | — | replaces `writes.default` for one agent |
+| `recall.layerWeights` | `{ agent: 1.0, project: 0.9, "global-agent": 0.8, global: 0.7 }` | weight each layer's ranked list gets in the federated merge |
+| `defaults` | `{}` | a config object deep-merged **under** each vault's own `circadia.config.json` |
+
+**Merge order for `defaults`:** built-in defaults, then workspace `defaults`, then the
+vault file. This lets one model endpoint serve every vault while each vault can still
+override. `defaults.index.*` is rejected, because index paths are per vault.
+
 ## Example
 
 ```json

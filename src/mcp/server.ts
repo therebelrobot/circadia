@@ -12,10 +12,23 @@
 //   - A message without an `id` is a notification: process it, send nothing back.
 
 import { join } from 'node:path';
-import { loadConfig } from '../config.ts';
+import { DEFAULT_CONFIG, loadConfig } from '../config.ts';
 import { openIndex } from '../index/db.ts';
 import { createGraphCache, type GraphCache } from '../retrieval/graph-cache.ts';
-import type { QueryMode, SourceKind } from '../types.ts';
+import type { Layer, QueryMode, SourceKind } from '../types.ts';
+import {
+  LAYER_ORDER,
+  loadWorkspace,
+  resolveBinding,
+  resolveLineage,
+  targetVaultId,
+  writeTargetsFor,
+  type Cell,
+  type LineageEntry,
+  type WriteTarget,
+  type WorkspaceRegistry,
+} from '../workspace/registry.ts';
+import { isVaultWritable, workspaceRecall } from '../workspace/recall.ts';
 
 /**
  * Yield newline-delimited lines from stdin, buffering across chunk boundaries.
@@ -84,10 +97,12 @@ async function handleInit(id: string | number | null, params?: Record<string, un
   };
 }
 
-async function handleToolsList(
+export async function handleToolsList(
   _vaultRoot: string,
   _cfg: Awaited<ReturnType<typeof loadConfig>>,
   id: string | number | null,
+  targets?: WriteTarget[],
+  workspace = false,
 ): Promise<JSONRPCResponse> {
   const tools = [
     {
@@ -102,6 +117,12 @@ async function handleToolsList(
           top_k: { type: 'number' },
           scope: { type: 'string' },
           session: { type: 'string' },
+          // RFC-0004: narrow the lineage to these layers. It can only narrow. Advertised
+          // only on a workspace server; the single-vault server ignores it, so advertising
+          // it there would invite a call that silently does nothing.
+          ...(workspace
+            ? { layers: { type: 'array', items: { type: 'string', enum: ['agent', 'project', 'global-agent', 'global'] } } }
+            : {}),
         },
         required: ['query'],
       },
@@ -116,6 +137,9 @@ async function handleToolsList(
           session: { type: 'string' },
           by: { type: 'string', enum: ['agent', 'tool', 'web'] },
           source: { type: 'string', enum: ['chat', 'tool', 'import'] },
+          // RFC-0004: the enum contains only the targets this binding's write policy
+          // allows, so the model cannot name a forbidden layer. The server still checks.
+          ...(targets ? { target: { type: 'string', enum: targets } } : {}),
         },
         required: ['text'],
       },
@@ -138,6 +162,11 @@ async function handleToolsList(
           a: { type: 'string' },
           b: { type: 'string' },
           max_hops: { type: 'number' },
+          // RFC-0004 §4: run relate in the lineage vault occupying this layer. Workspace
+          // only; the single-vault server has one vault and ignores it.
+          ...(workspace
+            ? { layer: { type: 'string', enum: ['agent', 'project', 'global-agent', 'global'] } }
+            : {}),
         },
         required: ['a', 'b'],
       },
@@ -292,6 +321,12 @@ export async function handleToolsCall(
         by,
         source: params.source as SourceKind | undefined,
       });
+      // B3: the index is derived, so a freshly written episode is not retrievable until
+      // it is reindexed. Reindex incrementally here (the same entrypoint the CLI uses)
+      // so a remember followed by a recall in the same session sees the new content.
+      // Errors propagate to the handler's catch, matching every other failure path.
+      const indexerModule = await import('../index/indexer.ts');
+      indexerModule.incrementalIndex(vaultRoot, cfg);
       const text = 'Wrote ' + result.episodes.length + ' episode(s): ' + result.episodes.map((e: { path: string; title: string; boundary: string }) => e.path).join(', ');
       return {
         jsonrpc: '2.0',
@@ -451,5 +486,361 @@ export async function runServer(vaultRoot: string): Promise<void> {
     }
   } finally {
     db.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// RFC-0004 §3: workspace MCP server.
+//
+// Pinned (default): the server resolves the lineage once, at startup, and opens only
+// those vaults. A sibling vault's files are never opened, so no bug in recall can leak
+// them. Request-selected (opt-in): every tool call carries `project` and/or `agent`, and
+// the server resolves the cell from the registry. In both modes the destination vault is
+// resolved by the server from the registry plus the binding — no argument, frontmatter
+// field or archive content can choose a vault directly (Hindsight finding 2).
+// ---------------------------------------------------------------------------
+
+export interface WorkspaceServerOptions {
+  workspaceDir: string;
+  project: string | null;
+  agent: string | null;
+  selectPerRequest: boolean;
+}
+
+interface ActiveBinding {
+  binding: Cell;
+  lineage: LineageEntry[];
+  writeTargets: WriteTarget[];
+}
+
+/** Resolve the active binding for a call. Pinned uses the startup binding; request mode
+ *  reads `project`/`agent` from the call and errors when neither is present. */
+export function resolveActive(
+  registry: WorkspaceRegistry,
+  dir: string,
+  pinned: ActiveBinding | null,
+  params: Record<string, unknown> | undefined,
+): { active?: ActiveBinding; error?: string } {
+  if (pinned) return { active: pinned };
+  const project = typeof params?.project === 'string' ? params.project : null;
+  const agent = typeof params?.agent === 'string' ? params.agent : null;
+  if (project === null && agent === null) {
+    return { error: 'request-selected mode: every call must carry project and/or agent' };
+  }
+  const { binding, problems } = resolveBinding(registry, project, agent);
+  const errs = problems.filter((p) => p.severity === 'error');
+  if (errs.length) return { error: errs.map((p) => p.message).join('; ') };
+  let lineage: LineageEntry[];
+  try {
+    lineage = resolveLineage(registry, dir, binding);
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+  if (lineage.length === 0) return { error: `binding (${project ?? '*'}, ${agent ?? '*'}) has no vaults` };
+  return { active: { binding, lineage, writeTargets: writeTargetsFor(registry, agent) } };
+}
+
+export function workspaceInitResult(id: string | number | null, active: ActiveBinding | null, opts: WorkspaceServerOptions): JSONRPCResponse {
+  const binding = active
+    ? { project: active.binding.project, agent: active.binding.agent, lineage: active.lineage.map((e) => ({ id: e.id, layer: e.layer })), writeTargets: active.writeTargets }
+    : { mode: 'request-selected', note: 'each call must carry project and/or agent' };
+  return {
+    jsonrpc: '2.0',
+    id,
+    result: {
+      protocolVersion: LATEST_PROTOCOL_VERSION,
+      serverInfo: { name: 'circadia', version: '0.1.0', workspace: opts.workspaceDir, binding },
+      capabilities: { tools: {} },
+      instructions: active
+        ? `Bound to (${active.binding.project ?? '*'}, ${active.binding.agent ?? '*'}). Lineage: ${active.lineage.map((e) => `${e.layer}=${e.id}`).join(', ')}. Write targets: ${active.writeTargets.join(', ')}.`
+        : 'Request-selected workspace server: every tool call must carry project and/or agent.',
+    },
+  };
+}
+
+export async function handleWorkspaceToolsCall(
+  registry: WorkspaceRegistry,
+  dir: string,
+  active: ActiveBinding,
+  method: string,
+  params: Record<string, unknown> | undefined,
+  id: string | number | null,
+  graphCaches: Record<string, GraphCache>,
+): Promise<JSONRPCResponse> {
+  const bound = active.lineage[0];
+  const boundCfg = loadConfig(bound.path, registry.defaults);
+
+  if (method === 'recall' && params && typeof params.query === 'string') {
+    // RFC-0004 §4.7: `layers` can only narrow the lineage. An unknown value is an invalid
+    // param, matching the CLI's validation, not a silent narrowing to nothing.
+    let layers: Layer[] | undefined;
+    if (params.layers !== undefined) {
+      if (!Array.isArray(params.layers) || params.layers.some((l) => !LAYER_ORDER.includes(l as Layer))) {
+        return {
+          jsonrpc: '2.0',
+          id,
+          error: { code: -32602, message: 'Invalid params: layers must be an array of agent, project, global-agent, or global' },
+        };
+      }
+      layers = params.layers as Layer[];
+    }
+    // An unparseable as_of is a protocol error, matching the single-vault server, not a
+    // silent null that filters every hit away.
+    let asOf: number | null = null;
+    if (params.as_of !== undefined) {
+      if (typeof params.as_of !== 'string' || Number.isNaN(Date.parse(params.as_of))) {
+        return {
+          jsonrpc: '2.0',
+          id,
+          error: { code: -32602, message: 'Invalid params: as_of must be a parseable date string' },
+        };
+      }
+      asOf = Date.parse(params.as_of);
+    }
+    const r = await workspaceRecall(registry, active.lineage, params.query, {
+      mode: params.mode as QueryMode | undefined,
+      asOf,
+      topK: typeof params.top_k === 'number' ? params.top_k : undefined,
+      scope: typeof params.scope === 'string' ? params.scope : undefined,
+      session: typeof params.session === 'string' ? params.session : undefined,
+      logAccess: boundCfg.mcp.logAccess,
+      layers,
+      graphCaches,
+    });
+    const recallModule = await import('../retrieval/recall.ts');
+    return {
+      jsonrpc: '2.0',
+      id,
+      result: {
+        content: [{ type: 'text', text: recallModule.renderForContext(r as unknown as Parameters<typeof recallModule.renderForContext>[0]) }],
+        modeUsed: r.modeUsed,
+        modeRequested: r.modeRequested,
+        byVault: r.byVault,
+        hits: r.hits.map((h) => ({
+          passageId: h.passageId,
+          noteId: h.noteId,
+          path: h.path,
+          title: h.title,
+          trust: h.trust,
+          score: h.score,
+          vault: h.vault,
+          layer: h.layer,
+          ...(h.via ? { via: h.via } : {}),
+        })),
+      },
+    };
+  }
+
+  if (method === 'remember' && params && typeof params.text === 'string') {
+    if (params.by === 'user') {
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: { content: [{ type: 'text', text: 'remember: by "user" is not allowed over MCP; use "agent", "tool", or "web"' }], isError: true },
+      };
+    }
+    const target = (typeof params.target === 'string' ? params.target : 'self') as WriteTarget;
+    if (!active.writeTargets.includes(target)) {
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: { content: [{ type: 'text', text: `remember: target "${target}" is not allowed for this binding (allowed: ${active.writeTargets.join(', ')})` }], isError: true },
+      };
+    }
+    const targetId = targetVaultId(registry, active.binding, target);
+    if (targetId === null) {
+      return {
+        jsonrpc: '2.0',
+        id,
+        result: { content: [{ type: 'text', text: `remember: target "${target}" has no vault in this workspace` }], isError: true },
+      };
+    }
+    const targetPath = join(dir, targetId);
+    const targetCfg = loadConfig(targetPath, registry.defaults);
+    const by = (params.by as SourceKind | undefined) ?? 'agent';
+    const segModule = await import('../episodes/segment.ts');
+    const epModule = await import('../episodes/episode.ts');
+    const segs = segModule.segmentText(params.text, { by, source: params.source as SourceKind | undefined });
+    const result = await epModule.writeEpisodes(targetPath, targetCfg, segs, {
+      session: params.session as string | undefined,
+      by,
+      source: params.source as SourceKind | undefined,
+      // The server sets `agent` from the binding, never from free text.
+      agent: active.binding.agent ?? undefined,
+    });
+    // B3: reindex the target vault so the new episode is retrievable immediately.
+    const indexerModule = await import('../index/indexer.ts');
+    indexerModule.incrementalIndex(targetPath, targetCfg);
+    const text = `Wrote ${result.episodes.length} episode(s) to ${targetId}: ${result.episodes.map((e: { path: string }) => e.path).join(', ')}`;
+    return {
+      jsonrpc: '2.0',
+      id,
+      result: { content: [{ type: 'text', text }], vault: targetId, episodes: result.episodes.map((e: { path: string; title: string; boundary: string }) => ({ path: e.path, title: e.title, boundary: e.boundary })) },
+    };
+  }
+
+  if (method === 'get_note' && params && typeof params.id === 'string') {
+    const raw = params.id;
+    const colon = raw.indexOf(':');
+    let candidates = active.lineage;
+    let bare = raw;
+    if (colon > 0) {
+      const prefix = raw.slice(0, colon);
+      const entry = active.lineage.find((e) => e.id === prefix);
+      if (entry) {
+        candidates = [entry];
+        bare = raw.slice(colon + 1);
+      }
+    }
+    const indexerModule = await import('../index/indexer.ts');
+    const fsModule = await import('node:fs');
+    for (const entry of candidates) {
+      const cfg = loadConfig(entry.path, registry.defaults);
+      const notes = indexerModule.parseVault(entry.path, cfg);
+      const note = notes.find((n) => n.id === bare || n.path === bare);
+      if (note) {
+        const text = fsModule.readFileSync(join(entry.path, note.path), 'utf8');
+        return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text }], note: { id: note.id, path: note.path, title: note.title, vault: entry.id, layer: entry.layer } } };
+      }
+    }
+    return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: 'Note not found: ' + raw }], isError: true } };
+  }
+
+  if (method === 'timeline' && params && typeof params.entity === 'string') {
+    const timelineModule = await import('../retrieval/timeline.ts');
+    const dbModule = await import('../index/db.ts');
+    const sections: { vault: string; layer: Layer; entries: unknown[] }[] = [];
+    for (const entry of active.lineage) {
+      try {
+        const cfg = loadConfig(entry.path, registry.defaults);
+        const { db } = dbModule.openIndex(join(entry.path, cfg.index.path), { readOnly: !isVaultWritable(entry.path) });
+        try {
+          const entries = timelineModule.timeline(db, params.entity, cfg);
+          if (entries.length > 0) sections.push({ vault: entry.id, layer: entry.layer, entries });
+        } finally {
+          db.close();
+        }
+      } catch {
+        // a lineage vault that can't be read is skipped, not fatal
+      }
+    }
+    const text = sections
+      .map((s) => `## ${s.layer}: ${s.vault}\n` + (s.entries as { valid_from: number | null; predicate: string; object: string }[]).map((e) => `${e.valid_from ? new Date(e.valid_from).toISOString().slice(0, 10) : '…'} ${e.predicate} ${e.object}`).join('\n'))
+      .join('\n\n');
+    return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: text || `no facts about ${params.entity}` }], sections } };
+  }
+
+  if (method === 'relate' && params && typeof params.a === 'string' && typeof params.b === 'string') {
+    const relateModule = await import('../retrieval/relate.ts');
+    const dbModule = await import('../index/db.ts');
+    // RFC-0004 §4: relate runs in the first lineage vault that has both endpoints, or the
+    // vault named by an optional `layer`. An unknown layer name is an invalid param; a
+    // valid layer absent from the lineage is a tool error.
+    let candidates = active.lineage;
+    if (params.layer !== undefined) {
+      if (typeof params.layer !== 'string' || !LAYER_ORDER.includes(params.layer as Layer)) {
+        return {
+          jsonrpc: '2.0',
+          id,
+          error: { code: -32602, message: 'Invalid params: layer must be agent, project, global-agent, or global' },
+        };
+      }
+      const entry = active.lineage.find((e) => e.layer === params.layer);
+      if (!entry) {
+        return {
+          jsonrpc: '2.0',
+          id,
+          result: { content: [{ type: 'text', text: `relate: layer "${params.layer}" is not in this binding's lineage` }], isError: true },
+        };
+      }
+      candidates = [entry];
+    }
+    for (const entry of candidates) {
+      try {
+        const cfg = loadConfig(entry.path, registry.defaults);
+        const { db } = dbModule.openIndex(join(entry.path, cfg.index.path), { readOnly: !isVaultWritable(entry.path) });
+        try {
+          const r = relateModule.relate(db, params.a, params.b, cfg, { maxDepth: typeof params.max_hops === 'number' ? params.max_hops : undefined });
+          if (r.found) {
+            const text = r.paths.map((p) => p.nodes.join(' → ')).join('\n');
+            return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text }], vault: entry.id, layer: entry.layer, paths: r.paths.map((p) => ({ nodes: p.nodes, edges: p.edges })), found: true } };
+          }
+        } finally {
+          db.close();
+        }
+      } catch {
+        // skip an unreadable vault
+      }
+    }
+    return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: 'No path found' }], found: false } };
+  }
+
+  // wake / endorse_dream / dismiss_dream and any other tool act on the bound cell only.
+  return handleToolsCall(bound.path, boundCfg, method, params, id, graphCaches[bound.id]);
+}
+
+export async function runWorkspaceServer(opts: WorkspaceServerOptions): Promise<void> {
+  const dir = opts.workspaceDir;
+  const { registry } = loadWorkspace(dir);
+  let pinned: ActiveBinding | null = null;
+  if (!opts.selectPerRequest) {
+    const { binding, problems } = resolveBinding(registry, opts.project, opts.agent);
+    const errs = problems.filter((p) => p.severity === 'error');
+    if (errs.length) throw new Error(errs.map((p) => p.message).join('; '));
+    const lineage = resolveLineage(registry, dir, binding);
+    if (lineage.length === 0) throw new Error(`binding (${opts.project ?? '*'}, ${opts.agent ?? '*'}) has no vaults`);
+    pinned = { binding, lineage, writeTargets: writeTargetsFor(registry, binding.agent) };
+  }
+
+  // One graph cache per lineage vault, opened lazily and kept for the process lifetime.
+  const graphCaches: Record<string, GraphCache> = {};
+  const openDbs: { close: () => void }[] = [];
+  const openCache = (entry: LineageEntry): GraphCache => {
+    if (!graphCaches[entry.id]) {
+      const cfg = loadConfig(entry.path, registry.defaults);
+      // A `:ro` layer cannot host SQLite's WAL sidecar, so open it immutable (RFC-0004 §8).
+      const { db } = openIndex(join(entry.path, cfg.index.path), { readOnly: !isVaultWritable(entry.path) });
+      openDbs.push(db);
+      graphCaches[entry.id] = createGraphCache(db);
+    }
+    return graphCaches[entry.id];
+  };
+  if (pinned) for (const e of pinned.lineage) openCache(e);
+
+  try {
+    for await (const line of readLines()) {
+      if (line.trim().length === 0) continue;
+      let req: JSONRPCRequest;
+      try {
+        req = JSON.parse(line);
+      } catch {
+        writeStdout({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } });
+        continue;
+      }
+      const isNotification = !Object.prototype.hasOwnProperty.call(req, 'id');
+      const id = req.id ?? null;
+      let res: JSONRPCResponse;
+      if (req.method === 'initialize') {
+        res = workspaceInitResult(id, pinned, opts);
+      } else if (req.method === 'tools/list') {
+        // handleToolsList ignores the config; pass the bound vault's when pinned, else
+        // the built-in defaults (a request-selected workspace root is not a vault).
+        res = await handleToolsList(dir, pinned ? loadConfig(pinned.lineage[0].path, registry.defaults) : DEFAULT_CONFIG, id, pinned?.writeTargets, true);
+      } else if (req.method === 'tools/call') {
+        const params = req.params?.arguments as Record<string, unknown> | undefined;
+        const { active, error } = resolveActive(registry, dir, pinned, params);
+        if (!active) {
+          res = { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: error ?? 'no binding' }], isError: true } };
+        } else {
+          for (const e of active.lineage) openCache(e);
+          res = await handleWorkspaceToolsCall(registry, dir, active, req.params?.name as string, params, id, graphCaches);
+        }
+      } else {
+        res = { jsonrpc: '2.0', id, error: { code: -32601, message: 'Method not found: ' + req.method } };
+      }
+      if (!isNotification) writeStdout(res);
+    }
+  } finally {
+    for (const db of openDbs) db.close();
   }
 }

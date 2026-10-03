@@ -97,6 +97,13 @@ function lintErrors(vault: string): string[] {
   return problems.filter((p) => p.severity === 'error').map((p) => `${p.code}: ${p.message}`);
 }
 
+/** B1: the single-cardinality warnings a full index reports for a vault. */
+function singleCardinalityWarnings(vault: string): string[] {
+  const cfg = loadConfig(vault);
+  const r = buildIndex(vault, cfg, { dbPath: ':memory:' });
+  return r.problems.filter((p) => p.code === 'fact.single-cardinality').map((p) => p.message);
+}
+
 test('C2: promotes a known entity + known predicate and writes the exact fact line', async () => {
   const v = makeVault('c2', {
     'entities/projects/x.md': entityNote('x', '## Facts\n- [status:: active] [by:: user]\n'),
@@ -353,4 +360,35 @@ test('config: cardinality must be "single" or "many"', () => {
   bad.predicates.defs = { runs_on: { cardinality: 'sometimes' as unknown as 'single' } };
   const errs = validateConfig(bad);
   assert.ok(errs.some((e) => e.includes('cardinality')), `expected a cardinality error, got: ${errs.join('; ')}`);
+});
+
+test('B1: one current fact on a single-cardinality predicate produces no warning', () => {
+  const v = makeVault('b1-one', {
+    'entities/projects/x.md': entityNote('x', '## Facts\n- [runs_on:: [[y]]] [by:: user]\n'),
+    'entities/tools/y.md': entityNote('y', ''),
+  });
+  assert.deepEqual(singleCardinalityWarnings(v), []);
+});
+
+test('B1: two current facts on a single-cardinality predicate warn, naming the predicate', () => {
+  const v = makeVault('b1-two', {
+    'entities/projects/x.md': entityNote('x', '## Facts\n- [runs_on:: [[y]]] [by:: user]\n- [runs_on:: [[z]]] [by:: user]\n'),
+    'entities/tools/y.md': entityNote('y', ''),
+    'entities/tools/z.md': entityNote('z', ''),
+  });
+  const warnings = singleCardinalityWarnings(v);
+  assert.equal(warnings.length, 1, 'exactly one warning for the offending predicate');
+  assert.match(warnings[0], /runs_on/, 'the warning names the predicate');
+});
+
+test('B1: a superseded fact plus one current fact produces no warning', () => {
+  const v = makeVault('b1-superseded', {
+    'entities/projects/x.md': entityNote(
+      'x',
+      '## Facts\n- [runs_on:: [[y]]] [by:: user]\n\n## History\n- ~~[runs_on:: [[z]]] [superseded:: 2026-09-01]~~ [by:: user]\n',
+    ),
+    'entities/tools/y.md': entityNote('y', ''),
+    'entities/tools/z.md': entityNote('z', ''),
+  });
+  assert.deepEqual(singleCardinalityWarnings(v), []);
 });

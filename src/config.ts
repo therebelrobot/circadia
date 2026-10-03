@@ -369,12 +369,18 @@ export function validateConfig(c: Config): string[] {
   return errs;
 }
 
-export function loadConfig(vaultRoot: string): Config {
+/**
+ * Load a vault's config. `workspaceDefaults` (RFC-0004 §2) is deep-merged *under* the
+ * vault's own file, so the order is: built-in defaults, then workspace `defaults`, then
+ * the vault file. This lets one model endpoint serve every vault in a workspace while
+ * each vault can still override. `defaults.index.*` is rejected by the registry, not here.
+ */
+export function loadConfig(vaultRoot: string, workspaceDefaults?: Record<string, unknown>): Config {
   let file = join(vaultRoot, CONFIG_FILENAME);
-  let cfg = DEFAULT_CONFIG;
+  let cfg = workspaceDefaults ? deepMerge(DEFAULT_CONFIG, workspaceDefaults) : DEFAULT_CONFIG;
   if (existsSync(file)) {
     const raw: unknown = JSON.parse(readFileSync(file, 'utf8'));
-    cfg = deepMerge(DEFAULT_CONFIG, raw);
+    cfg = deepMerge(cfg, raw);
   }
   const errs = validateConfig(cfg);
   if (errs.length) throw new Error(`Invalid ${CONFIG_FILENAME}:\n  - ${errs.join('\n  - ')}`);

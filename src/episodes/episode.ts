@@ -26,12 +26,23 @@ export async function writeEpisodes(
     session?: string;
     by?: SourceKind;
     source?: SourceKind;
+    /**
+     * RFC-0004: the agent that authored the episode, set by the server from the binding
+     * (pinned) or the validated `agent` argument (request mode), never from free text.
+     * Answers "which agent said this" when an episode lands in a shared vault.
+     */
+    agent?: string;
+    /**
+     * RFC-0004: provenance for a lifted fact, e.g. `work.coder:api-gateway^f1`. Set only
+     * by `circadia lift`; a normal episode has no origin.
+     */
+    origin?: string;
   },
 ): Promise<EpisodeResult> {
   // Fail-safe default: an unset `by` becomes `agent`, not `user`. A `by: user` episode
   // skips the untrusted-source queue and can supersede facts, so it must never be the
   // default for a programmatic writer. Human-authored episodes set `by` explicitly.
-  const { by = 'agent', source = 'chat', session } = opts;
+  const { by = 'agent', source = 'chat', session, agent, origin } = opts;
   const now = new Date();
   // Folder and filename use the LOCAL calendar date: an episode remembered at 9pm in a
   // negative-offset timezone must land in today's folder, not tomorrow's. The `now`
@@ -75,6 +86,14 @@ export async function writeEpisodes(
 
     if (session) {
       frontmatter.push(`session: ${session}`);
+    }
+    // RFC-0004: `agent` records the authoring agent; `origin` records a lifted fact's
+    // source. Both are optional and additive (schema stays v1).
+    if (agent) {
+      frontmatter.push(`agent: ${agent}`);
+    }
+    if (origin) {
+      frontmatter.push(`origin: ${origin}`);
     }
     frontmatter.push('---');
     frontmatter.push('');

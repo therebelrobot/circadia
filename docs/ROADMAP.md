@@ -343,6 +343,51 @@ are done; steps 3–4 are human-gated. Contract in `docs/RETRIEVAL.md` and
 
 ---
 
+## Phase 9 — Workspaces (RFC-0004)
+
+Layered vaults for one operator: a folder of ordinary vaults plus a registry that places
+each on a project and an agent axis. See [WORKSPACES.md](WORKSPACES.md) and
+[RFC-0004](rfcs/RFC-0004-workspaces.md).
+
+- [x] **Step 1 — ADR, SCHEMA additions, lint.** Episode frontmatter gains optional `agent`
+      (slug) and `origin` (string); `lint` validates both. Schema stays v1.
+- [x] **Step 2 — `src/workspace/` registry, lineage, CLI, federated recall.**
+      `workspace init/add/adopt/list`, `--workspace` on `recall`, weighted RRF merge with
+      `vault`/`layer` labels and one budget. Tests 1–5, 8.
+- [x] **Step 3 — MCP pinned binding, `layers`, `target`, write policy.** `initialize`
+      states the binding; `tools/list` exposes only the allowed targets; `remember` checks
+      the policy. Tests 3, 6.
+- [x] **Step 4 — Request-selected mode.** `--select-per-request`; every call carries
+      `project`/`agent`. Test 7.
+- [x] **Step 5 — `lift`.** CLI-only; writes an episode with `by: user`, `source: import`
+      and `origin:`. Test 9.
+- [x] **Step 6 — Workspace-wide write commands.** `index`, `consolidate`, `dream` and
+      `lint` with `--workspace` and no binding iterate every registered vault in id order,
+      each with its own lock and commit, reporting per vault; one failure does not stop the
+      rest. `review` and `wake` refuse the unbound form. Tests 10–11.
+      Landed: `dispatchWrite`/`runWorkspaceWide` in `src/cli/main.ts`; a bound
+      `--workspace` run acts on the bound cell only (RFC-0004 §8), and the unbound form
+      prints a per-vault summary and exits non-zero if any vault failed. Tests in
+      `test/workspace.test.ts` (iteration order, failure continuation, bound-cell-only,
+      `review`/`wake` refusal).
+- [x] **Step 7 — Container docs and smoke additions.** Mount the lineage only; mount
+      read-only every layer the agent may not write. Test 12. Landed: `openIndex` gains a
+      `readOnly` option that opens the index with SQLite's `immutable=1` URI (a WAL `-shm`
+      sidecar cannot be created on a `:ro` mount; RFC-0004 open question 6, verified),
+      threaded through `recall`/`workspaceRecall` and the MCP server's graph caches and read
+      tools; `scripts/container-smoke.sh` section 8 mounts a four-layer workspace with the
+      shared layers `:ro`, recalls from a `:ro` layer, writes to the writable cell, and
+      asserts the `:ro` layers are unchanged. Unit test: `test/workspace.test.ts`
+      "read-only layer".
+- [x] **Step 8 — Eval fixture and `layerWeights` tuning** (report-only). Test 13.
+      Landed: `generateWorkspaceFixture()` in `eval/generate-fixture.ts` emits a
+      five-vault workspace (`global`, `work`, `coder`, `work.coder`, and the sibling
+      `work.architect`); `eval/workspace.queries.jsonl` holds the cases (agent/project/
+      global-agent/global resolution, project and global fallthrough, a trust-floor
+      block, a sibling negative case, and a `layers` narrowing case); `src/eval/workspace.ts`
+      runs them and scores vault/layer resolution, with a report-only `sweepLayerWeights()`.
+      `test/eval-workspace.test.ts` wires it into `npm test`. See `docs/EVAL.md` §10.
+
 ## Packaging (can run in parallel from Phase 3)
 
 - [ ] **Multi-arch (amd64 and arm64) container for the MCP server**, published to GHCR via

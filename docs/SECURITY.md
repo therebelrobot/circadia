@@ -68,13 +68,32 @@ Controls, required for Phase 3 and later; the defaults here are non-negotiable:
   mcp-memory-keeper CVE-2026-54561 was an arbitrary file read through an import `filePath`.
 - ◻ Note ids created by agents go through `slugify()`. Caller strings never become paths
   directly.
+- ✔ **RFC-0004 workspaces: the server resolves the destination vault.** No caller-supplied
+  string chooses a vault or a path. `project`/`agent` are looked up in the registry, vault
+  ids match `^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)?$`, and a path is always
+  `join(workspace, id)` after that lookup. Nothing is auto-created over MCP. This avoids
+  the librechat-mnemonic finding 6 class, where project names became paths.
 
 ### T4: Cross-domain leakage
 
 - One vault is one trust domain. There are no per-user ACLs, and adding them would be a
   separate design with its own review.
-- ◻ Phase 3: an optional `scope` on `recall` that restricts seeds and traversal to a path
+- ✔ Phase 3: an optional `scope` on `recall` that restricts seeds and traversal to a path
   prefix or tag, for keeping projects apart within one vault.
+- ✔ **RFC-0004 workspaces: a workspace is several trust domains owned by one operator.**
+  A pinned MCP server opens only its lineage vaults, so a sibling's files are never opened
+  and no bug in recall can leak them. The destination vault is resolved by the server, never
+  by request content (Hindsight finding 2). Dreaming never pairs across vaults. Container
+  mounts can enforce both isolation and the write policy. Request-selected mode
+  (`--select-per-request`) gives that up by design: any caller can bind to any cell, which
+  is acceptable only under the single-operator assumption, is off by default, and is named
+  for what it does.
+- ✔ **RFC-0004 read-only layers are enforced by the kernel, not only by Circadia.** A shared
+  layer mounted `:ro` cannot be written by the container at all. The server opens its index
+  with SQLite's `immutable=1` (a WAL `-shm` sidecar cannot be created on a read-only
+  filesystem) and recalls it with `logAccess: false`, so no access log or WAL file is
+  written. `scripts/container-smoke.sh` asserts a `:ro` layer is recalled and its directory
+  is unchanged afterward.
 
 ### T5: Data leaving the machine
 

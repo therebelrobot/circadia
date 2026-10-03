@@ -54,6 +54,12 @@ export interface RecallOptions {
    * CLI recall does not use one.
    */
   graphCache?: GraphCache;
+  /**
+   * Open the index immutable, for a vault mounted read-only (RFC-0004 §8). SQLite in WAL
+   * mode cannot create its `-shm`/`-wal` sidecar on a read-only filesystem; `immutable=1`
+   * avoids the sidecar. The caller must also pass `logAccess: false`.
+   */
+  readOnly?: boolean;
 }
 
 const RRF_K = 60;
@@ -490,7 +496,7 @@ export async function recall(vaultRoot: string, cfg: Config, query: string, opts
   const tokenBudget = opts.tokenBudget ?? cfg.retrieval.tokenBudget;
   const modeRequested = opts.mode ?? cfg.graph.query.mode;
 
-  const { db } = openIndex(opts.dbPath ?? join(vaultRoot, cfg.index.path));
+  const { db } = openIndex(opts.dbPath ?? join(vaultRoot, cfg.index.path), { readOnly: opts.readOnly });
   try {
     if (getMeta(db, 'schema_version') === null) {
       throw new Error('index is empty — run `circadia index` first');
@@ -641,7 +647,10 @@ export function renderForContext(r: RecallResult): string {
     const via = h.via
       ? ` · via: fact-expansion from ${h.via.from}${h.via.predicate ? ` (${h.via.predicate})` : ''}`
       : '';
-    const head = `### ${h.title}${h.heading && h.heading !== h.title ? ` › ${h.heading}` : ''}\n_source: ${h.path} · trust: ${h.trust}${via}_`;
+    // RFC-0004: a federated hit names its layer and vault. The label is server data,
+    // outside any fence; fencing of `trust: low` passages is unchanged.
+    const layer = h.layer && h.vault ? ` · [${h.layer}: ${h.vault}]` : '';
+    const head = `### ${h.title}${h.heading && h.heading !== h.title ? ` › ${h.heading}` : ''}\n_source: ${h.path} · trust: ${h.trust}${layer}${via}_`;
     if (h.trust === 'low') {
       // neutralise any attempt by the content to close the fence early
       const body = h.text.replace(/<\/?\s*untrusted-data/gi, (m) => m.replace('<', '&lt;'));

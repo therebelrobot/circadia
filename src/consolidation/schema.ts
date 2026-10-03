@@ -6,7 +6,7 @@
 // memory-poisoning defense (ARCHITECTURE §3) testable in isolation.
 
 import type { Config } from '../config.ts';
-import type { Fact } from '../types.ts';
+import type { Fact, ParsedNote, Problem } from '../types.ts';
 import type { Candidate } from './candidate.ts';
 import type { NoteRef } from './entity.ts';
 
@@ -34,6 +34,36 @@ export function factObjectKey(f: Fact): string {
  */
 export function isSingleValued(cfg: Config, predicate: string): boolean {
   return cfg.predicates.defs[predicate]?.cardinality === 'single';
+}
+
+/**
+ * B1: detect a data-integrity violation — more than one *current* fact for a predicate
+ * declared `cardinality: "single"`. Superseded and historical facts are ignored: the
+ * invariant is about the live value, and a struck-through fact is not live. Detection
+ * only; nothing is mutated. Returns one warning per offending predicate, naming it.
+ */
+export function singleCardinalityProblems(cfg: Config, note: ParsedNote): Problem[] {
+  const current = new Map<string, Fact[]>();
+  for (const f of note.facts) {
+    if (f.status !== 'current') continue;
+    if (!isSingleValued(cfg, f.predicate)) continue;
+    const list = current.get(f.predicate);
+    if (list) list.push(f);
+    else current.set(f.predicate, [f]);
+  }
+  const problems: Problem[] = [];
+  for (const [predicate, facts] of current) {
+    if (facts.length > 1) {
+      problems.push({
+        severity: 'warning',
+        path: note.path,
+        line: facts[1].line,
+        code: 'fact.single-cardinality',
+        message: `predicate "${predicate}" is cardinality "single" but has ${facts.length} current facts`,
+      });
+    }
+  }
+  return problems;
 }
 
 /**

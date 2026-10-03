@@ -340,6 +340,19 @@ export async function review(vault: string): Promise<ReviewSummary> {
   // on-disk order is preserved within each group.
   const records = prioritizeForReview(readRecords(pending));
 
+  // Resolve each candidate's source episode so the reviewer can see which agent produced
+  // it. Reuses the same parseVault the accept path uses. A missing or unreadable episode
+  // is not fatal: the agent shows as unknown rather than crashing the review.
+  const agentByEpisode = new Map<string, string>();
+  try {
+    for (const n of parseVault(vault, cfg)) {
+      const a = n.frontmatter.agent;
+      if (typeof a === 'string' && a) agentByEpisode.set(n.id, a);
+    }
+  } catch {
+    // a vault that cannot be parsed must not crash review; agents show as unknown
+  }
+
   // RFC-0001 "Confirmation": open and endorsed dream candidates, endorsed first.
   const dreamCandidates = readCandidates(vault)
     .filter((c) => c.state === 'open' || c.state === 'endorsed')
@@ -410,6 +423,7 @@ export async function review(vault: string): Promise<ReviewSummary> {
       const c = records[i];
       console.log(`[${i + 1}] ${c.subject} ${c.predicate} ${c.object}`);
       console.log(`    episode: ${c.episode}`);
+      console.log(`    agent: ${agentByEpisode.get(c.episode) ?? '(unknown)'}`);
       console.log(`    by: ${c.by}`);
       console.log(`    reason: ${c.reason}`);
       if (c.priority === 'reconsolidation') {

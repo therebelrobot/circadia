@@ -42,6 +42,38 @@ passage, which is inserted before a predicate is chosen. Hits that were not inse
 no `via`. Both fields are additive and optional; clients that ignore unknown fields are
 unaffected.
 
+## Workspaces (RFC-0004)
+
+`runWorkspaceServer` serves a workspace instead of one vault. **Pinned** (the default,
+`--workspace <dir> --project p --agent a`) resolves the lineage once at startup and opens
+only those vaults; tool calls cannot name a project or agent. **Request-selected**
+(`--select-per-request`) resolves the cell from each call's `project`/`agent`, which must
+be present. In both modes the destination vault is resolved by the server from the
+registry plus the binding; no argument chooses a vault directly.
+
+- `initialize` states the binding (cell, lineage, allowed write targets) in `serverInfo`
+  and the server instructions.
+- `recall` gains `layers` (narrow the lineage) and returns `byVault` plus per-hit `vault`
+  and `layer` fields. `layers` is advertised in `tools/list` only on a workspace server;
+  the single-vault server ignores it, so advertising it there would invite a call that
+  silently does nothing. An unknown layer value is a `-32602` protocol error, matching the
+  CLI's validation.
+- `remember` gains `target` (`self` | `project` | `global-agent` | `global`); the
+  `tools/list` enum contains only the targets the write policy allows, and the server
+  still checks. The episode's `agent:` frontmatter is set from the binding.
+- `get_note` accepts a qualified id (`work:api-gateway`) or a bare one; `timeline` returns
+  one section per lineage vault; `relate` runs in the first vault that has both endpoints,
+  or the vault named by an optional `layer` (advertised only on a workspace server).
+- `wake`, `endorse_dream` and `dismiss_dream` act on the bound cell only.
+
+**Request-selected `target` is omitted deliberately.** In request-selected mode the server
+does not know the agent until the call arrives, so it cannot compute a per-agent write
+policy at `tools/list` time. The `remember.target` property is therefore omitted from the
+advertised schema entirely rather than advertised with a wrong or empty enum. The server
+still resolves the binding from the call's `project`/`agent` and checks the target against
+that agent's policy before writing, so the omission is a schema-advertising choice, not a
+relaxation of the check.
+
 ## Invariants (must have tests)
 
 - `remember` never creates or modifies anything outside `episodes/`.

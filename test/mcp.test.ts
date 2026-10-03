@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { CONFIG_FILENAME, DEFAULT_CONFIG, loadConfig } from '../src/config.ts';
 import { handleToolsCall } from '../src/mcp/server.ts';
-import { buildIndex } from '../src/index/indexer.ts';
+import { buildIndex, indexRunCount } from '../src/index/indexer.ts';
 import { openIndex } from '../src/index/db.ts';
 import { createGraphCache, type GraphCache } from '../src/retrieval/graph-cache.ts';
 
@@ -296,5 +296,41 @@ describe('MCP recall graph cache (Phase 2)', () => {
     } finally {
       db.close();
     }
+  });
+});
+
+// B3: the remember handler writes episodes but must also reindex, so freshly remembered
+// content is retrievable in the same session. It must reindex exactly once (no redundant
+// full rebuild on top of the incremental update).
+describe('MCP remember reindex (B3)', () => {
+  let vault: string;
+
+  beforeEach(() => {
+    vault = createRecallVault();
+  });
+
+  afterEach(() => {
+    cleanupVault(vault);
+  });
+
+  it('a remembered episode is retrievable by recall in the same session, with one reindex', async () => {
+    const cfg = loadConfig(vault);
+    buildIndex(vault, cfg);
+    const before = indexRunCount;
+
+    const res = await handleToolsCall(
+      vault,
+      cfg,
+      'remember',
+      { text: 'The zephyr widget calibration procedure lives in the operations handbook.' },
+      1,
+    );
+    assert.ok(res.result, 'remember must succeed');
+    assert.equal(indexRunCount - before, 1, 'the remember path must reindex exactly once');
+
+    const recallRes = await handleToolsCall(vault, cfg, 'recall', { query: 'zephyr widget calibration' }, 2);
+    assert.ok(recallRes.result, 'recall must succeed');
+    const text = (recallRes.result as { content: { text: string }[] }).content[0].text;
+    assert.match(text, /zephyr widget calibration/i, 'the freshly remembered content must be retrievable');
   });
 });

@@ -7,14 +7,18 @@
 // never written, so the on-disk assertion fails.
 import { test, describe, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, sep } from 'node:path';
+import { join, sep, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CONFIG_FILENAME, STATE_DIR, loadConfig } from '../src/config.ts';
 import { applyReviewDecision } from '../src/cli/review.ts';
 import { candidateKey, rejectedPath, type PendingRecord } from '../src/consolidation/pending.ts';
 import { main } from '../src/cli/main.ts';
+
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
+const BIN = join(REPO, 'bin', 'circadia.mjs');
 
 /** A minimal vault: two entities, one episode, and a single-valued `runs_on` predicate. */
 function makeVault(): string {
@@ -201,6 +205,29 @@ describe('review (C9)', () => {
       if (prevTz === undefined) delete process.env.TZ;
       else process.env.TZ = prevTz;
     }
+  });
+
+  test('review output shows the source episode agent beside a queued candidate', () => {
+    const v = makeVault();
+    // An episode authored by agent "coder"; the candidate cites it as its source.
+    writeFileSync(
+      join(v, 'episodes', '2026', '09', '2026-09-21-agent.md'),
+      '---\ntype: episode\nstarted: 2026-09-21\nby: agent\nagent: coder\nsource: chat\nboundary: topic-shift\nimportance: 0.5\n---\n# Agent note\n',
+    );
+    const rec = record({ episode: '2026-09-21-agent' });
+    writeFileSync(join(v, STATE_DIR, 'pending.jsonl'), JSON.stringify(rec) + '\n');
+
+    const out = execFileSync(process.execPath, [BIN, 'review', '--vault', v], { input: 'r\n', encoding: 'utf8' });
+    assert.match(out, /agent: coder/, 'the source episode agent must be shown');
+  });
+
+  test('review output renders a placeholder when the source episode is missing', () => {
+    const v = makeVault();
+    const rec = record({ episode: 'does-not-exist' });
+    writeFileSync(join(v, STATE_DIR, 'pending.jsonl'), JSON.stringify(rec) + '\n');
+
+    const out = execFileSync(process.execPath, [BIN, 'review', '--vault', v], { input: 'r\n', encoding: 'utf8' });
+    assert.match(out, /agent: \(unknown\)/, 'a missing source episode must render a placeholder');
   });
 
   test('guard: only time.ts and non-date callers use Date.now()', () => {

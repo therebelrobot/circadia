@@ -84,6 +84,8 @@ may set `consolidated`. Correct a wrong episode by writing a new one that says s
 | `boundary`     | no       | why the episode ended: `topic-shift` \| `session-end` \| `manual` \| `size` |
 | `participants` | no       | list of quoted wikilinks |
 | `consolidated` | no       | ISO date consolidation last processed this episode |
+| `agent`        | no       | RFC-0004: the agent that authored the episode, a lowercase slug. Set by the MCP server from the binding, never from free text. Answers "which agent said this" in a shared vault. |
+| `origin`       | no       | RFC-0004: provenance for a lifted fact, e.g. `work.coder:api-gateway^f1`. Set only by `circadia lift`. |
 
 ### `type: schema`
 
