@@ -1,0 +1,32 @@
+{
+  "coderQuery": "billing api payment retry attempts",
+  "before": [
+    {
+      "rank": 1,
+      "note": "2026-06-04-coder-retry-wrapper",
+      "score": 1.1998,
+      "activation": 0.3327
+    },
+    {
+      "rank": 2,
+      "note": "2026-06-04-qa-retry-flake",
+      "score": 1.1837,
+      "activation": 0.3327
+    }
+  ],
+  "after": [
+    {
+      "rank": 1,
+      "note": "2026-06-04-coder-retry-wrapper",
+      "score": 1.3918,
+      "activation": 0.9727
+    },
+    {
+      "rank": 2,
+      "note": "2026-06-04-qa-retry-flake",
+      "score": 1.3757,
+      "activation": 0.9727
+    }
+  ],
+  "accessLogLines": 30
+}

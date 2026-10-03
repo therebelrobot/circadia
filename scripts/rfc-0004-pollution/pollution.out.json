@@ -1,0 +1,251 @@
+{
+  "episodes": {
+    "written": 6,
+    "sampleFrontmatter": "title: Architecture note: the invoice renderer reads billing api data through a read replica, never the primary.\ntype: episode\nboundary: none\nby: agent\nsource: chat\nsession: architect-s1"
+  },
+  "P1_recallLeakage": {
+    "coder: how many retry attempts for billing api payments": {
+      "hits": [
+        {
+          "note": "billing-api",
+          "writer": "shared"
+        },
+        {
+          "note": "billing-api",
+          "writer": "shared"
+        },
+        {
+          "note": "2026-10-02-decision-arch-retry-billing-api-payment-retries-use-idempotency-keys-with-exponential-backoff-at-most-3-attempts-we-chose-postgres-advisory-locks-over-redis-for-the-retry-job-queue-to-keep-one-datastore",
+          "writer": "architect"
+        },
+        {
+          "note": "invoice-renderer",
+          "writer": "shared"
+        },
+        {
+          "note": "2026-10-02-qa-flaky-the-billing-api-payment-retry-test-is-flaky-on-ci-retries-fire-5-times-instead-of-3-logged-as-a-known-issue-i-suspect-the-retry-policy-is-wrong",
+          "writer": "qa"
+        },
+        {
+          "note": "2026-10-02-architecture-note-the-invoice-renderer-reads-billing-api-data-through-a-read-replica-never-the-primary",
+          "writer": "architect"
+        },
+        {
+          "note": "2026-10-02-coder-spike-spiking-a-redis-cache-for-billing-api-invoice-lookups-on-my-branch-throwaway-experiment-not-merged",
+          "writer": "coder"
+        },
+        {
+          "note": "2026-10-02-coder-localdb-for-local-dev-i-run-the-billing-api-against-sqlite-because-postgres-in-docker-is-slow-on-my-laptop",
+          "writer": "coder"
+        }
+      ],
+      "foreignAgentHits": 3,
+      "ofEpisodeHits": 5
+    },
+    "architect: billing api cache and datastore": {
+      "hits": [
+        {
+          "note": "2026-10-02-coder-spike-spiking-a-redis-cache-for-billing-api-invoice-lookups-on-my-branch-throwaway-experiment-not-merged",
+          "writer": "coder"
+        },
+        {
+          "note": "billing-api",
+          "writer": "shared"
+        },
+        {
+          "note": "2026-10-02-decision-arch-retry-billing-api-payment-retries-use-idempotency-keys-with-exponential-backoff-at-most-3-attempts-we-chose-postgres-advisory-locks-over-redis-for-the-retry-job-queue-to-keep-one-datastore",
+          "writer": "architect"
+        },
+        {
+          "note": "billing-api",
+          "writer": "shared"
+        },
+        {
+          "note": "2026-10-02-architecture-note-the-invoice-renderer-reads-billing-api-data-through-a-read-replica-never-the-primary",
+          "writer": "architect"
+        },
+        {
+          "note": "2026-10-02-coder-localdb-for-local-dev-i-run-the-billing-api-against-sqlite-because-postgres-in-docker-is-slow-on-my-laptop",
+          "writer": "coder"
+        },
+        {
+          "note": "2026-10-02-qa-flaky-the-billing-api-payment-retry-test-is-flaky-on-ci-retries-fire-5-times-instead-of-3-logged-as-a-known-issue-i-suspect-the-retry-policy-is-wrong",
+          "writer": "qa"
+        },
+        {
+          "note": "invoice-renderer",
+          "writer": "shared"
+        }
+      ],
+      "foreignAgentHits": 3,
+      "ofEpisodeHits": 5
+    },
+    "coder: what database does the billing api use": {
+      "hits": [
+        {
+          "note": "billing-api",
+          "writer": "shared"
+        },
+        {
+          "note": "billing-api",
+          "writer": "shared"
+        },
+        {
+          "note": "2026-10-02-decision-arch-retry-billing-api-payment-retries-use-idempotency-keys-with-exponential-backoff-at-most-3-attempts-we-chose-postgres-advisory-locks-over-redis-for-the-retry-job-queue-to-keep-one-datastore",
+          "writer": "architect"
+        },
+        {
+          "note": "2026-10-02-architecture-note-the-invoice-renderer-reads-billing-api-data-through-a-read-replica-never-the-primary",
+          "writer": "architect"
+        },
+        {
+          "note": "2026-10-02-coder-spike-spiking-a-redis-cache-for-billing-api-invoice-lookups-on-my-branch-throwaway-experiment-not-merged",
+          "writer": "coder"
+        },
+        {
+          "note": "2026-10-02-coder-localdb-for-local-dev-i-run-the-billing-api-against-sqlite-because-postgres-in-docker-is-slow-on-my-laptop",
+          "writer": "coder"
+        },
+        {
+          "note": "2026-10-02-qa-flaky-the-billing-api-payment-retry-test-is-flaky-on-ci-retries-fire-5-times-instead-of-3-logged-as-a-known-issue-i-suspect-the-retry-policy-is-wrong",
+          "writer": "qa"
+        },
+        {
+          "note": "invoice-renderer",
+          "writer": "shared"
+        }
+      ],
+      "foreignAgentHits": 3,
+      "ofEpisodeHits": 5
+    },
+    "qa: invoice renderer billing api": {
+      "hits": [
+        {
+          "note": "invoice-renderer",
+          "writer": "shared"
+        },
+        {
+          "note": "2026-10-02-architecture-note-the-invoice-renderer-reads-billing-api-data-through-a-read-replica-never-the-primary",
+          "writer": "architect"
+        },
+        {
+          "note": "billing-api",
+          "writer": "shared"
+        },
+        {
+          "note": "billing-api",
+          "writer": "shared"
+        },
+        {
+          "note": "2026-10-02-coder-spike-spiking-a-redis-cache-for-billing-api-invoice-lookups-on-my-branch-throwaway-experiment-not-merged",
+          "writer": "coder"
+        },
+        {
+          "note": "2026-10-02-coder-localdb-for-local-dev-i-run-the-billing-api-against-sqlite-because-postgres-in-docker-is-slow-on-my-laptop",
+          "writer": "coder"
+        },
+        {
+          "note": "2026-10-02-qa-flaky-the-billing-api-payment-retry-test-is-flaky-on-ci-retries-fire-5-times-instead-of-3-logged-as-a-known-issue-i-suspect-the-retry-policy-is-wrong",
+          "writer": "qa"
+        },
+        {
+          "note": "2026-10-02-decision-arch-retry-billing-api-payment-retries-use-idempotency-keys-with-exponential-backoff-at-most-3-attempts-we-chose-postgres-advisory-locks-over-redis-for-the-retry-job-queue-to-keep-one-datastore",
+          "writer": "architect"
+        }
+      ],
+      "foreignAgentHits": 4,
+      "ofEpisodeHits": 5
+    }
+  },
+  "P2_scope": {
+    "tag:coder": [],
+    "episodes/": [
+      "architect",
+      "coder",
+      "coder",
+      "qa",
+      "architect"
+    ]
+  },
+  "P3_actrCoupling": {
+    "coderQuery": "billing api retry attempts",
+    "qaEpisode": "2026-10-02-qa-flaky-the-billing-api-payment-retry-test-is-flaky-on-ci-retries-fire-5-times-instead-of-3-logged-as-a-known-issue-i-suspect-the-retry-policy-is-wrong",
+    "before": {
+      "rank": 3,
+      "activation": 0.999875789431432,
+      "score": 1.3838337045713651,
+      "top": [
+        "2026-10-02-decision-arch-retry-billing-api-payment-retries-use-idempotency-keys-with-exponential-backoff-at-most-3-attempts-we-chose-postgres-advisory-locks-over-redis-for-the-retry-job-queue-to-keep-one-datastore (architect)",
+        "billing-api (shared)",
+        "2026-10-02-qa-flaky-the-billing-api-payment-retry-test-is-flaky-on-ci-retries-fire-5-times-instead-of-3-logged-as-a-known-issue-i-suspect-the-retry-policy-is-wrong (qa)",
+        "billing-api (shared)"
+      ]
+    },
+    "after": {
+      "rank": 3,
+      "activation": 0.9999689444647887,
+      "score": 1.3838616510813722,
+      "top": [
+        "2026-10-02-decision-arch-retry-billing-api-payment-retries-use-idempotency-keys-with-exponential-backoff-at-most-3-attempts-we-chose-postgres-advisory-locks-over-redis-for-the-retry-job-queue-to-keep-one-datastore (architect)",
+        "billing-api (shared)",
+        "2026-10-02-qa-flaky-the-billing-api-payment-retry-test-is-flaky-on-ci-retries-fire-5-times-instead-of-3-logged-as-a-known-issue-i-suspect-the-retry-policy-is-wrong (qa)",
+        "billing-api (shared)"
+      ]
+    },
+    "accessLogLines": 157
+  },
+  "P4_consolidation": {
+    "summary": {
+      "promoted": 4,
+      "queued": 1,
+      "superseded": 0
+    },
+    "billingApiFacts": "- [uses_db:: [[postgres]]] [valid:: 2026-06..] [by:: user]\n- [uses_cache:: [[redis]]] [valid:: 2026-10-02..] [at:: 2026-10-02] [by:: agent] [src:: [[2026-10-02-coder-spike-spiking-a-redis-cache-for-billing-api-invoice-lookups-on-my-branch-throwaway-experiment-not-merged]]] [conf:: 0.8] ^f-e8c6564642\n- [retry_max_attempts:: 3] [valid:: 2026-10-02..] [at:: 2026-10-02] [by:: agent] [src:: [[2026-10-02-decision-arch-retry-billing-api-payment-retries-use-idempotency-keys-with-exponential-backoff-at-most-3-attempts-we-chose-postgres-advisory-locks-over-redis-for-the-retry-job-queue-to-keep-one-datastore]]] [conf:: 0.95] ^f-d01a29114b\n- [retry_max_attempts:: 5] [valid:: 2026-10-02..] [at:: 2026-10-02] [by:: agent] [src:: [[2026-10-02-qa-flaky-the-billing-api-payment-retry-test-is-flaky-on-ci-retries-fire-5-times-instead-of-3-logged-as-a-known-issue-i-suspect-the-retry-policy-is-wrong]]] [conf:: 0.7] ^f-c078407c32\n- [known_issue:: payment retry test is flaky] [valid:: 2026-10-02..] [at:: 2026-10-02] [by:: agent] [src:: [[2026-10-02-qa-flaky-the-billing-api-payment-retry-test-is-flaky-on-ci-retries-fire-5-times-instead-of-3-logged-as-a-known-issue-i-suspect-the-retry-policy-is-wrong]]] [conf:: 0.9] ^f-3aa753abc2",
+    "pending": [
+      {
+        "reason": "contradicts a current fact",
+        "candidate": {
+          "v": 2,
+          "key": "db0f11916f",
+          "subject": "billing-api",
+          "predicate": "uses_db",
+          "object": "[[sqlite]]",
+          "episode": "2026-10-02-coder-localdb-for-local-dev-i-run-the-billing-api-against-sqlite-because-postgres-in-docker-is-slow-on-my-laptop",
+          "by": "agent",
+          "trust": "medium",
+          "origin": "episode",
+          "reason": "contradicts a current fact",
+          "queuedAt": 1790899200000
+        },
+        "episode": "2026-10-02-coder-localdb-for-local-dev-i-run-the-billing-api-against-sqlite-because-postgres-in-docker-is-slow-on-my-laptop"
+      }
+    ]
+  },
+  "P4_architectReadsAfterSleep": [
+    "- [uses_db:: [[postgres]]] [valid:: 2026-06..] [by:: user]",
+    "- [uses_cache:: [[redis]]] [valid:: 2026-10-02..] [at:: 2026-10-02] [by:: agent] [src:: [[2026-10-02-coder-spike-spiking-a-redis-cache-for-billing-api-invoice-lookups-on-my-branch-throwaway-experiment-not-merged]]] [conf:: 0.8] ^f-e8c6564642",
+    "- [retry_max_attempts:: 3] [valid:: 2026-10-02..] [at:: 2026-10-02] [by:: agent] [src:: [[2026-10-02-decision-arch-retry-billing-api-payment-retries-use-idempotency-keys-with-exponential-backoff-at-most-3-attempts-we-chose-postgres-advisory-locks-over-redis-for-the-retry-job-queue-to-keep-one-datastore]]] [conf:: 0.95] ^f-d01a29114b",
+    "- [retry_max_attempts:: 5] [valid:: 2026-10-02..] [at:: 2026-10-02] [by:: agent] [src:: [[2026-10-02-qa-flaky-the-billing-api-payment-retry-test-is-flaky-on-ci-retries-fire-5-times-instead-of-3-logged-as-a-known-issue-i-suspect-the-retry-policy-is-wrong]]] [conf:: 0.7] ^f-c078407c32",
+    "- [known_issue:: payment retry test is flaky] [valid:: 2026-10-02..] [at:: 2026-10-02] [by:: agent] [src:: [[2026-10-02-qa-flaky-the-billing-api-payment-retry-test-is-flaky-on-ci-retries-fire-5-times-instead-of-3-logged-as-a-known-issue-i-suspect-the-retry-policy-is-wrong]]] [conf:: 0.9] ^f-3aa753abc2"
+  ],
+  "P5_dreamPairs": {
+    "ran": true,
+    "pairs": [
+      "billing-api (shared) <-> ledger-export (shared)",
+      "2026-10-02-architecture-note-the-invoice-renderer-reads-billing-api-data-through-a-read-replica-never-the-primary (architect) <-> ledger-export (shared)",
+      "2026-10-02-coder-localdb-for-local-dev-i-run-the-billing-api-against-sqlite-because-postgres-in-docker-is-slow-on-my-laptop (coder) <-> ledger-export (shared)",
+      "2026-10-02-coder-spike-spiking-a-redis-cache-for-billing-api-invoice-lookups-on-my-branch-throwaway-experiment-not-merged (coder) <-> redis (shared)",
+      "2026-10-02-decision-arch-retry-billing-api-payment-retries-use-idempotency-keys-with-exponential-backoff-at-most-3-attempts-we-chose-postgres-advisory-locks-over-redis-for-the-retry-job-queue-to-keep-one-datastore (architect) <-> oncall-runbook (shared)",
+      "2026-10-02-qa-flaky-the-billing-api-payment-retry-test-is-flaky-on-ci-retries-fire-5-times-instead-of-3-logged-as-a-known-issue-i-suspect-the-retry-policy-is-wrong (qa) <-> 2026-10-02-qa-note-ledger-export-failed-the-reconciliation-check-twice-this-week (qa)",
+      "invoice-renderer (shared) <-> postgres (shared)",
+      "2026-10-02-architecture-note-the-invoice-renderer-reads-billing-api-data-through-a-read-replica-never-the-primary (architect) <-> redis (shared)",
+      "2026-10-02-coder-localdb-for-local-dev-i-run-the-billing-api-against-sqlite-because-postgres-in-docker-is-slow-on-my-laptop (coder) <-> redis (shared)",
+      "2026-10-02-coder-spike-spiking-a-redis-cache-for-billing-api-invoice-lookups-on-my-branch-throwaway-experiment-not-merged (coder) <-> 2026-10-02-qa-note-ledger-export-failed-the-reconciliation-check-twice-this-week (qa)",
+      "2026-10-02-qa-flaky-the-billing-api-payment-retry-test-is-flaky-on-ci-retries-fire-5-times-instead-of-3-logged-as-a-known-issue-i-suspect-the-retry-policy-is-wrong (qa) <-> ledger-export (shared)",
+      "billing-api (shared) <-> 2026-10-02-qa-note-ledger-export-failed-the-reconciliation-check-twice-this-week (qa)",
+      "2026-10-02-decision-arch-retry-billing-api-payment-retries-use-idempotency-keys-with-exponential-backoff-at-most-3-attempts-we-chose-postgres-advisory-locks-over-redis-for-the-retry-job-queue-to-keep-one-datastore (architect) <-> sqlite (shared)"
+    ],
+    "crossAgent": 1
+  },
+  "vault": "/tmp/circadia-pollution-w4hVUn"
+}
