@@ -849,6 +849,18 @@ export async function main(argv: string[]): Promise<number> {
               `  ${a.group.padEnd(28)} n=${String(a.count).padStart(3)}  recall@5=${(a.recallAtK['5'] ?? 0).toFixed(3)}  mrr=${a.mrr.toFixed(3)}${share}`,
             );
           }
+          // RFC-0002 §Observability: a standalone per-kind line so the expansion
+          // share sits next to recall for each kind, not only on the kind:split
+          // lines above. Emitted only when expansion ran, so flag-off output is
+          // unchanged. Kind groups are the aggregates whose group is a result
+          // kind (mode/split/escalation groups never collide with a kind name).
+          const kinds = new Set<string>(report.results.map((r) => r.kind));
+          for (const a of report.aggregates) {
+            if (!kinds.has(a.group) || a.expansionShare === undefined) continue;
+            console.log(
+              `  ${a.group.padEnd(28)} n=${String(a.count).padStart(3)}  recall@5=${(a.recallAtK['5'] ?? 0).toFixed(3)}  mrr=${a.mrr.toFixed(3)}  expand=${a.expansionShare.toFixed(3)}`,
+            );
+          }
           if (deltas) console.log(`baseline: ${deltas.length} delta(s) vs ${baselinePath}`);
           if (args.flags.has('update-baseline')) console.log(`baseline written to ${baselinePath}`);
         }

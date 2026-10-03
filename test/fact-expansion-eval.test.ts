@@ -14,17 +14,32 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { generateFixture } from '../eval/generate-fixture.ts';
 import { deepMerge, loadConfig } from '../src/config.ts';
 import { runEval } from '../src/eval/run.ts';
 import { aggregate } from '../src/eval/metrics.ts';
+import { main } from '../src/cli/main.ts';
 import type { EvalQuery } from '../src/eval/types.ts';
 
 const EVAL_DIR = resolve(import.meta.dirname, '..', 'eval');
 const tmp = mkdtempSync(join(tmpdir(), 'circadia-fe-eval-'));
+
+/** Capture console.log while running `fn`, mirroring test/eval-cli.test.ts. */
+async function capture(fn: () => Promise<number>): Promise<{ code: number; out: string }> {
+  const origLog = console.log;
+  const out: string[] = [];
+  console.log = (...a: unknown[]) => {
+    out.push(a.map((x) => String(x)).join(' '));
+  };
+  try {
+    return { code: await fn(), out: out.join('\n') };
+  } finally {
+    console.log = origLog;
+  }
+}
 
 const UNSCOPED = new Set([
   'single-hop',
@@ -141,6 +156,38 @@ test('W1: per-kind expansion share is reported when the flag is on and absent wh
     if (expected > 0) sawExpansion = true;
   }
   assert.ok(sawExpansion, 'at least one kind has a non-zero expansion share');
+});
+
+// D1 (RFC-0002 §Observability): the human eval output prints a standalone
+// per-kind line carrying the expansion share, not only the kind:split lines.
+// The line is emitted only when expansion ran, so flag-off output is unchanged.
+test('D1: human eval output prints a standalone per-kind expansion-share line', async () => {
+  const dir = join(tmp, 'vault-cli');
+  generateFixture(dir);
+
+  // Flag off: no expansion ran, so no `expand=` suffix anywhere.
+  const off = await capture(() => main(['eval', '--vault', dir]));
+  assert.equal(off.code, 0);
+  assert.equal(off.out.includes('expand='), false, 'flag-off output has no expand= suffix');
+
+  // Flag on, forced typed so fact edges are traversed.
+  const cfgPath = join(dir, 'circadia.config.json');
+  const raw = JSON.parse(readFileSync(cfgPath, 'utf8')) as {
+    graph: Record<string, unknown>;
+    retrieval: Record<string, unknown>;
+  };
+  raw.graph.query = { mode: 'typed' };
+  raw.retrieval.factExpansion = { enabled: true };
+  writeFileSync(cfgPath, JSON.stringify(raw, null, 2));
+
+  const on = await capture(() => main(['eval', '--vault', dir]));
+  assert.equal(on.code, 0);
+  const expandLines = on.out.split('\n').filter((l) => l.includes('expand='));
+  assert.ok(expandLines.length > 0, 'flag-on output carries expand= lines');
+  // A standalone per-kind line has no `:` in its group (kind:split lines do).
+  const standalone = expandLines.filter((l) => !l.trimStart().split(/\s+/)[0].includes(':'));
+  assert.ok(standalone.length > 0, 'a standalone per-kind line carries expand=');
+  assert.match(standalone[0], /^\s+\S+\s+n=\s*\d+\s+recall@5=[\d.]+\s+mrr=[\d.]+\s+expand=[\d.]+$/);
 });
 
 test.after(() => rmSync(tmp, { recursive: true, force: true }));

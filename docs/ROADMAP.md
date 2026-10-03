@@ -320,6 +320,29 @@ RFC-0001. Contract in `src/dreams/README.md`; decision in ADR-0011.
 
 ---
 
+## RFC-0002: Entity-anchored fact expansion (rollout)
+
+RFC-0002. Implemented behind `retrieval.factExpansion.enabled` (default `false`). Steps 1–2
+are done; steps 3–4 are human-gated. Contract in `docs/RETRIEVAL.md` and
+`src/mcp/README.md`.
+
+- [x] **Step 1 — Flag and config.** Add `retrieval.factExpansion.*`, off by default.
+      Gate: the Phase 7 baseline shows 0 deltas.
+- [x] **Step 2 — Implement behind the flag.** Expansion in `runRung()` (or a small
+      `expandFacts()` helper it calls); `recall()` passes `entities` to `runRung()`. Tests,
+      one per invariant (fact edges only; as-of correctness; trust floor and scope; each cue
+      entity expands once; the per-hit cap; `via` marking and how `renderForContext()` shows
+      it). `via` and `expanded` documented in `src/mcp/README.md` and `docs/RETRIEVAL.md`.
+      Gate: criteria 1–9 pass; the flag-on eval reproduces the RFC's numbers exactly;
+      vacuous absences are 0; no kind regresses on either split in any mode.
+- [ ] **Step 3 — Measure on a personal vault.** Run the private eval with the flag on and
+      off. **Human-gated:** turn on only if no kind regresses on either split of either tier,
+      and trust and absence violations don't rise.
+- [ ] **Step 4 — Default flip, if step 3 passes.** The one-way step, in its own commit, with
+      a line in `docs/RETRIEVAL.md`. **Human-gated.**
+
+---
+
 ## Packaging (can run in parallel from Phase 3)
 
 - [ ] **Multi-arch (amd64 and arm64) container for the MCP server**, published to GHCR via
