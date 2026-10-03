@@ -1,7 +1,10 @@
 # RFC-0002: Entity-anchored fact expansion
 
-Status: proposed · 2026-10-01 · measured against `1bb6a8a` (no `src/` or `eval/` changes since,
-checked at `a86f374`) · revised after delivery triage
+Status: steps 1–2 implemented behind a default-off flag
+(`retrieval.factExpansion.enabled: false`); steps 3–4 (personal-vault measurement, then
+default flip) are human-gated and pending · 2026-10-01 · measured against `1bb6a8a`; `src/`
+and `eval/` changed after `a86f374` in `31ea86f`, `dd567c2`, `6cd0f57`, `85289dd`, `ef39638`
+(steps 1–2 and follow-ups) · revised after delivery triage
 
 Replaces an earlier draft titled "How graph and lexical scores combine". That draft's
 numbers were measured before vector seeds reached the eval, and they don't hold on the

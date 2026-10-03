@@ -18,7 +18,7 @@ without breaking its invariants. Read it fully before editing anything.
 ## 2. Commands
 
 ```bash
-npm test                  # node:test, ~16s. 341 tests.
+npm test                  # node:test, ~19s. 368 tests.
 npm run typecheck         # tsc --noEmit, strict + erasableSyntaxOnly
 npm run example:index     # index examples/vault (incremental; --full for a full rebuild)
 node bin/circadia.mjs watch --vault examples/vault   # reindex on change (Ctrl-C to stop)
