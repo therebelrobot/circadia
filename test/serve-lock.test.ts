@@ -7,7 +7,7 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync, execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync, statSync } from 'node:fs';
 import { hostname as osHostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +19,6 @@ import {
   lockFilePath,
   pidAlive,
   readLock,
-  releaseLock,
   withWriteLock,
 } from '../src/util/lockfile.ts';
 

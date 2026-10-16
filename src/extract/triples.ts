@@ -123,11 +123,13 @@ export class HttpTripleExtractor implements TripleExtractor {
   readonly model: string;
   readonly endpoint: string;
   readonly apiKeyEnv: string | null;
+  readonly apiKeyFileEnv: string | null;
 
-  constructor(endpoint: string, model: string, apiKeyEnv: string | null) {
+  constructor(endpoint: string, model: string, apiKeyEnv: string | null, apiKeyFileEnv: string | null = null) {
     this.endpoint = endpoint;
     this.model = model;
     this.apiKeyEnv = apiKeyEnv;
+    this.apiKeyFileEnv = apiKeyFileEnv;
   }
 
   async extract(passage: { id: string; title: string; heading: string | null; text: string }): Promise<
@@ -158,6 +160,7 @@ ${fenceData(passage.text, 'passage-data')}`;
         { role: 'user', content: user },
       ],
       apiKeyEnv: this.apiKeyEnv,
+      apiKeyFileEnv: this.apiKeyFileEnv,
       temperature: 0.1, // Low temp for deterministic extraction
       maxTokens: 512,
       jsonObject: true,

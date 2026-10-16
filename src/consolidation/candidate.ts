@@ -75,6 +75,7 @@ ${fenceData(text, 'episode-data')}`;
       { role: 'user', content: user },
     ],
     apiKeyEnv: cfg.extraction.apiKeyEnv,
+    apiKeyFileEnv: cfg.extraction.apiKeyFileEnv ?? null,
     temperature: 0.1,
     maxTokens: 1024,
     jsonObject: true,

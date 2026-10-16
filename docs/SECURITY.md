@@ -41,22 +41,35 @@ Controls (✔ = implemented in Phase 1, ◻ = planned):
 
 ### T2: Unauthorized access to the memory service
 
-Controls, required for Phase 3 and later; the defaults here are non-negotiable:
+Controls, required for Phase 3 and later; the defaults here are non-negotiable. The first
+MCP server speaks only stdio, so it has no network surface. `circadia serve` (RFC-0003) adds
+a second transport and meets every HTTP control below; markers show what is implemented.
 
-- **stdio transport first.** The first MCP server speaks only stdio, so it has no network
+- ✔ **stdio transport first.** The first MCP server speaks only stdio, so it has no network
   surface.
-- If HTTP is added:
-  - bind `127.0.0.1` by default;
-  - **require a bearer token**, and refuse to start without one;
-  - use one auth path for *all* transports. Hindsight's MCP auth could be disabled
-    independently of its HTTP auth; don't allow that;
-  - send no CORS headers by default;
-  - never use `allow_origins=*` with credentials. mcp-memory-service CVE-2026-33010 did
-    exactly this.
-- Every route checks auth, including document and import routes. mcp-memory-service
+- ✔ If HTTP is added (`circadia serve`, RFC-0003 §3/§6):
+  - ✔ bind `127.0.0.1` by default; a non-loopback bind is opt-in (`serve.bind` /
+    `CIRCADIA_BIND`) and logs a warning;
+  - ✔ **require a bearer token**, and refuse to start without one (also refuses a token
+    shorter than 32 bytes, or a read token equal to the write token);
+  - ✔ use one auth path for *all* transports. Hindsight's MCP auth could be disabled
+    independently of its HTTP auth; don't allow that. `serve` has exactly one transport, so
+    this holds trivially;
+  - ✔ send no CORS headers by default, and reject any request carrying a non-allowlisted
+    `Origin`;
+  - ✔ never use `allow_origins=*` with credentials. mcp-memory-service CVE-2026-33010 did
+    exactly this. `serve.allowedOrigins` rejects `"*"` at config load.
+- ✔ Every route checks auth, including document and import routes. mcp-memory-service
   CVE-2026-50027 left `/api/documents/*` unauthenticated even with an API key configured.
-- Mutating tools need a write scope, not a read scope. See mcp-memory-service
-  CVE-2026-49291.
+  `serve` runs auth before routing, so unknown paths 404 only after auth.
+- ✔ Mutating tools need a write scope, not a read scope. See mcp-memory-service
+  CVE-2026-49291. `serve` has a write token (every tool) and an optional read token
+  (`recall`, `timeline`, `relate`, `get_note`); a read token on a write tool is refused and
+  the tool does not run.
+
+`serve` adds these controls beyond T2: a body-size cap, an in-flight cap, an advisory write
+lock across processes, no secrets in the git-tracked vault config, and no unauthenticated
+health route (the `--check` heartbeat is a local file, not an HTTP route).
 
 ### T3: Path traversal and file access
 

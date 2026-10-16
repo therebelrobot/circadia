@@ -388,6 +388,41 @@ each on a project and an agent axis. See [WORKSPACES.md](WORKSPACES.md) and
       runs them and scores vault/layer resolution, with a report-only `sweepLayerWeights()`.
       `test/eval-workspace.test.ts` wires it into `npm test`. See `docs/EVAL.md` §10.
 
+## Phase 10 — Persistent server (`circadia serve`, RFC-0003)
+
+The long-lived HTTP MCP service and the `circadia-server` image. See
+[RFC-0003](rfcs/RFC-0003-server-container.md), [ADR-0014](decisions/ADR-0014-node-http-runtime-for-serve.md),
+and `docs/CONFIG.md` §serve.
+
+- [x] **Step 1 — Write lock and `busy_timeout` (base package).** `.circadia/write.lock` taken
+      by every mutating CLI command, plus `PRAGMA busy_timeout`. Lands before `serve`; has
+      value without it. Tests: `test/serve-lock.test.ts`.
+- [x] **Step 2 — ADR, transport and auth (no scheduler).** ADR-0014 (`node:http` at runtime,
+      scoped to `src/serve/`); `circadia serve` with Streamable HTTP, bearer tokens and
+      read/write scopes, browser defenses, body/in-flight caps. Tests:
+      `test/serve-tokens.test.ts`, `test/serve-http.test.ts`, `test/serve-sdk.test.ts`
+      (official SDK over `StreamableHTTPClientTransport`), `test/serve-integration.test.ts`.
+- [x] **Step 3 — Scheduler and state file.** `serve.schedule.consolidate` (local `HH:MM`),
+      DST handling, one-shot catch-up, `.circadia/serve-state.json`, catch-up not retried
+      before the next slot. Tests: `test/serve-scheduler.test.ts`, plus the scheduled-tick
+      case in `test/serve-integration.test.ts`.
+- [x] **Step 4 — `circadia-server` image, CI, docs.** A second Dockerfile target
+      (`FROM runtime`), a `HEALTHCHECK` backed by `serve --check`, a compose example, the
+      container-workflow matrix entry, and the SECURITY/CONFIG/README docs. Tests: container
+      smoke additions (see `scripts/container-smoke.sh`).
+
+**Acceptance**
+
+- `serve` refuses to start without a write token, with a token under 32 bytes, or with a
+  read token equal to the write token; a read token on a write tool errors and writes
+  nothing.
+- The official MCP SDK connects over Streamable HTTP, lists tools, and calls one.
+- A non-allowlisted `Origin` is rejected; no response carries `Access-Control-*`; `OPTIONS`
+  is not approved. A 2 MiB body is rejected; the in-flight cap returns `503`.
+- The scheduler fires a slot once; a missed slot catches up once and not again; DST
+  spring-forward and fall-back behave as specified; `null` schedules nothing.
+- A mutating tool call during a held lock returns a retryable error naming the job.
+
 ## Packaging (can run in parallel from Phase 3)
 
 - [ ] **Multi-arch (amd64 and arm64) container for the MCP server**, published to GHCR via

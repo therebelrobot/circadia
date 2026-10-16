@@ -241,6 +241,8 @@ describe('review (C9)', () => {
       'src/consolidation/consolidate.ts', // now + ?? fallbacks; note dates use systemDateNow
       'src/dreams/rem.ts', // the pass's "now"; the night is a local date, not a note date
       'src/dreams/wake.ts', // the TTL "now"; the night is a local date, not a note date
+      'src/serve/gate.ts', // write-lock/queue timeouts: elapsed wall-clock durations, not note dates
+      'src/serve/run.ts', // the service clock (heartbeat + scheduler); note dates use systemDateNow
     ]);
     const srcDir = fileURLToPath(new URL('../src', import.meta.url));
     const offenders: string[] = [];

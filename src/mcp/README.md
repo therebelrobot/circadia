@@ -1,17 +1,36 @@
-# src/mcp: MCP server (Phase 3, contract only)
+# src/mcp: MCP server (contract)
 
-Nothing here is implemented yet. This file is the contract the Phase 3 implementation must
-meet. Read `docs/ROADMAP.md` Phase 3 and `docs/SECURITY.md` T1–T3 first.
+The stdio server and the workspace server are implemented (`server.ts`); this file is the
+contract they meet and the transport rules `circadia serve` adds.
 
 ## Transport
 
-- **stdio only** at first, with JSON-RPC 2.0 framing written by hand (zero dependencies,
-  ADR-0004).
-- If an HTTP transport is ever added:
-  - bind `127.0.0.1`;
-  - require a bearer token and refuse to start without one;
-  - use one auth path for every transport;
-  - send no CORS headers by default.
+- **stdio** (`circadia mcp`): JSON-RPC 2.0 framing written by hand (zero dependencies,
+  ADR-0004). Four transport rules:
+  - stdout carries JSON-RPC messages and nothing else; every log/banner goes to stderr;
+  - messages are newline-delimited, buffered across chunk boundaries;
+  - every response echoes the request's `id`;
+  - a message with no `id` is a notification: process it, reply to nothing.
+- **Streamable HTTP** (`circadia serve`, RFC-0003, ADR-0014): `node:http`, still zero
+  dependencies. One route, `POST /mcp`, answering `application/json` (no SSE in v1). Rules:
+  - auth runs before routing: a missing/bad bearer token is `401` with
+    `WWW-Authenticate: Bearer`; unknown methods/paths `404` only after auth;
+  - a request carrying an `Origin` is rejected unless the origin is allowlisted (empty by
+    default); no CORS headers are ever sent, and `OPTIONS` is not answered;
+  - the body is capped while streaming (`413` over the cap); concurrent requests are capped
+    (`503` + `Retry-After`); a per-request timeout applies;
+  - `Mcp-Session-Id` is honored per the spec, and is unrelated to the `session` argument on
+    `recall`/`remember` (Circadia's reconsolidation session, supplied by the caller).
+
+## Scopes (HTTP transport)
+
+`serve` has a **write** token (every tool) and an optional **read** token. A read token is
+refused on a write tool with a JSON-RPC error, and the tool does not run.
+
+| tool | scope |
+|---|---|
+| `recall`, `timeline`, `relate`, `get_note` | read or write |
+| `remember`, `wake`, `endorse_dream`, `dismiss_dream` | write only (`wake` deletes the dream log) |
 
 ## Tools
 

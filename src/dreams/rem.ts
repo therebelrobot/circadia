@@ -370,6 +370,7 @@ ${fenceData(textB, 'passage-data')}`;
       { role: 'user', content: user },
     ],
     apiKeyEnv: cfg.extraction.apiKeyEnv,
+    apiKeyFileEnv: cfg.extraction.apiKeyFileEnv ?? null,
     temperature: 0.1,
     maxTokens: 512,
     jsonObject: true,

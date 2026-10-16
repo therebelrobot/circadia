@@ -5,6 +5,7 @@
 // non-xAI model (owner requirement, AGENTS.md §3).
 
 import type { Config } from '../config.ts';
+import { resolveApiKey } from '../llm/api-key.ts';
 
 export interface EmbeddingInput {
   id: string;
@@ -30,6 +31,7 @@ export class HttpEmbeddingsClient implements EmbeddingsClient {
   readonly model: string;
   private readonly endpoint: string;
   private readonly apiKeyEnv: string | null;
+  private readonly apiKeyFileEnv: string | null;
   private readonly batchSize: number;
   private _dimensions: number | null = null;
 
@@ -37,6 +39,7 @@ export class HttpEmbeddingsClient implements EmbeddingsClient {
     this.model = cfg.model;
     this.endpoint = cfg.endpoint;
     this.apiKeyEnv = cfg.apiKeyEnv;
+    this.apiKeyFileEnv = cfg.apiKeyFileEnv ?? null;
     this.batchSize = Math.max(1, cfg.batchSize);
   }
 
@@ -58,10 +61,8 @@ export class HttpEmbeddingsClient implements EmbeddingsClient {
 
   private async requestBatch(input: string[]): Promise<Float32Array[]> {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
-    if (this.apiKeyEnv) {
-      const token = process.env[this.apiKeyEnv];
-      if (token) headers.authorization = `Bearer ${token}`;
-    }
+    const token = resolveApiKey(this.apiKeyEnv, this.apiKeyFileEnv);
+    if (token) headers.authorization = `Bearer ${token}`;
     let lastError: unknown;
     for (let attempt = 0; attempt < 2; attempt++) {
       if (attempt > 0) await sleep(RETRY_DELAY_MS);

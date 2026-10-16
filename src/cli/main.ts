@@ -48,6 +48,7 @@ commands
   init <dir>            scaffold a new vault (folders, config, templates, _meta docs)
   index                 index the vault (incremental; --full for a full rebuild)
   watch                 watch the vault and reindex on change (Ctrl-C to stop)
+  serve                 run the long-lived HTTP MCP service (bearer-token auth; --check for health)
   lint                  check the vault against docs/SCHEMA.md (exit 1 on errors)
   recall <query…>       retrieve passages for a cue
   relate <a> <b>        shortest paths between two notes (default mode: typed)
@@ -106,6 +107,7 @@ options
   --aggregate-only      (eval) omit per-query hits and query text from output
   --allow-missing       (eval) don't fail when a gold id is not in the index
   --check               (eval) exit non-zero on any baseline delta
+                        (serve) read the heartbeat file and exit non-zero when unhealthy
   -h, --help            this help
 `;
 
@@ -228,7 +230,7 @@ function cmdInit(dir: string): void {
   writeFileSync(join(root, CONFIG_FILENAME), JSON.stringify(cfg, null, 2) + '\n');
   writeFileSync(
     join(root, '.gitignore'),
-    `# derived — rebuild with \`circadia index\`\n${STATE_DIR}/index.sqlite*\n# keep ${STATE_DIR}/access.jsonl and ${STATE_DIR}/triples/: they are not derivable\n# dream state is disposable and never committed (ADR-0011)\n${STATE_DIR}/dreams/\n`,
+    `# derived — rebuild with \`circadia index\`\n${STATE_DIR}/index.sqlite*\n# keep ${STATE_DIR}/access.jsonl and ${STATE_DIR}/triples/: they are not derivable\n# dream state is disposable and never committed (ADR-0011)\n${STATE_DIR}/dreams/\n# serve state is disposable and never committed (RFC-0003 §5)\n${STATE_DIR}/serve-state.json\n# the advisory write lock is transient and never committed (RFC-0003 §4)\n${STATE_DIR}/write.lock\n`,
   );
   const tdir = join(REPO, 'templates');
   for (const f of readdirSync(tdir)) copyFileSync(join(tdir, f), join(root, '_meta/templates', f));
@@ -816,7 +818,7 @@ export async function main(argv: string[]): Promise<number> {
 
       // Initialize extractor
       const extractor = cfg.extraction.provider === 'http'
-        ? new triplesModule.HttpTripleExtractor(cfg.extraction.endpoint, cfg.extraction.model, cfg.extraction.apiKeyEnv)
+        ? new triplesModule.HttpTripleExtractor(cfg.extraction.endpoint, cfg.extraction.model, cfg.extraction.apiKeyEnv, cfg.extraction.apiKeyFileEnv ?? null)
         : new triplesModule.NoopExtractor();
 
       const notes = parseVault(vault, cfg);
@@ -993,6 +995,55 @@ export async function main(argv: string[]): Promise<number> {
         console.error('unknown access-log command; supported: compact');
         return 1;
       }
+    }
+    case 'serve': {
+      const { startServe, checkServe, createLogger } = await import('../serve/run.ts');
+      const { loadTokens } = await import('../serve/tokens.ts');
+
+      // Health check: no network call, no unauthenticated route; reads the heartbeat file.
+      if (args.flags.has('check')) {
+        const r = checkServe();
+        if (json) console.log(JSON.stringify(r, null, 2));
+        else {
+          console.log(`serve: ${r.healthy ? 'healthy' : 'unhealthy'}${r.reason ? ` (${r.reason})` : ''}`);
+          if (r.lastRun) console.log(`last run: ${r.lastRun.outcome} at ${r.lastRun.endedAt}${r.lastRun.error ? ` (${r.lastRun.error})` : ''}`);
+        }
+        return r.healthy ? 0 : 1;
+      }
+
+      let tokens;
+      try {
+        const loaded = loadTokens();
+        tokens = loaded.tokens;
+        for (const w of loaded.warnings) console.error(`warning: ${w}`);
+      } catch (e) {
+        console.error(`error: ${(e as Error).message}`);
+        return 1;
+      }
+
+      const wsDir = str(args.flags, 'workspace');
+      const target = wsDir
+        ? {
+            kind: 'workspace' as const,
+            dir: resolve(wsDir),
+            project: str(args.flags, 'project') ?? null,
+            agent: str(args.flags, 'agent') ?? null,
+            selectPerRequest: args.flags.has('select-per-request'),
+            cfg: DEFAULT_CONFIG,
+          }
+        : { kind: 'vault' as const, vault, cfg: loadConfig(vault) };
+
+      const handle = await startServe({ target, tokens, log: createLogger() });
+      // Logs are JSON lines on stdout; the human banner goes to stderr, like `mcp`.
+      console.error(`circadia serve listening on http://${handle.host}:${handle.port}/mcp (Ctrl-C to stop)`);
+      await new Promise<void>((resolve) => {
+        const stop = (): void => resolve();
+        process.once('SIGINT', stop);
+        process.once('SIGTERM', stop);
+      });
+      console.error('serve: stopping');
+      await handle.stop();
+      return 0;
     }
     case 'mcp': {
       const mcpModule = await import('../mcp/server.ts');

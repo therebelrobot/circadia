@@ -37,13 +37,15 @@ node bin/circadia.mjs workspace init <dir>          # registry + global vault (R
 node bin/circadia.mjs workspace list --workspace <dir> --json
 node bin/circadia.mjs recall --workspace <dir> --project work --agent coder "query"
 node bin/circadia.mjs mcp --workspace <dir> --project work --agent coder   # pinned binding
+node bin/circadia.mjs serve --vault examples/vault   # HTTP MCP service (needs CIRCADIA_WRITE_TOKEN[_FILE]); --check reads the heartbeat
 node bin/circadia.mjs --help
 ```
 
 ## 3. Hard constraints
 
 1. **Zero runtime dependencies.** Use Node built-ins only: `node:sqlite`, `node:crypto`,
-   `node:fs`, `node:test`, `node:http` (test mocks only), and global `fetch`. Dev
+   `node:fs`, `node:test`, `node:http` (test mocks only, **plus runtime in `src/serve/` only**
+   — the scoped exception in ADR-0014), and global `fetch`. Dev
    dependencies stay limited to `typescript`, `@types/node`, and
    `@modelcontextprotocol/sdk` (dev-only, for MCP conformance tests — see ADR-0008). If
    you believe another dependency is truly needed, write an ADR in `docs/decisions/`
@@ -78,6 +80,9 @@ node bin/circadia.mjs --help
   consolidation, so re-selection is content-based rather than mtime-based — C22).
   `.circadia/dreams/` (the REM log and candidate queue) is non-derivable but **disposable**
   and never committed to git; losing it loses nothing the user asked to keep (ADR-0011).
+  `.circadia/serve-state.json` (the last scheduled run's outcome, RFC-0003 §5) is the same
+  kind of disposable state, and `.circadia/write.lock` (the advisory write lock, RFC-0003
+  §4) is transient; both are gitignored and never committed.
 - **Episodes are append-only.** Code never edits an episode body. The one exception:
   consolidation may set the `consolidated:` frontmatter field.
 - **Facts are never deleted.** A changed fact is struck through
@@ -122,6 +127,7 @@ node bin/circadia.mjs --help
 | `src/consolidation/` | episode replay → candidate extraction → schema-fit gate → promote/queue/supersede | `schema.ts` `evaluateGate` is pure (facts are read in `consolidate.ts`); untrusted sources and triple candidates always queue (ADR-0006) |
 | `src/dreams/` | REM pass → candidate associations → read-once wake recall | writes only under `.circadia/dreams/`; never writes the vault; dream edges ship at weight 0 (ADR-0011); contract in its README |
 | `src/mcp/` | MCP server (stdio) | contract in its README; `runWorkspaceServer` implements RFC-0004 pinned and request-selected bindings |
+| `src/serve/` | `circadia serve`: HTTP MCP transport, bearer auth, write gate, nightly scheduler | RFC-0003; the only runtime `node:http` (ADR-0014); contract in its README |
 | `src/workspace/` | RFC-0004 workspaces | `registry.ts` (load/validate, lineage, write policy), `recall.ts` (federated RRF merge), `lift.ts`; contract in `docs/WORKSPACES.md` |
 | `src/eval/` | eval runner, metrics, ablations, baseline, tuning, adapters, dream sweep | strictly read-only; determinism contract in ADR-0010 |
 | `eval/` | fixture generator, query set, committed baseline | `npm run eval`; `eval/.fixture/` is generated and gitignored |

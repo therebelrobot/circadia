@@ -13,6 +13,8 @@
 //
 // Zero runtime dependencies: global `fetch`, `AbortSignal.timeout`, and Node built-ins.
 
+import { resolveApiKey } from './api-key.ts';
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -28,6 +30,8 @@ export interface ChatOptions {
    * empty, no `Authorization` header is sent — never an empty `Bearer `.
    */
   apiKeyEnv?: string | null;
+  /** RFC-0003 §7: env var naming a *file* that holds the token (Docker secrets). */
+  apiKeyFileEnv?: string | null;
   temperature?: number;
   maxTokens?: number;
   /** ask the server for a JSON object body (`response_format: { type: "json_object" }`) */
@@ -71,9 +75,9 @@ export class ChatError extends Error {
  */
 export async function chatComplete(opts: ChatOptions): Promise<string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  // Only send a bearer when the key env var is set AND non-empty. An empty
+  // Only send a bearer when a key is resolvable AND non-empty. An empty
   // `Authorization: Bearer ` header is rejected by some servers and leaks intent.
-  const key = opts.apiKeyEnv ? process.env[opts.apiKeyEnv] : undefined;
+  const key = resolveApiKey(opts.apiKeyEnv, opts.apiKeyFileEnv);
   if (key) headers['Authorization'] = `Bearer ${key}`;
 
   const body: Record<string, unknown> = {

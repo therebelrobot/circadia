@@ -81,7 +81,7 @@ interface JSONRPCResponse {
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05', '2024-10-07'];
 const LATEST_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
 
-async function handleInit(id: string | number | null, params?: Record<string, unknown>): Promise<JSONRPCResponse> {
+export async function handleInit(id: string | number | null, params?: Record<string, unknown>): Promise<JSONRPCResponse> {
   // Echo the client's requested version when we support it; otherwise advertise the
   // newest we do support and let the client decide whether to continue.
   const requested = typeof params?.protocolVersion === 'string' ? params.protocolVersion : undefined;
@@ -507,10 +507,31 @@ export interface WorkspaceServerOptions {
   selectPerRequest: boolean;
 }
 
-interface ActiveBinding {
+export interface ActiveBinding {
   binding: Cell;
   lineage: LineageEntry[];
   writeTargets: WriteTarget[];
+}
+
+/**
+ * Open (once) and return the graph cache for a lineage vault. `openDbs` collects the opened
+ * databases so the caller can close them at shutdown. A `:ro` layer is opened immutable
+ * (RFC-0004 §8) so SQLite never needs a WAL sidecar. Shared by the stdio workspace server
+ * and `circadia serve`.
+ */
+export function ensureGraphCache(
+  entry: LineageEntry,
+  defaults: Record<string, unknown> | undefined,
+  graphCaches: Record<string, GraphCache>,
+  openDbs: { close: () => void }[],
+): GraphCache {
+  if (!graphCaches[entry.id]) {
+    const cfg = loadConfig(entry.path, defaults);
+    const { db } = openIndex(join(entry.path, cfg.index.path), { readOnly: !isVaultWritable(entry.path) });
+    openDbs.push(db);
+    graphCaches[entry.id] = createGraphCache(db);
+  }
+  return graphCaches[entry.id];
 }
 
 /** Resolve the active binding for a call. Pinned uses the startup binding; request mode
@@ -795,16 +816,8 @@ export async function runWorkspaceServer(opts: WorkspaceServerOptions): Promise<
   // One graph cache per lineage vault, opened lazily and kept for the process lifetime.
   const graphCaches: Record<string, GraphCache> = {};
   const openDbs: { close: () => void }[] = [];
-  const openCache = (entry: LineageEntry): GraphCache => {
-    if (!graphCaches[entry.id]) {
-      const cfg = loadConfig(entry.path, registry.defaults);
-      // A `:ro` layer cannot host SQLite's WAL sidecar, so open it immutable (RFC-0004 §8).
-      const { db } = openIndex(join(entry.path, cfg.index.path), { readOnly: !isVaultWritable(entry.path) });
-      openDbs.push(db);
-      graphCaches[entry.id] = createGraphCache(db);
-    }
-    return graphCaches[entry.id];
-  };
+  const openCache = (entry: LineageEntry): GraphCache =>
+    ensureGraphCache(entry, registry.defaults, graphCaches, openDbs);
   if (pinned) for (const e of pinned.lineage) openCache(e);
 
   try {
