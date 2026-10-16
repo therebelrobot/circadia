@@ -43,11 +43,13 @@ export class HttpTripleVerifier implements TripleVerifier {
   readonly endpoint: string;
   readonly model: string;
   readonly apiKeyEnv: string | null;
+  readonly apiKeyFileEnv: string | null;
 
-  constructor(endpoint: string, model: string, apiKeyEnv: string | null) {
+  constructor(endpoint: string, model: string, apiKeyEnv: string | null, apiKeyFileEnv: string | null = null) {
     this.endpoint = endpoint;
     this.model = model;
     this.apiKeyEnv = apiKeyEnv;
+    this.apiKeyFileEnv = apiKeyFileEnv;
   }
 
   async verify(query: string, triple: CachedTriple): Promise<number> {
@@ -70,6 +72,7 @@ Triple: (${triple.subject}, ${triple.predicate}, ${triple.object})`;
         { role: 'user', content: user },
       ],
       apiKeyEnv: this.apiKeyEnv,
+      apiKeyFileEnv: this.apiKeyFileEnv,
       temperature: 0.0,
       maxTokens: 64,
       jsonObject: true,

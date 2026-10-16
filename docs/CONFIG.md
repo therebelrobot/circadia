@@ -96,6 +96,7 @@ seed list. A down server degrades to text-only recall with a warning.
 | `embeddings.endpoint` | `"http://127.0.0.1:8080/v1/embeddings"` | an OpenAI-compatible **wire format** endpoint, e.g. llama.cpp `llama-server --embedding` |
 | `embeddings.model` | `"nomic-embed-text"` | model name sent to the endpoint; changing it re-embeds every passage |
 | `embeddings.apiKeyEnv` | `null` | name of an env var holding a bearer token; the token itself never goes in config |
+| `embeddings.apiKeyFileEnv` | `null` | name of an env var holding a *path* to a file with the token (Docker secrets). Additive; wins over `apiKeyEnv` when set and non-empty (RFC-0003 §7) |
 | `embeddings.batchSize` | `32` | texts per request |
 
 ## extraction (Phase 4/5; keys reserved)
@@ -108,6 +109,41 @@ LLM used for hipporag triple extraction and for consolidation.
 | `extraction.endpoint` | `"http://127.0.0.1:8080/v1/chat/completions"` | local llama.cpp by default. For hosted models use OpenRouter with a **non-OpenAI, non-xAI** model (owner requirement; see AGENTS.md §3) |
 | `extraction.model` | `""` | model id |
 | `extraction.apiKeyEnv` | `null` | env var name for the key. Use a spend-capped key (e.g. an OpenRouter key with a per-key `limit`) |
+| `extraction.apiKeyFileEnv` | `null` | env var naming a *file* that holds the key (Docker secrets). Additive; wins over `apiKeyEnv` when set and non-empty (RFC-0003 §7) |
+
+## serve (`circadia serve`, RFC-0003)
+
+`circadia serve` runs the MCP tool surface over **Streamable HTTP** (`POST /mcp`) as a
+long-lived service, with a built-in nightly consolidate scheduler. Every key here is inert
+for the stdio server and the one-shot commands, so a user who never runs `serve` gets
+exactly the stdio behavior. Tokens are **never** in this file: it lives in the git-tracked
+vault, and config validation rejects any `serve.*token*` key. See
+[RFC-0003](rfcs/RFC-0003-server-container.md) and `docs/SECURITY.md` T2.
+
+| key | default | meaning |
+|---|---|---|
+| `serve.bind` | `"127.0.0.1"` | interface to bind. Loopback by default (SECURITY.md T2). Set `"0.0.0.0"` (or `CIRCADIA_BIND=0.0.0.0`) to reach it from another LAN host; the server logs a warning when non-loopback |
+| `serve.port` | `8711` | TCP port. `CIRCADIA_PORT` overrides |
+| `serve.allowedOrigins` | `[]` | exact `Origin` values allowed. Empty rejects every request that carries an `Origin` (DNS-rebinding defense). `"*"` is rejected: T2 forbids `allow_origins=*` with credentials |
+| `serve.maxBodyBytes` | `1048576` | request body cap, enforced while streaming (buffering stops at the cap); over it is `413` |
+| `serve.maxInFlight` | `8` | concurrent request cap; over it is `503` + `Retry-After` |
+| `serve.lockWaitMs` | `10000` | how long a mutating tool call waits for the write lock before a retryable JSON-RPC error that names the running job (RFC-0003 §4) |
+| `serve.watch` | `false` | reindex on vault file changes in the service. `remember` already reindexes, so this only matters when editing the vault by hand |
+| `serve.schedule.consolidate` | `null` | local time `"HH:MM"` for the nightly consolidate, or `null` to disable. `null` (the default) means a user who never sets it gets no model calls |
+| `serve.schedule.timezone` | `null` | IANA zone for the schedule; `null` means `TZ`, else UTC |
+
+**Tokens** load from files named by env vars, for Docker secrets:
+`CIRCADIA_WRITE_TOKEN_FILE` and (optional) `CIRCADIA_READ_TOKEN_FILE`. A bare
+`CIRCADIA_WRITE_TOKEN` is accepted for development and logs a warning. The server refuses to
+start without a write token, with a token shorter than 32 bytes, or with a read token equal
+to the write token. The write token covers every tool; the read token covers only `recall`,
+`timeline`, `relate` and `get_note` (`wake` counts as a write: it deletes the dream log).
+
+**State:** the last scheduled run is recorded in `.circadia/serve-state.json`, which is
+non-derivable but **disposable** (like `.circadia/dreams/`); losing it costs at most one
+extra catch-up run. The health heartbeat is a file under the OS temp dir (tmpfs in a
+container), never the vault, so `circadia serve --check` needs no network call and there is
+no unauthenticated health route.
 
 ## predicates
 

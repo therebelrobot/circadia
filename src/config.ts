@@ -165,6 +165,12 @@ export interface Config {
     endpoint: string;
     model: string;
     apiKeyEnv: string | null;
+    /**
+     * RFC-0003 §7: the name of an env var that holds a *path* to a file containing the key,
+     * for Docker secrets. Additive; `apiKeyEnv` keeps working. The file is read at call time
+     * and trimmed. Optional so a caller may omit it and fall back to `apiKeyEnv`.
+     */
+    apiKeyFileEnv?: string | null;
     batchSize: number;
   };
   extraction: {
@@ -173,6 +179,35 @@ export interface Config {
     endpoint: string;
     model: string;
     apiKeyEnv: string | null;
+    /** RFC-0003 §7: env var naming a file that holds the key (Docker secrets). Optional. */
+    apiKeyFileEnv?: string | null;
+  };
+  /**
+   * `circadia serve` (RFC-0003): the long-lived HTTP MCP service. Every key here is inert
+   * for the stdio server and the one-shot commands, so a user who never runs `serve` gets
+   * exactly today's behavior. Tokens never live here: config validation rejects any
+   * `serve.*token*` key, because this file is in the git-tracked vault (RFC-0003 §6).
+   */
+  serve: {
+    /** interface to bind; default loopback. Set 0.0.0.0 to reach it from another LAN host. */
+    bind: string;
+    port: number;
+    /** exact `Origin` values allowed; empty (the default) rejects every request that carries one */
+    allowedOrigins: string[];
+    /** request body cap, checked while streaming; default 1 MiB */
+    maxBodyBytes: number;
+    /** in-flight request cap; over it the server answers 503 (default 8) */
+    maxInFlight: number;
+    /** how long a mutating tool call waits for the write lock before a retryable error */
+    lockWaitMs: number;
+    /** reindex on vault file changes in the service; `remember` already reindexes */
+    watch: boolean;
+    schedule: {
+      /** local time "HH:MM" for the nightly consolidate, or null to disable */
+      consolidate: string | null;
+      /** IANA zone for the schedule; null means TZ or UTC */
+      timezone: string | null;
+    };
   };
   predicates: {
     strict: boolean;
@@ -267,6 +302,7 @@ export const DEFAULT_CONFIG: Config = {
     endpoint: 'http://127.0.0.1:8080/v1/embeddings',
     model: 'nomic-embed-text',
     apiKeyEnv: null,
+    apiKeyFileEnv: null,
     batchSize: 32,
   },
   extraction: {
@@ -274,6 +310,20 @@ export const DEFAULT_CONFIG: Config = {
     endpoint: 'http://127.0.0.1:8080/v1/chat/completions',
     model: '',
     apiKeyEnv: null,
+    apiKeyFileEnv: null,
+  },
+  serve: {
+    bind: '127.0.0.1',
+    port: 8711,
+    allowedOrigins: [],
+    maxBodyBytes: 1024 * 1024,
+    maxInFlight: 8,
+    lockWaitMs: 10_000,
+    watch: false,
+    schedule: {
+      consolidate: null,
+      timezone: null,
+    },
   },
   predicates: {
     strict: false,
@@ -366,7 +416,78 @@ export function validateConfig(c: Config): string[] {
   if (c.embeddings.provider === 'http' && !c.embeddings.endpoint) {
     errs.push('embeddings.endpoint is required when embeddings.provider is "http"');
   }
+  // RFC-0003 §5/§6: serve.* is inert unless `serve` runs, so an invalid value is a
+  // configuration mistake worth failing loudly on. Tokens are rejected outright: this
+  // config file lives in the git-tracked vault, so a token here would be committed.
+  const s = c.serve;
+  if (typeof s.bind !== 'string' || s.bind.trim() === '') {
+    errs.push('serve.bind must be a non-empty interface or address (e.g. "127.0.0.1" or "0.0.0.0")');
+  }
+  if (!Number.isInteger(s.port) || s.port < 1 || s.port > 65535) {
+    errs.push('serve.port must be an integer in [1, 65535]');
+  }
+  if (!Array.isArray(s.allowedOrigins) || s.allowedOrigins.some((o) => typeof o !== 'string')) {
+    errs.push('serve.allowedOrigins must be an array of strings');
+  } else if (s.allowedOrigins.includes('*')) {
+    errs.push('serve.allowedOrigins must not contain "*": SECURITY.md T2 forbids allow_origins=* with credentials');
+  }
+  if (!Number.isInteger(s.maxBodyBytes) || s.maxBodyBytes < 1) {
+    errs.push('serve.maxBodyBytes must be a positive integer');
+  }
+  if (!Number.isInteger(s.maxInFlight) || s.maxInFlight < 1) {
+    errs.push('serve.maxInFlight must be an integer >= 1');
+  }
+  if (!Number.isInteger(s.lockWaitMs) || s.lockWaitMs < 0) {
+    errs.push('serve.lockWaitMs must be a non-negative integer');
+  }
+  if (typeof s.watch !== 'boolean') {
+    errs.push('serve.watch must be a boolean');
+  }
+  if (s.schedule.consolidate !== null && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(s.schedule.consolidate))) {
+    errs.push('serve.schedule.consolidate must be "HH:MM" in 24-hour local time, or null');
+  }
+  if (s.schedule.timezone !== null && !isValidTimeZone(String(s.schedule.timezone))) {
+    errs.push(`serve.schedule.timezone "${s.schedule.timezone}" is not a valid IANA time zone name`);
+  }
+  for (const k of findTokenKeys(c)) {
+    errs.push(`serve config must not contain a token key ("${k}"); use CIRCADIA_WRITE_TOKEN_FILE or CIRCADIA_READ_TOKEN_FILE`);
+  }
+  if (c.embeddings.apiKeyFileEnv != null && typeof c.embeddings.apiKeyFileEnv !== 'string') {
+    errs.push('embeddings.apiKeyFileEnv must be a string or null');
+  }
+  if (c.extraction.apiKeyFileEnv != null && typeof c.extraction.apiKeyFileEnv !== 'string') {
+    errs.push('extraction.apiKeyFileEnv must be a string or null');
+  }
   return errs;
+}
+
+/** True when `tz` is a time zone `Intl` accepts (an IANA name). */
+function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Any key whose name contains "token" under `serve`, at any depth. Used to reject a token
+ * accidentally written into the vault config. Extra keys survive `deepMerge`, so this
+ * inspects the runtime object, not just the typed shape.
+ */
+function findTokenKeys(c: Config): string[] {
+  const out: string[] = [];
+  const walk = (v: unknown, path: string): void => {
+    if (!isPlain(v)) return;
+    for (const [k, val] of Object.entries(v)) {
+      const p = path ? `${path}.${k}` : k;
+      if (/token/i.test(k)) out.push(p);
+      walk(val, p);
+    }
+  };
+  walk((c as unknown as Plain).serve, 'serve');
+  return out;
 }
 
 /**

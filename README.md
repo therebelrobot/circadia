@@ -264,6 +264,57 @@ episodes to their own cell by default; a human moves a fact into a shared layer 
 [`docs/WORKSPACES.md`](docs/WORKSPACES.md) and
 [RFC-0004](docs/rfcs/RFC-0004-workspaces.md).
 
+### Run it as a service (HTTP MCP)
+
+For agents that cannot spawn a stdio child — a service on another machine, a laptop reaching
+a Pi on the LAN — `circadia serve` runs the same MCP tool surface over **Streamable HTTP**
+(`POST /mcp`) as a long-lived process. It adds a built-in nightly `consolidate` scheduler, so
+you no longer need a host cron job. Everything runs in one process under one write lock
+([RFC-0003](docs/rfcs/RFC-0003-server-container.md)).
+
+`serve` requires a bearer token. It refuses to start without one, with a token under 32
+bytes, or with a read token equal to the write token:
+
+```bash
+head -c 48 /dev/urandom | base64 > ~/.circadia-write-token     # a Docker secret
+CIRCADIA_WRITE_TOKEN_FILE=~/.circadia-write-token \
+  circadia serve --vault ~/my-memory
+```
+
+By default it binds `127.0.0.1` (loopback). To reach it from another machine on your LAN, set
+`serve.bind` to `"0.0.0.0"` (or `CIRCADIA_BIND=0.0.0.0`). The token is then the only thing
+standing between the LAN and your memory, so keep it secret and prefer a reverse proxy that
+terminates TLS:
+
+```json
+{ "serve": { "bind": "0.0.0.0", "port": 8711 } }
+```
+
+The optional **read** token (`CIRCADIA_READ_TOKEN_FILE`) covers only `recall`, `timeline`,
+`relate` and `get_note`; `remember`, `wake`, `endorse_dream` and `dismiss_dream` need the
+write token. The nightly run is opt-in — `serve.schedule.consolidate` defaults to `null`, so
+nothing runs until you set a local `"HH:MM"`:
+
+```json
+{ "serve": { "schedule": { "consolidate": "03:00", "timezone": "America/New_York" } } }
+```
+
+`circadia serve --check` reads a local heartbeat file (no network route) and exits non-zero
+when the service is unhealthy, for a container `HEALTHCHECK` or a systemd check. See
+`docs/CONFIG.md` §serve for every key and `docs/SECURITY.md` T2 for the controls.
+
+**Container.** The `circadia-server` image is the stdio image plus a `serve` entrypoint, with
+the same hardening (non-root, read-only root, the vault the only writable mount). A compose
+example is in [`docker-compose.server.yml`](docker-compose.server.yml):
+
+```bash
+docker compose -f docker-compose.server.yml up -d
+```
+
+**Workspaces.** `serve --workspace <dir> --project p --agent a` serves a workspace the same
+way the stdio server does (pinned, or `--select-per-request`). The scheduler runs against the
+bound vault.
+
 ### Build from source
 
 ```bash
@@ -281,6 +332,28 @@ node bin/circadia.mjs --help # the CLI runs straight from source, no build step
 From a clone, TypeScript runs directly with Node's type stripping. The only build is the
 one `npm pack` runs for publishing (`npm run build` emits plain JS to `dist/`). To use your
 checkout as the global `circadia` command, run `npm link`.
+
+### Releasing
+
+Releases are cut automatically when a PR merges to `main`, driven by a label on the PR:
+
+| label | bump |
+|---|---|
+| `release:major` | `x+1.0.0` |
+| `release:minor` | `x.y+1.0` |
+| `release:patch` | `x.y.z+1` |
+
+On merge, the [`release`](.github/workflows/release.yml) workflow bumps `package.json`,
+commits `chore: release vX.Y.Z`, tags `vX.Y.Z` on `main`, and creates a GitHub Release. The
+tag push then triggers [`npm-publish.yml`](.github/workflows/npm-publish.yml) (npm with
+provenance) and [`container-publish.yml`](.github/workflows/container-publish.yml) (GHCR, both
+images). A PR with no `release:*` label merges silently, so docs and chore PRs do not churn
+versions. Precedence is major > minor > patch.
+
+One-time setup: the workflow pushes the tag with the `RELEASE_TOKEN` secret (a PAT or GitHub
+App token with `contents: write`), because a tag pushed with the built-in `GITHUB_TOKEN` does
+not trigger other workflows. The three labels already exist. The
+`release:patch|minor|major` npm scripts remain for a manual release from a clone.
 
 ### Open it in Obsidian
 
@@ -436,6 +509,7 @@ circadia dream    --vault <dir>              # REM pass (--sample-only makes no 
 circadia wake     --vault <dir>              # read the night's dream log once
 circadia extract  --vault <dir>              # hipporag triple extraction
 circadia mcp      --vault <dir>              # MCP server over stdio
+circadia serve    --vault <dir>              # HTTP MCP service (--check for health)
 circadia stats    --vault <dir>
 circadia eval                                # retrieval eval (see docs/EVAL.md)
 circadia --help                              # every option
@@ -459,6 +533,7 @@ src/
   retrieval/               keyword (FTS5/BM25), PPR, ACT-R, mode ladder, recall, context rendering
   cli/                     CLI
   mcp/                     MCP server (stdio)
+  serve/                   HTTP MCP service, bearer auth, write gate, scheduler (RFC-0003)
   consolidation/           episode replay → gate → promote, queue, or supersede
   dreams/                  REM pass, wake recall, dream edges
   eval/                    retrieval eval, metrics, ablations, adapters

@@ -67,11 +67,13 @@ jobs:
       attestations: write
     strategy:
       matrix:
-        # One entry today. Adding the future circadia-server image is a
-        # one-entry change here.
+        # The Dockerfile's final stage is `server`, so the stdio image must name
+        # `runtime` explicitly.
         include:
           - image-name: circadia
-            target: ''
+            target: runtime
+          - image-name: circadia-server
+            target: server
     uses: ./.github/workflows/container-build.yml
     with:
       image-name: ${{ matrix.image-name }}

@@ -536,6 +536,7 @@ export async function recall(vaultRoot: string, cfg: Config, query: string, opts
             cfg.extraction.endpoint,
             cfg.extraction.model || 'llama3',
             cfg.extraction.apiKeyEnv,
+            cfg.extraction.apiKeyFileEnv ?? null,
           );
           const verified = await filterTriplesWithLLM(candidates, query, verifier, cfg);
           const { passageIds } = extractSeeds(verified);
