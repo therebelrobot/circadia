@@ -84,3 +84,15 @@ VOLUME /vault
 
 ENTRYPOINT ["circadia"]
 CMD ["mcp", "--vault", "/vault"]
+
+# ---------------------------------------------------------------------------
+# `server` target: `circadia-server`. FROM runtime, with no new packages and no npm
+# dependencies. The only differences are the CMD, the HEALTHCHECK, and the documented port.
+# The image deliberately does NOT set CIRCADIA_BIND=0.0.0.0: the process default is loopback,
+# and the operator opts in (see docker-compose.server.yml and RFC-0003 §3).
+
+FROM runtime AS server
+EXPOSE 8711
+# No unauthenticated health route: the check reads a local heartbeat file (RFC-0003 §9).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 CMD ["circadia", "serve", "--check"]
+CMD ["serve", "--vault", "/vault"]
