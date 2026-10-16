@@ -1,6 +1,7 @@
 # Publish to npm with trusted publishing (OIDC) and automatic provenance.
 #
-# Trigger: pushing a v* tag (e.g. from `npm version patch && git push --follow-tags`).
+# Trigger: pushing a v* tag (e.g. from `npm version patch && git push --follow-tags`), or a
+# `workflow_dispatch` on a tag sent by release.yml (see that workflow for why).
 #
 # Shape: two jobs, so the OIDC token never coexists with dependency code.
 #   build   - installs deps, runs build + tests, packs the tarball. No id-token.
@@ -15,6 +16,10 @@ name: npm-publish
 on:
   push:
     tags: ['v*']
+  # release.yml dispatches this workflow on the tag it just created, because a tag pushed
+  # with GITHUB_TOKEN does not fire the `push` trigger above (workflow_dispatch does).
+  # The tag-vs-package.json check below still rejects a dispatch on a non-tag ref.
+  workflow_dispatch:
 
 permissions: {}
 

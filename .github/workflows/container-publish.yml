@@ -1,4 +1,5 @@
-# Publish the Circadia container images to GHCR on a v* tag.
+# Publish the Circadia container images to GHCR on a v* tag, or on a `workflow_dispatch` on a
+# tag sent by release.yml.
 #
 # The tag is verified against package.json before anything is built, matching
 # npm-publish.yml. The build itself lives in the reusable container-build.yml.
@@ -7,6 +8,10 @@ name: container-publish
 on:
   push:
     tags: ['v*']
+  # release.yml dispatches this workflow on the tag it just created, because a tag pushed
+  # with GITHUB_TOKEN does not fire the `push` trigger above (workflow_dispatch does).
+  # The tag-vs-package.json check below still rejects a dispatch on a non-tag ref.
+  workflow_dispatch:
 
 permissions: {}
 

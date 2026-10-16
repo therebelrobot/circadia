@@ -344,16 +344,18 @@ Releases are cut automatically when a PR merges to `main`, driven by a label on 
 | `release:patch` | `x.y.z+1` |
 
 On merge, the [`release`](.github/workflows/release.yml) workflow bumps `package.json`,
-commits `chore: release vX.Y.Z`, tags `vX.Y.Z` on `main`, and creates a GitHub Release. The
-tag push then triggers [`npm-publish.yml`](.github/workflows/npm-publish.yml) (npm with
+commits `chore: release vX.Y.Z`, tags `vX.Y.Z` on `main`, and creates a GitHub Release. Because
+a tag pushed with the built-in `GITHUB_TOKEN` does not trigger other workflows, the release
+workflow then dispatches [`npm-publish.yml`](.github/workflows/npm-publish.yml) (npm with
 provenance) and [`container-publish.yml`](.github/workflows/container-publish.yml) (GHCR, both
-images). A PR with no `release:*` label merges silently, so docs and chore PRs do not churn
-versions. Precedence is major > minor > patch.
+images) on the new tag with `gh workflow run`. `workflow_dispatch` is the one trigger
+`GITHUB_TOKEN` can still fire, so no PAT or GitHub App token is needed — the same workflows
+also publish normally when a human pushes a tag by hand. A PR with no `release:*` label merges
+silently, so docs and chore PRs do not churn versions. Precedence is major > minor > patch.
 
-One-time setup: the workflow pushes the tag with the `RELEASE_TOKEN` secret (a PAT or GitHub
-App token with `contents: write`), because a tag pushed with the built-in `GITHUB_TOKEN` does
-not trigger other workflows. The three labels already exist. The
-`release:patch|minor|major` npm scripts remain for a manual release from a clone.
+One-time setup: the three labels already exist; if branch protection blocks direct pushes to
+`main`, let the GitHub Actions app bypass it (via rulesets) or the release commit is rejected.
+The `release:patch|minor|major` npm scripts remain for a manual release from a clone.
 
 ### Open it in Obsidian
 

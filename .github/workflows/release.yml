@@ -2,22 +2,23 @@
 #
 # Label-driven: a PR carries one (or more) of `release:major`, `release:minor`,
 # `release:patch`. On merge this workflow bumps package.json, commits, tags `vX.Y.Z` on main,
-# and creates a GitHub Release. The tag push then triggers npm-publish.yml and
-# container-publish.yml, which build and publish npm + GHCR with provenance as before. A
-# merged PR with no `release:*` label just merges; nothing is published (so docs/chore PRs do
-# not churn versions).
+# and creates a GitHub Release. A merged PR with no `release:*` label just merges; nothing is
+# published (so docs/chore PRs do not churn versions).
 #
-# WHY A SEPARATE TOKEN — `RELEASE_TOKEN`:
-#   A tag pushed with the built-in `GITHUB_TOKEN` does NOT trigger other workflows (GitHub
-#   suppresses recursive runs), so the tag-triggered publish workflows would never fire. The
-#   release must push with a PAT or GitHub App token.
+# WHY `gh workflow run` INSTEAD OF A PAT:
+#   Everything here authenticates with the built-in `GITHUB_TOKEN`. A tag pushed with
+#   `GITHUB_TOKEN` does NOT trigger other workflows (GitHub suppresses recursive runs), so the
+#   `push: tags` trigger on npm-publish.yml / container-publish.yml never fires for the auto
+#   release. Rather than push with a PAT, this workflow *dispatches* those two workflows on the
+#   new tag with `gh workflow run`. `workflow_dispatch` is the documented exception to the
+#   suppression rule — it fires even when triggered by `GITHUB_TOKEN` — so no PAT, GitHub App,
+#   or repo secret is needed. The same workflows still publish when a human pushes a tag by
+#   hand (that `push` event is not suppressed).
 #
 # ONE-TIME SETUP
-#   1. Create a fine-grained PAT (or GitHub App installation token) with `contents: write`
-#      on this repository, and add it as the repository secret `RELEASE_TOKEN`.
-#   2. Create the three labels `release:major`, `release:minor`, `release:patch`.
-#   3. If branch protection blocks direct pushes to main, let this token bypass it, or the
-#      release commit is rejected.
+#   1. Create the three labels `release:major`, `release:minor`, `release:patch`.
+#   2. If branch protection blocks direct pushes to main, allow the GitHub Actions app to
+#      bypass it (via rulesets), or the release commit is rejected.
 #
 # Precedence: major > minor > patch (the first match wins).
 name: release
@@ -41,6 +42,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write # push the bump commit + tag and create the Release
+    outputs:
+      tag: ${{ steps.push.outputs.tag }}
     steps:
       - name: Determine the bump from the PR labels
         id: bump
@@ -65,7 +68,9 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          persist-credentials: false
+          # Keep the default `GITHUB_TOKEN` credentials so the push below authenticates as
+          # github-actions[bot]. No PAT remote rewrite is needed.
+          persist-credentials: true
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.bump.outputs.bump != 'none'
@@ -79,22 +84,15 @@ jobs:
         if: steps.bump.outputs.bump != 'none'
         env:
           BUMP: ${{ steps.bump.outputs.bump }}
-          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          if [[ -z "$RELEASE_TOKEN" ]]; then
-            echo "::error::secret RELEASE_TOKEN is not set; see the header of .github/workflows/release.yml"
-            exit 1
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # npm version commits `chore: release vX.Y.Z` and creates the matching v tag.
           npm version "$BUMP" -m "chore: release v%s"
           version="$(node -p "require('./package.json').version")"
-          # Push with RELEASE_TOKEN so the tag push triggers the tag-triggered publishes
-          # (GITHUB_TOKEN pushes do not). The token is masked in the log.
-          git remote set-url origin "https://x-access-token:${RELEASE_TOKEN}@github.com/${REPO}.git"
+          # checkout persisted the GITHUB_TOKEN credentials; these pushes authenticate as
+          # github-actions[bot]. This same-repo PR merge grants the `contents: write` above.
           git push origin HEAD:main
           git push origin "v${version}"
           echo "tag=v${version}" >> "$GITHUB_OUTPUT"
@@ -102,7 +100,31 @@ jobs:
       - name: Create the GitHub Release
         if: steps.bump.outputs.bump != 'none'
         env:
-          # gh needs a token that may create releases; the same contents:write PAT works.
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          # GITHUB_TOKEN with contents: write can create releases on this repo.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.push.outputs.tag }}
         run: gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag
+
+  # The tag push above used GITHUB_TOKEN, so it did not trigger the tag-triggered publish
+  # workflows. Dispatch them explicitly on the tag. `gh workflow run` needs `actions: write`;
+  # this job does nothing else.
+  dispatch-publishes:
+    needs: release
+    if: needs.release.outputs.tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write # create the workflow_dispatch events
+    steps:
+      - name: Dispatch the npm and container publishes on the new tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          for wf in npm-publish.yml container-publish.yml; do
+            echo "Dispatching $wf at $TAG"
+            gh workflow run "$wf" --repo "$REPO" --ref "$TAG"
+          done
