@@ -192,11 +192,11 @@ export function createServeHttp(opts: ServeHttpOptions): ServeHttp {
     let sawInitialize = false;
     for (const msg of messages) {
       if (msg.method === 'initialize') sawInitialize = true;
-      responses.push(await opts.handleMessage(msg, scope));
+      const res = await opts.handleMessage(msg, scope);
+      // A notification has no `id` member and gets no response, even in a batch.
+      if (Object.prototype.hasOwnProperty.call(msg, 'id')) responses.push(res);
     }
 
-    // A notification has no `id` member; the spec answers 202 with no body.
-    const hasRequest = messages.some((m) => Object.prototype.hasOwnProperty.call(m, 'id'));
     const headers: Record<string, string> = {};
     if (sawInitialize) {
       if (sessionId === '') {
@@ -211,7 +211,7 @@ export function createServeHttp(opts: ServeHttpOptions): ServeHttp {
       headers['Mcp-Session-Id'] = sessionId;
     }
 
-    if (!hasRequest) {
+    if (responses.length === 0) {
       res.writeHead(202, headers);
       res.end();
       return;
