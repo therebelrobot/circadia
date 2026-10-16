@@ -182,8 +182,12 @@ function mockModel(portfile) {
       res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content } }] }));
     });
   });
-  // Loopback only: Docker Desktop proxies host.docker.internal to the host's loopback.
-  server.listen(0, '127.0.0.1', () => {
+  // Bind all interfaces: on GitHub's Linux runners `host.docker.internal` resolves via
+  // `--add-host=…:host-gateway` to the bridge gateway (e.g. 172.17.0.1), and a loopback-only
+  // listener is unreachable there. Docker Desktop (macOS/Windows) also proxies
+  // host.docker.internal to the host's loopback, so 0.0.0.0 works on both. The data is canned,
+  // and the process is short-lived.
+  server.listen(0, '0.0.0.0', () => {
     writeFileSync(portfile, String(server.address().port));
   });
 }
