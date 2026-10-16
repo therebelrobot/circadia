@@ -168,16 +168,23 @@ else
   port="$(cat "$portfile")"
   node "$HELPER" set-endpoint "$v" "http://host.docker.internal:$port/v1/chat/completions"
   before="$(git -C "$v" rev-list --count HEAD)"
+  consout="$(mktemp)"
+  TMP_DIRS+=("$consout")
   if docker run --rm --user 1000:1000 --add-host=host.docker.internal:host-gateway \
-       -v "$v:/vault" "$IMAGE" consolidate --vault /vault >/dev/null 2>&1; then
+       -v "$v:/vault" "$IMAGE" consolidate --vault /vault >"$consout" 2>&1; then
     after="$(git -C "$v" rev-list --count HEAD)"
     if [[ "$after" -eq $((before + 1)) ]]; then
       pass "real consolidate created exactly one commit"
     else
       fail "real consolidate created $((after - before)) commits (expected 1)"
+      # Surface why: a refused commit names the dirty paths, and git status shows them.
+      echo "--- consolidate output ---"; sed 's/^/    /' "$consout"
+      echo "--- git status --porcelain ---"; git -C "$v" status --porcelain | sed 's/^/    /'
     fi
   else
-    fail "real consolidate with mock model"
+    code=$?
+    fail "real consolidate with mock model (exit $code)"
+    echo "--- consolidate output ---"; sed 's/^/    /' "$consout"
   fi
 fi
 
