@@ -141,6 +141,11 @@ v="$(new_vault)"
 git -C "$v" init -q
 git -C "$v" -c user.name=Smoke -c user.email=smoke@example.invalid add -A
 git -C "$v" -c user.name=Smoke -c user.email=smoke@example.invalid commit -qm "initial"
+# `git init` created `.git` owned by the host user, AFTER new_vault's chmod -R, so the
+# container (uid 1000) cannot create `.git/index.lock` on a real Linux filesystem (Docker
+# Desktop virtualizes mount permissions, which hid this locally). Open the repo up so the
+# check is about `safe.directory` with a different uid, not about file permissions.
+chmod -R a+rwX "$v/.git"
 # Index as the container user so the index file is writable by it.
 docker run --rm -v "$v:/vault" "$IMAGE" index --vault /vault >/dev/null
 if docker run --rm --user 1000:1000 -v "$v:/vault" "$IMAGE" \
