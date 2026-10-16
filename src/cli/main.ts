@@ -35,6 +35,7 @@ import type { EvalAggregate, EvalQuery, EvalReport } from '../eval/types.ts';
 import type { BaselineDelta } from '../eval/baseline.ts';
 import { getMeta, openIndex } from '../index/db.ts';
 import { watchVault } from './watch.ts';
+import { withWriteLock, acquireLock } from '../util/lockfile.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');
@@ -620,7 +621,7 @@ export async function main(argv: string[]): Promise<number> {
       return 0;
     }
     case 'index': {
-      return dispatchWrite(args, vault, (v, d) => runIndex(v, d, args, json, warnings));
+      return dispatchWrite(args, vault, (v, d) => withWriteLock(v, 'index', () => runIndex(v, d, args, json, warnings)));
     }
     case 'watch': {
       const cfg = loadConfig(vault);
@@ -803,7 +804,10 @@ export async function main(argv: string[]): Promise<number> {
       }
     }
     case 'extract': {
-      const triplesModule = await import('../extract/triples.ts');
+      // Writes `.circadia/triples/` and re-reads the vault; serialize against other writers.
+      const extractLock = acquireLock(vault, 'extract');
+      try {
+        const triplesModule = await import('../extract/triples.ts');
       const { parseVault } = await import('../index/indexer.ts');
       const { passageHash } = await import('../extract/triples.ts');
       const cfg = loadConfig(vault);
@@ -886,12 +890,15 @@ export async function main(argv: string[]): Promise<number> {
         }
       }
       return 0;
+      } finally {
+        extractLock.release();
+      }
     }
     case 'consolidate': {
-      return dispatchWrite(args, vault, (v, d) => runConsolidate(v, d, args));
+      return dispatchWrite(args, vault, (v, d) => withWriteLock(v, 'consolidate', () => runConsolidate(v, d, args)));
     }
     case 'dream': {
-      return dispatchWrite(args, vault, (v, d) => runDream(v, d, args, json));
+      return dispatchWrite(args, vault, (v, d) => withWriteLock(v, 'dream', () => runDream(v, d, args, json)));
     }
     case 'wake': {
       // RFC-0004 §8: `wake` is read-once and per-vault; it refuses the unbound form.
@@ -907,12 +914,18 @@ export async function main(argv: string[]): Promise<number> {
       // RFC-0004 §8: `review` is interactive and per-vault; it refuses the unbound form.
       const { path: reviewVault } = requireBoundVault(args, vault, 'review');
       const { review } = await import('./review.ts');
-      const result = await review(reviewVault);
-      console.log(`review complete: ${result.promoted} promoted, ${result.rejected} rejected, ${result.edited} edited`);
-      if (result.dreamAccepted > 0 || result.dreamRejected > 0) {
-        console.log(`dreams: ${result.dreamAccepted} accepted, ${result.dreamRejected} rejected`);
+      // A human accept writes a fact and commits; serialize against serve and other writers.
+      const reviewLock = acquireLock(reviewVault, 'review');
+      try {
+        const result = await review(reviewVault);
+        console.log(`review complete: ${result.promoted} promoted, ${result.rejected} rejected, ${result.edited} edited`);
+        if (result.dreamAccepted > 0 || result.dreamRejected > 0) {
+          console.log(`dreams: ${result.dreamAccepted} accepted, ${result.dreamRejected} rejected`);
+        }
+        return 0;
+      } finally {
+        reviewLock.release();
       }
-      return 0;
     }
     case 'stats': {
       cmdStats(vault);
@@ -961,15 +974,21 @@ export async function main(argv: string[]): Promise<number> {
         const { compactAccessLog, writeAccessSummaries } = await import('../retrieval/log-compact.ts');
         const { readAccessLogWithOffset } = await import('../retrieval/activation.ts');
 
-        const { events, offset } = readAccessLogWithOffset(accessFile);
-        const summaries = compactAccessLog(events, offset);
-        const summaryFile = join(vault, cfg.index.path.replace(/\.sqlite$/, '-access-summaries.jsonl'));
-        writeAccessSummaries(summaryFile, summaries);
+        // Writes the summary sidecar; serialize against another compaction or a writer.
+        const lock = acquireLock(vault, 'access-log compact');
+        try {
+          const { events, offset } = readAccessLogWithOffset(accessFile);
+          const summaries = compactAccessLog(events, offset);
+          const summaryFile = join(vault, cfg.index.path.replace(/\.sqlite$/, '-access-summaries.jsonl'));
+          writeAccessSummaries(summaryFile, summaries);
 
-        console.log(`compacted ${events.length} events into ${summaries.nodes.size} node summaries`);
-        console.log(`watermark ${new Date(summaries.watermark).toISOString()}, offset ${summaries.offset} bytes (raw log retained; see ADR-0009)`);
-        console.log(`summaries written to ${summaryFile}`);
-        return 0;
+          console.log(`compacted ${events.length} events into ${summaries.nodes.size} node summaries`);
+          console.log(`watermark ${new Date(summaries.watermark).toISOString()}, offset ${summaries.offset} bytes (raw log retained; see ADR-0009)`);
+          console.log(`summaries written to ${summaryFile}`);
+          return 0;
+        } finally {
+          lock.release();
+        }
       } else {
         console.error('unknown access-log command; supported: compact');
         return 1;
@@ -1254,11 +1273,20 @@ export async function main(argv: string[]): Promise<number> {
       const toId = str(args.flags, 'to');
       const ref = args.pos[0];
       if (!fromId || !toId || !ref) throw new Error('lift needs --from <id> --to <id> <note>^<fact>');
-      const { registry } = loadWorkspace(resolve(wsDir));
-      const r = await lift(registry, resolve(wsDir), fromId, toId, ref);
-      if (json) console.log(JSON.stringify(r, null, 2));
-      else console.log(`lifted ${r.claim}\n  → ${r.targetVault}/${r.episodePath}  (origin: ${r.origin})`);
-      return 0;
+      const root = resolve(wsDir);
+      const { registry } = loadWorkspace(root);
+      // `lift` writes an episode in the target vault; validate the id against the registry
+      // before it is joined into a path (T3), then serialize that write.
+      if (!registry.vaults[toId]) throw new Error(`lift: vault "${toId}" is not registered in this workspace`);
+      const liftLock = acquireLock(join(root, toId), 'lift');
+      try {
+        const r = await lift(registry, root, fromId, toId, ref);
+        if (json) console.log(JSON.stringify(r, null, 2));
+        else console.log(`lifted ${r.claim}\n  → ${r.targetVault}/${r.episodePath}  (origin: ${r.origin})`);
+        return 0;
+      } finally {
+        liftLock.release();
+      }
     }
     default:
       console.error(`unknown command "${args.cmd}"\n`);

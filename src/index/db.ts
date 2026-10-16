@@ -7,6 +7,14 @@ import { dirname } from 'node:path';
 
 export const INDEX_SCHEMA_VERSION = 3;
 
+/**
+ * Ridge between two index writers (RFC-0003 §4). SQLite returns `SQLITE_BUSY` immediately
+ * when another connection holds the write lock; a timeout turns that rare contention into a
+ * short wait instead of an error. The advisory vault lock (src/util/lockfile.ts) is the
+ * primary coordination; this is the cheap second layer.
+ */
+export const BUSY_TIMEOUT_MS = 5000;
+
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 
@@ -103,7 +111,7 @@ export function openIndex(file: string, opts: { fresh?: boolean; readOnly?: bool
   const readOnly = opts.readOnly === true && file !== ':memory:';
   if (file !== ':memory:' && !readOnly) mkdirSync(dirname(file), { recursive: true });
   const db = new DatabaseSync(readOnly ? sqliteImmutableUri(file) : file);
-  if (!readOnly) db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = OFF;');
+  if (!readOnly) db.exec(`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = OFF; PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS};`);
   if (opts.fresh) {
     db.exec(`
       DROP TABLE IF EXISTS passages_fts;
