@@ -441,6 +441,11 @@ and `docs/CONFIG.md` §serve.
   emulation in the multi-arch build and hang, so `container-publish.yml` and
   `container-pr.yml` run the suite natively on the runner instead.
 - [x] **npm publish with provenance**, if published.
+- [x] **Automatic releases on merge.** Label-driven: merging a PR labeled
+      `release:major|minor|patch` bumps `package.json`, tags `vX.Y.Z` and creates a GitHub
+      Release; the tag push runs the npm and GHCR publishes. Workflow:
+      `.github/workflows/release.yml` (pushes with `RELEASE_TOKEN`; a `GITHUB_TOKEN` tag push
+      does not trigger other workflows). The publish path itself still awaits the first tag.
 
 ## Open questions
 

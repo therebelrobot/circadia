@@ -135,6 +135,7 @@ node bin/circadia.mjs --help
 | `docs/media/` | README and docs GIFs, plus their Remotion source in `blueprints/` | not shipped to npm; its own `package.json`, outside the root tests and typecheck; regenerate with `npm run gifs` there |
 | `Dockerfile`, `.dockerignore` | stdio container image | multi-arch; non-root, read-only root (via the `--read-only` run flag), vault the only writable host mount plus an ephemeral `/tmp` tmpfs; no listener, no scheduler, no `EXPOSE` (RFC-0003 covers the server image); the build stage runs `npm ci`, `npm run build`, `npm pack` but **not** `npm test` — the suite spawns child node processes that hang under QEMU emulation, so CI runs it natively (`container-pr.yml`, `container-publish.yml`) |
 | `.github/workflows/container-*.yml` | container CI and GHCR publish | `container-build.yml` is reusable (`workflow_call`); `container-publish.yml` runs on `v*` tags; `container-pr.yml` builds amd64 and runs the smoke script; actions SHA-pinned |
+| `.github/workflows/release.yml` | automatic releases on merge | label-driven (`release:major\|minor\|patch` on the PR); bumps `package.json`, tags `vX.Y.Z`, creates a Release; pushes with the `RELEASE_TOKEN` secret because a `GITHUB_TOKEN` tag push does not trigger the publish workflows |
 
 ## 6. How to make a change
 

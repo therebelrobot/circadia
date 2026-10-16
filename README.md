@@ -333,6 +333,28 @@ From a clone, TypeScript runs directly with Node's type stripping. The only buil
 one `npm pack` runs for publishing (`npm run build` emits plain JS to `dist/`). To use your
 checkout as the global `circadia` command, run `npm link`.
 
+### Releasing
+
+Releases are cut automatically when a PR merges to `main`, driven by a label on the PR:
+
+| label | bump |
+|---|---|
+| `release:major` | `x+1.0.0` |
+| `release:minor` | `x.y+1.0` |
+| `release:patch` | `x.y.z+1` |
+
+On merge, the [`release`](.github/workflows/release.yml) workflow bumps `package.json`,
+commits `chore: release vX.Y.Z`, tags `vX.Y.Z` on `main`, and creates a GitHub Release. The
+tag push then triggers [`npm-publish.yml`](.github/workflows/npm-publish.yml) (npm with
+provenance) and [`container-publish.yml`](.github/workflows/container-publish.yml) (GHCR, both
+images). A PR with no `release:*` label merges silently, so docs and chore PRs do not churn
+versions. Precedence is major > minor > patch.
+
+One-time setup: the workflow pushes the tag with the `RELEASE_TOKEN` secret (a PAT or GitHub
+App token with `contents: write`), because a tag pushed with the built-in `GITHUB_TOKEN` does
+not trigger other workflows. The three labels already exist. The
+`release:patch|minor|major` npm scripts remain for a manual release from a clone.
+
 ### Open it in Obsidian
 
 Open the vault folder as an Obsidian vault and set the templates folder to

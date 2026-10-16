@@ -1,0 +1,108 @@
+# Cut a release automatically when a labeled PR merges into main.
+#
+# Label-driven: a PR carries one (or more) of `release:major`, `release:minor`,
+# `release:patch`. On merge this workflow bumps package.json, commits, tags `vX.Y.Z` on main,
+# and creates a GitHub Release. The tag push then triggers npm-publish.yml and
+# container-publish.yml, which build and publish npm + GHCR with provenance as before. A
+# merged PR with no `release:*` label just merges; nothing is published (so docs/chore PRs do
+# not churn versions).
+#
+# WHY A SEPARATE TOKEN — `RELEASE_TOKEN`:
+#   A tag pushed with the built-in `GITHUB_TOKEN` does NOT trigger other workflows (GitHub
+#   suppresses recursive runs), so the tag-triggered publish workflows would never fire. The
+#   release must push with a PAT or GitHub App token.
+#
+# ONE-TIME SETUP
+#   1. Create a fine-grained PAT (or GitHub App installation token) with `contents: write`
+#      on this repository, and add it as the repository secret `RELEASE_TOKEN`.
+#   2. Create the three labels `release:major`, `release:minor`, `release:patch`.
+#   3. If branch protection blocks direct pushes to main, let this token bypass it, or the
+#      release commit is rejected.
+#
+# Precedence: major > minor > patch (the first match wins).
+name: release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions: {}
+
+# Never let two releases race on main.
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # push the bump commit + tag and create the Release
+    steps:
+      - name: Determine the bump from the PR labels
+        id: bump
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          bump="none"
+          for level in major minor patch; do
+            if [[ " $LABELS " == *" release:$level "* ]]; then bump="$level"; break; fi
+          done
+          if [[ "$bump" == "none" ]]; then
+            echo "No release:* label on #$PR; nothing to release."
+          else
+            echo "Releasing a $bump bump for #$PR."
+          fi
+          echo "bump=$bump" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.bump.outputs.bump != 'none'
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.bump.outputs.bump != 'none'
+        with:
+          node-version: latest
+          check-latest: true
+          package-manager-cache: false # never restore caches into a release
+
+      - name: Bump, commit, tag, and push
+        id: push
+        if: steps.bump.outputs.bump != 'none'
+        env:
+          BUMP: ${{ steps.bump.outputs.bump }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$RELEASE_TOKEN" ]]; then
+            echo "::error::secret RELEASE_TOKEN is not set; see the header of .github/workflows/release.yml"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # npm version commits `chore: release vX.Y.Z` and creates the matching v tag.
+          npm version "$BUMP" -m "chore: release v%s"
+          version="$(node -p "require('./package.json').version")"
+          # Push with RELEASE_TOKEN so the tag push triggers the tag-triggered publishes
+          # (GITHUB_TOKEN pushes do not). The token is masked in the log.
+          git remote set-url origin "https://x-access-token:${RELEASE_TOKEN}@github.com/${REPO}.git"
+          git push origin HEAD:main
+          git push origin "v${version}"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Create the GitHub Release
+        if: steps.bump.outputs.bump != 'none'
+        env:
+          # gh needs a token that may create releases; the same contents:write PAT works.
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          TAG: ${{ steps.push.outputs.tag }}
+        run: gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag
