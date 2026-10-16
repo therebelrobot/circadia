@@ -443,9 +443,10 @@ and `docs/CONFIG.md` §serve.
 - [x] **npm publish with provenance**, if published.
 - [x] **Automatic releases on merge.** Label-driven: merging a PR labeled
       `release:major|minor|patch` bumps `package.json`, tags `vX.Y.Z` and creates a GitHub
-      Release; the tag push runs the npm and GHCR publishes. Workflow:
-      `.github/workflows/release.yml` (pushes with `RELEASE_TOKEN`; a `GITHUB_TOKEN` tag push
-      does not trigger other workflows). The publish path itself still awaits the first tag.
+      Release; the release workflow then dispatches the npm and GHCR publishes on the new tag
+      with `gh workflow run` (`workflow_dispatch` is the exception to `GITHUB_TOKEN`'s
+      recursive-run suppression), so no PAT is needed. Workflow:
+      `.github/workflows/release.yml`. The publish path itself still awaits the first tag.
 
 ## Open questions
 
