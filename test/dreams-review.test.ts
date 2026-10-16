@@ -17,6 +17,7 @@ import { loadConfig } from '../src/config.ts';
 import { applyDreamDecision } from '../src/cli/review.ts';
 import { main } from '../src/cli/main.ts';
 import { candidatesPath, readCandidates, transitionCandidate, type DreamCandidate } from '../src/dreams/candidates.ts';
+import { freshExpires } from './helpers/dates.ts';
 
 // Pin the timezone so the evening-accept test is deterministic: 2026-09-30T01:30:00Z is
 // 2026-09-29 21:30 in America/New_York, so the local calendar date differs from the UTC date.
@@ -51,7 +52,7 @@ function writeCandidate(v: string, over: Partial<DreamCandidate> = {}): DreamCan
     salience: 0.61,
     model: 'mock',
     night: '2026-09-29',
-    expires: '2026-10-13',
+    expires: freshExpires(),
     state: 'open',
     ...over,
   };

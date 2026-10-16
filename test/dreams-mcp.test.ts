@@ -18,6 +18,7 @@ import { buildIndex } from '../src/index/indexer.ts';
 import { handleToolsCall } from '../src/mcp/server.ts';
 import { writeLog, logPath, type DreamLog } from '../src/dreams/log.ts';
 import { candidatesPath, readCandidates, type DreamCandidate } from '../src/dreams/candidates.ts';
+import { freshExpires } from './helpers/dates.ts';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(REPO, 'bin', 'circadia.mjs');
@@ -49,7 +50,7 @@ function writeCandidate(v: string, over: Partial<DreamCandidate> = {}): DreamCan
     salience: 0.61,
     model: 'mock',
     night: NIGHT,
-    expires: '2026-10-13',
+    expires: freshExpires(),
     state: 'open',
     ...over,
   };

@@ -24,8 +24,13 @@ import { buildIndex } from '../src/index/indexer.ts';
 import { runRem } from '../src/dreams/rem.ts';
 import { candidatesPath } from '../src/dreams/candidates.ts';
 import { logPath, readLog } from '../src/dreams/log.ts';
+import { todayAtUtcNoon } from './helpers/dates.ts';
 
-const NOW = Date.parse('2026-09-30T12:00:00Z');
+// Pin UTC so `localDateString` (the dream "night") equals the UTC date, and put "now" at
+// today 12:00 UTC: the *date* tracks the real clock (so activity-window fixtures stay
+// inside `recentDays` forever), while the fixed noon keeps `now + 6h` on one calendar day.
+process.env.TZ = 'UTC';
+const NOW = todayAtUtcNoon();
 
 interface MockResponse {
   status?: number;
