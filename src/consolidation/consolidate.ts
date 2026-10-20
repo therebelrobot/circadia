@@ -20,7 +20,7 @@ import { localDateString, systemDateNow } from '../vault/time.ts';
 import { asWikiLink, shortHash } from '../vault/util.ts';
 import { appendFactLine, type WritableFact } from '../vault/fact-write.ts';
 import { unifiedDiff } from '../vault/diff.ts';
-import { getDirtyPaths, createConsolidationCommit } from '../vault/git.ts';
+import { getPreexistingModifiedPaths, createConsolidationCommit } from '../vault/git.ts';
 import { extractCandidates, type Candidate } from './candidate.ts';
 import { resolveEntity } from './entity.ts';
 import { evaluateGate, factObjectKey } from './schema.ts';
@@ -365,8 +365,12 @@ export async function consolidate(
     };
   }
 
-  // C8: capture pre-existing dirtiness of the paths we are about to write, BEFORE writing.
-  const preDirty = getDirtyPaths(vault, writtenPaths);
+  // C8/B2: capture pre-existing modifications to *tracked* paths we are about to write,
+  // BEFORE writing. Untracked paths — the episodes `remember` just wrote, and the state
+  // files this run creates — are not counted: they have no committed baseline to protect
+  // and must be part of the night's commit (B2). A human's in-progress edit to a tracked
+  // note still refuses the commit.
+  const preDirty = getPreexistingModifiedPaths(vault, writtenPaths);
 
   for (const c of written) {
     const abs = join(vault, c.path);

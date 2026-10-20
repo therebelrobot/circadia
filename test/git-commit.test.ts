@@ -4,7 +4,8 @@
 // (the C5/C15/C27 security fixes). This file covers the commit-per-run path (C8) and the
 // history readers used by `circadia history`:
 //   - isGitRepo
-//   - getDirtyPaths (refuse to commit a path a human was already editing)
+//   - getPreexistingModifiedPaths (refuse to commit a tracked path a human was editing;
+//     B2: do NOT count untracked new episodes, which must be committed)
 //   - createConsolidationCommit (stage only the run's paths, summarize counts)
 //   - getCommits / getNoteCommits
 import { test } from 'node:test';
@@ -15,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   isGitRepo,
-  getDirtyPaths,
+  getPreexistingModifiedPaths,
   createConsolidationCommit,
   getCommits,
   getNoteCommits,
@@ -53,7 +54,7 @@ test('git: isGitRepo is true in a repo and false in a plain directory', () => {
   assert.equal(isGitRepo(plain), false);
 });
 
-test('git: getDirtyPaths reports only the given paths with uncommitted changes', () => {
+test('git: getPreexistingModifiedPaths reports only the given tracked paths with changes', () => {
   const repo = initRepo();
   writeFileSync(join(repo, 'a.md'), 'a\n');
   writeFileSync(join(repo, 'b.md'), 'b\n');
@@ -61,9 +62,28 @@ test('git: getDirtyPaths reports only the given paths with uncommitted changes',
 
   writeFileSync(join(repo, 'a.md'), 'a changed\n');
 
-  assert.deepEqual(getDirtyPaths(repo, ['a.md', 'b.md']), ['a.md']);
-  assert.deepEqual(getDirtyPaths(repo, ['b.md']), []);
-  assert.deepEqual(getDirtyPaths(repo, []), [], 'no paths means nothing to check');
+  assert.deepEqual(getPreexistingModifiedPaths(repo, ['a.md', 'b.md']), ['a.md']);
+  assert.deepEqual(getPreexistingModifiedPaths(repo, ['b.md']), []);
+  assert.deepEqual(getPreexistingModifiedPaths(repo, []), [], 'no paths means nothing to check');
+});
+
+// B2: an untracked new file is not a "pre-existing edit". `remember` leaves episodes
+// untracked, and counting them made consolidation refuse every night's commit.
+test('git (B2): getPreexistingModifiedPaths ignores untracked files', () => {
+  const repo = initRepo();
+  writeFileSync(join(repo, 'tracked.md'), 't\n');
+  commitAll(repo, 'init', '2020-01-01T00:00:00Z');
+
+  // A new, never-committed file (what `remember` writes) and a modified tracked file.
+  writeFileSync(join(repo, 'new-episode.md'), 'e\n');
+  writeFileSync(join(repo, 'tracked.md'), 't changed\n');
+
+  assert.deepEqual(
+    getPreexistingModifiedPaths(repo, ['new-episode.md', 'tracked.md']),
+    ['tracked.md'],
+    'only the tracked modification is reported; the untracked episode is not',
+  );
+  assert.deepEqual(getPreexistingModifiedPaths(repo, ['new-episode.md']), []);
 });
 
 test('git: createConsolidationCommit stages only the run paths and summarizes counts', () => {

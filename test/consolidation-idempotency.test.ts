@@ -1,5 +1,6 @@
 // Regression tests for C6 (idempotency), C7 (side-effect-free dry run), C8 (scoped
-// commit), and C23 (fact ids + wikilink stripping).
+// commit), B2 (commit the night's untracked episodes), and C23 (fact ids + wikilink
+// stripping).
 //
 // Every assertion is on-disk (file bytes, git state), not on counts alone. Each test
 // fails against the pre-fix code:
@@ -7,6 +8,8 @@
 //   - C6 rejected: rejected.jsonl did not exist and was never consulted.
 //   - C7: the old dry run wrote pending.jsonl and ran `git add -A`.
 //   - C8: the old commit ran `git add -A`, sweeping in the unrelated edit.
+//   - B2: untracked episodes from `remember` counted as dirty, so the nightly commit was
+//     refused and never happened in the normal workflow.
 //   - C23: the old object stripper was a character-class regex, not the wikilink parser.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -226,6 +229,48 @@ test('C8: refuses to commit when a run path was already dirty before the run', a
   await consolidate(v, cfg, { commit: true });
 
   assert.equal(git(v, ['rev-parse', 'HEAD']).trim(), headBefore, 'no commit may be created when a run path was dirty');
+});
+
+// B2: `remember` writes episodes as untracked files. Consolidation marks them
+// (`consolidated:`) and must commit them, so each night stays a revertible unit. Before
+// the fix, the untracked episode counted as "already dirty", so the commit was refused
+// and the night's changes were left uncommitted.
+test('B2: commits the night\'s untracked episode written by remember', async () => {
+  const v = makeVault('b2-untracked-episode', {
+    'entities/projects/x.md': entityNote('x', '## Facts\n- [status:: active] [by:: user]\n'),
+    'entities/tools/y.md': entityNote('y', ''),
+  });
+  const cfg = loadConfig(v);
+  buildIndex(v, cfg);
+  initRepo(v);
+  commitAll(v, 'init');
+  const headBefore = git(v, ['rev-parse', 'HEAD']).trim();
+
+  // An episode the MCP `remember` tool just wrote: new file, untracked.
+  const episodeRel = 'episodes/2026/09/2026-09-20-note.md';
+  const episodeAbs = join(v, episodeRel);
+  mkdirSync(dirname(episodeAbs), { recursive: true });
+  writeFileSync(episodeAbs, episodeNote('agent', 'We moved x to y.'));
+  // `remember` leaves the file out of the index; a pathspec-scoped status shows it as `??`.
+  assert.ok(
+    git(v, ['status', '--porcelain', '--', episodeRel]).startsWith('??'),
+    'the episode must start untracked, the way `remember` leaves it',
+  );
+  assert.equal(git(v, ['ls-files', '--', episodeRel]).trim(), '', 'the episode is not yet tracked');
+
+  const result = await consolidate(v, cfg, { commit: true });
+  assert.equal(result.processedEpisodes.length, 1, 'the untracked episode must be selected');
+
+  const headAfter = git(v, ['rev-parse', 'HEAD']).trim();
+  assert.notEqual(headAfter, headBefore, 'a commit must be created for the night (B2)');
+
+  const committed = git(v, ['show', '--name-only', '--format=', 'HEAD']);
+  assert.ok(committed.includes(episodeRel), 'the untracked episode must be in the commit');
+  assert.ok(committed.includes('.circadia/consolidated.json'), 'the run state must be in the commit');
+
+  // The episode is now tracked, committed and clean.
+  assert.equal(git(v, ['status', '--porcelain', '--', episodeRel]).trim(), '');
+  assert.ok(git(v, ['show', `HEAD:${episodeRel}`]).includes('consolidated:'), 'the committed episode is marked');
 });
 
 test('C23: buildFact strips wikilinks with the parser and hashes the fact id', () => {

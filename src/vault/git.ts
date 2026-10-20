@@ -23,11 +23,19 @@ export interface CommitResult {
 const GIT_OPTS = { encoding: 'utf8' as const, stdio: ['pipe', 'pipe', 'pipe'] as ['pipe', 'pipe', 'pipe'] };
 
 /**
- * Return the vault-relative paths among `paths` that already have uncommitted changes
- * (staged or unstaged). `consolidate` calls this BEFORE it writes, so it can refuse to
- * commit a path a human was already editing (C8).
+ * Return the vault-relative paths among `paths` that have pre-existing changes to
+ * *tracked* content (staged, modified, renamed or deleted). `consolidate` calls this
+ * BEFORE it writes, so it can refuse to commit a path a human was already editing (C8).
+ *
+ * Untracked paths (`??`) are deliberately NOT included (B2). A new file — an episode the
+ * MCP `remember` tool just wrote, or a state file this run creates — has no committed
+ * baseline to protect, and must join the night's commit so the run stays a single
+ * revertible unit. Counting untracked files here was the bug: `remember` leaves episodes
+ * untracked, consolidation then refuses every night's commit, and `git revert` of a bad
+ * night stops working in the one workflow it is meant for (agents write by day,
+ * consolidation runs at night).
  */
-export function getDirtyPaths(vaultRoot: string, paths: string[]): string[] {
+export function getPreexistingModifiedPaths(vaultRoot: string, paths: string[]): string[] {
   if (!isGitRepo(vaultRoot) || paths.length === 0) return [];
   try {
     const out = execFileSync('git', ['status', '--porcelain', '--', ...paths], {
@@ -37,6 +45,9 @@ export function getDirtyPaths(vaultRoot: string, paths: string[]): string[] {
     return out
       .split('\n')
       .filter((l) => l.trim())
+      // Porcelain `XY <path>`: `??` is the only untracked code; every other XY is a
+      // change to tracked content.
+      .filter((l) => !l.startsWith('??'))
       .map((l) => l.slice(3).trim());
   } catch {
     return [];
@@ -47,8 +58,10 @@ export function getDirtyPaths(vaultRoot: string, paths: string[]): string[] {
  * Create a git commit for consolidation changes.
  *
  * C8: stages ONLY `paths` (the files this run wrote), never the whole tree. An unrelated
- * uncommitted user edit is left alone. The caller is responsible for refusing to commit
- * when one of `paths` was already dirty before the run (see `getDirtyPaths`).
+ * uncommitted user edit is left alone, and untracked files are staged (B2), so the new
+ * episodes written by `remember` join the commit. The caller is responsible for refusing
+ * to commit when one of `paths` was already modified before the run (see
+ * `getPreexistingModifiedPaths`).
  */
 export function createConsolidationCommit(
   vaultRoot: string,
