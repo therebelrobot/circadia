@@ -59,7 +59,7 @@ node bin/circadia.mjs --help
    - Use `import type` for type-only imports; `verbatimModuleSyntax` is on.
    - No `enum`, no `namespace`, no constructor parameter properties, no decorators.
      `erasableSyntaxOnly` enforces this. Use string-literal unions and `as const` objects.
-3. **Node ≥ 22.18.** Don't use APIs newer than that without bumping `engines`.
+3. **Node ≥ 26.** Don't use APIs newer than that without bumping `engines`.
 4. **Model providers.** Never default to, recommend, or configure OpenAI or xAI (Grok)
    models, and avoid Meta models unless the alternatives are poor. This is an owner
    requirement. "OpenAI-compatible HTTP API" as a *wire format* is fine; llama.cpp's

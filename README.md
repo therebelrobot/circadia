@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/circadia"><img alt="npm" src="https://img.shields.io/npm/v/circadia?color=0e646e&labelColor=0B2140"></a>
-  <img alt="node &gt;= 22.18" src="https://img.shields.io/badge/node-%E2%89%A5%2022.18-0e646e?labelColor=0B2140">
+  <img alt="node &gt;= 26" src="https://img.shields.io/badge/node-%E2%89%A5%2026-0e646e?labelColor=0B2140">
   <img alt="zero runtime dependencies" src="https://img.shields.io/badge/runtime%20deps-0-0e646e?labelColor=0B2140">
   <img alt="license: Unlicense" src="https://img.shields.io/badge/license-Unlicense-0e646e?labelColor=0B2140">
 </p>
@@ -83,7 +83,7 @@ vault holds the content and the SQLite index holds only pointers, links and scor
 
 ## Get started
 
-You need **Node.js 22.18 or newer**. Nothing else: SQLite is built into Node, and there are
+You need **Node.js 26 or newer**. Nothing else: SQLite is built into Node, and there are
 no runtime dependencies to install.
 
 There are two first-class ways to run Circadia. They run the same program; they differ in how

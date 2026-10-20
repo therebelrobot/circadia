@@ -10,7 +10,7 @@ the root test suite or the root typecheck.
 
 ## Prerequisites
 
-- Node ≥ 22.18 (the same floor as Circadia).
+- Node ≥ 26 (the same floor as Circadia).
 - A vault, indexed. The MCP server answers `recall` from the derived index, so build it
   first:
 

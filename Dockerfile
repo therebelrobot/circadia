@@ -12,9 +12,9 @@
 # path an npm user takes (ADR-0012: the launcher runs dist/ when installed under
 # node_modules).
 
-# Base image pinned by its multi-arch index digest (tag: node:24-bookworm-slim).
-# Verified with: docker buildx imagetools inspect node:24-bookworm-slim
-FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS build
+# Base image pinned by its multi-arch index digest (tag: node:26-bookworm-slim).
+# Verified with: docker buildx imagetools inspect node:26-bookworm-slim
+FROM node:26-bookworm-slim@sha256:298992629d69bbd5b2b03ad57094d8e4fcb3a8eeb7c4e25d29de656519568913 AS build
 
 WORKDIR /app
 
@@ -39,7 +39,7 @@ RUN npm run build \
 
 # ---------------------------------------------------------------------------
 
-FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS runtime
+FROM node:26-bookworm-slim@sha256:298992629d69bbd5b2b03ad57094d8e4fcb3a8eeb7c4e25d29de656519568913 AS runtime
 
 # git is needed for consolidation commits, `history`, and git-backed `--as-of`.
 RUN apt-get update \

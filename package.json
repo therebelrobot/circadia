@@ -16,7 +16,7 @@
     "docs/rfcs/"
   ],
   "engines": {
-    "node": ">=22.18"
+    "node": ">=26"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -37,7 +37,7 @@
   "license": "Unlicense",
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",
-    "@types/node": "^22.18.0",
+    "@types/node": "^26.0.0",
     "typescript": "^5.9.0"
   },
   "repository": {
