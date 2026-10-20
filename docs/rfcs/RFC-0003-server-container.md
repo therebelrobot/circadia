@@ -1,6 +1,6 @@
 # RFC-0003: Server container (`circadia-server`)
 
-Status: proposed · 2026-09-30 · written against `cf10312`
+Status: implemented (Steps 1–4) · 2026-09-30 · written against `cf10312`
 
 Depends on the Packaging roadmap item (the stdio container, image `circadia`). This RFC
 adds a **second, separate image**; it doesn't change the first.

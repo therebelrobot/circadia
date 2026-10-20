@@ -425,7 +425,7 @@ and `docs/CONFIG.md` §serve.
 
 ## Packaging (can run in parallel from Phase 3)
 
-- [ ] **Multi-arch (amd64 and arm64) container for the MCP server**, published to GHCR via
+- [x] **Multi-arch (amd64 and arm64) container for the MCP server**, published to GHCR via
       a reusable GitHub Actions workflow:
   - SHA-pinned actions;
   - `actions/attest-build-provenance` on the index digest;
@@ -433,12 +433,12 @@ and `docs/CONFIG.md` §serve.
   - non-root user, read-only root filesystem (via the `--read-only` run flag), and the vault
     as the only writable host mount (plus an ephemeral `/tmp` tmpfs).
 
-  **Remaining:** the first `v*` tag push, to verify the GHCR publish and the signed
-  attestation end to end. The image, workflows, Dependabot config and hardening are
-  written, and the hardening is verified by `scripts/container-smoke.sh`; the publish path
-  itself has not been exercised, so this item stays unchecked. The image build stage does
-  not run `npm test`: the suite spawns child node processes that are too slow under QEMU
-  emulation in the multi-arch build and hang, so `container-publish.yml` and
+  **Verified on the `v0.5.0` tag push** (2026-10-16, `container-publish.yml` run
+  38926376562). Both images published to GHCR, and
+  `gh attestation verify oci://ghcr.io/therebelrobot/circadia:0.5.0 --owner therebelrobot`
+  succeeds against the index digest the build signed (`sha256:5852875a…`). The image build
+  stage does not run `npm test`: the suite spawns child node processes that are too slow
+  under QEMU emulation in the multi-arch build and hang, so `container-publish.yml` and
   `container-pr.yml` run the suite natively on the runner instead.
 - [x] **npm publish with provenance**, if published.
 - [x] **Automatic releases on merge.** Label-driven: merging a PR labeled
@@ -446,7 +446,8 @@ and `docs/CONFIG.md` §serve.
       Release; the release workflow then dispatches the npm and GHCR publishes on the new tag
       with `gh workflow run` (`workflow_dispatch` is the exception to `GITHUB_TOKEN`'s
       recursive-run suppression), so no PAT is needed. Workflow:
-      `.github/workflows/release.yml`. The publish path itself still awaits the first tag.
+      `.github/workflows/release.yml`. The publish path is exercised for `v0.5.0` (that tag
+      was cut by hand); the label-driven bump itself has not yet run end to end.
 
 ## Open questions
 

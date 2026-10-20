@@ -1,6 +1,6 @@
 # RFC-0004: Workspaces (layered vaults for one operator)
 
-Status: proposed · 2026-10-02 · written against `ef39638` · tracks issue #3
+Status: implemented (Steps 1–8) · 2026-10-02 · written against `ef39638` · tracks issue #3
 
 Discovery (RRF phases 2–4: measured pollution, five whys, workflows, risk register):
 [RFC-0004-discovery.md](RFC-0004-discovery.md).
