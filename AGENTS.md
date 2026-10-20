@@ -218,6 +218,22 @@ These came from real failures while hardening the project. They apply to every c
 - Before committing, run `git status` and `git diff --stat`. If anything changed that you
   didn't intend, stop and explain.
 
+**Secrets**
+
+- Never print, trace or transmit a secrets file's contents. No `cat`/`grep -r` over a
+  credential store, and no `sh -x`/`set -x`/`env`/`printenv` against a command that can read
+  one. A trace prints keys in clear text; a bulk grep surfaces old session logs. The
+  headless consolidation wrapper in `docs/LOCAL-SETUP.md` is exactly this shape — read that
+  page before editing it.
+- Inventory a secrets file by **names only** (`KEY=`), never values. To use one value,
+  extract that single variable in a subshell with output suppressed; never `source` the file,
+  and never source it under `set -e` or `set -x`.
+- Regex masking of a stream that already contains secrets is not masking.
+- A headless job (launchd, cron, container) reads one dedicated `0600` key file via
+  `extraction.apiKeyFileEnv`; it does not source a shared secrets file.
+- On disclosure: stop, tell the owner plainly, list exactly what leaked with rotation steps,
+  and never probe the credential.
+
 **Scope**
 
 - Don't modify or revert code outside the issue IDs you were given. If earlier work looks
