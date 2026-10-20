@@ -190,4 +190,32 @@ test('D1: human eval output prints a standalone per-kind expansion-share line', 
   assert.match(standalone[0], /^\s+\S+\s+n=\s*\d+\s+recall@5=[\d.]+\s+mrr=[\d.]+\s+expand=[\d.]+$/);
 });
 
+// RFC-0002 step 3: the eval toggles fact expansion for a single run, so measuring a
+// private vault needs no edit to its `circadia.config.json` (the run stays read-only).
+test('step 3: --fact-expansion toggles expansion for one run without editing the config', async () => {
+  const dir = join(tmp, 'vault-flag');
+  generateFixture(dir);
+  const cfgPath = join(dir, 'circadia.config.json');
+  const before = readFileSync(cfgPath, 'utf8');
+
+  // Flag off: no expansion fields in the output.
+  const off = await capture(() => main(['eval', '--vault', dir, '--no-fact-expansion']));
+  assert.equal(off.code, 0);
+  assert.equal(off.out.includes('expand='), false, '--no-fact-expansion prints no expand=');
+
+  // Flag on: expansion runs although the config never mentions it.
+  const on = await capture(() => main(['eval', '--vault', dir, '--fact-expansion']));
+  assert.equal(on.code, 0);
+  assert.ok(on.out.split('\n').some((l) => l.includes('expand=')), '--fact-expansion prints expand=');
+
+  // Read-only: the on-disk config is byte-identical after both runs.
+  assert.equal(readFileSync(cfgPath, 'utf8'), before, 'the vault config is untouched');
+
+  // The two flags are mutually exclusive.
+  const both = await capture(() =>
+    main(['eval', '--vault', dir, '--fact-expansion', '--no-fact-expansion']),
+  );
+  assert.equal(both.code, 1, '--fact-expansion with --no-fact-expansion is an error');
+});
+
 test.after(() => rmSync(tmp, { recursive: true, force: true }));

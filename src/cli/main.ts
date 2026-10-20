@@ -107,6 +107,8 @@ options
   --aggregate-only      (eval) omit per-query hits and query text from output
   --allow-missing       (eval) don't fail when a gold id is not in the index
   --check               (eval) exit non-zero on any baseline delta
+  --fact-expansion      (eval) force entity-anchored fact expansion on for this run
+  --no-fact-expansion   (eval) force it off, overriding circadia.config.json
                         (serve) read the heartbeat file and exit non-zero when unhealthy
   -h, --help            this help
 `;
@@ -1129,7 +1131,23 @@ export async function main(argv: string[]): Promise<number> {
         queries = readQueriesFile(queriesPath);
       }
 
-      const cfg = loadConfig(fixtureDir);
+      // RFC-0002 step 3: measure with entity-anchored fact expansion on and off by
+      // toggling it for one run, so a private vault's `circadia.config.json` never has
+      // to be edited (the eval stays read-only). Default: whatever the config says.
+      if (args.flags.has('fact-expansion') && args.flags.has('no-fact-expansion')) {
+        console.error('error: --fact-expansion and --no-fact-expansion are mutually exclusive');
+        return 1;
+      }
+      const feFlag = args.flags.has('fact-expansion')
+        ? true
+        : args.flags.has('no-fact-expansion')
+          ? false
+          : undefined;
+      const baseCfg = loadConfig(fixtureDir);
+      const cfg =
+        feFlag === undefined
+          ? baseCfg
+          : deepMerge(baseCfg, { retrieval: { factExpansion: { enabled: feFlag } } });
 
       // Tuning is report-only: it returns a suggested config and never writes
       // DEFAULT_CONFIG or src/config.ts (ADR-0010).

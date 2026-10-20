@@ -188,6 +188,17 @@ recall falls while its expansion share rises is the signature of crowding, and
 blocks turning the default on. It is a diagnostic, not a gate — the hard gates
 (trust, missing gold ids, baseline deltas under `--check`) are unchanged.
 
+Step 3 toggles the flag for a single run, so a private vault's `circadia.config.json`
+never has to be edited and the measurement stays read-only:
+
+```bash
+circadia eval --vault <dir> --queries <queries.jsonl> --fact-expansion
+circadia eval --vault <dir> --queries <queries.jsonl> --no-fact-expansion
+```
+
+`--fact-expansion` and `--no-fact-expansion` override `retrieval.factExpansion.enabled`
+for that run only, and passing both is an error. With neither flag the config value wins.
+
 **Flag-off output is unchanged.** `expanded` is present on a result only when
 the flag is on, and `expansionShare` is present on an aggregate only when at
 least one of its results carries `expanded`. With the flag off (the default),

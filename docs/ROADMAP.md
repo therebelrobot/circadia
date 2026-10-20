@@ -336,8 +336,10 @@ are done; steps 3–4 are human-gated. Contract in `docs/RETRIEVAL.md` and
       Gate: criteria 1–9 pass; the flag-on eval reproduces the RFC's numbers exactly;
       vacuous absences are 0; no kind regresses on either split in any mode.
 - [ ] **Step 3 — Measure on a personal vault.** Run the private eval with the flag on and
-      off. **Human-gated:** turn on only if no kind regresses on either split of either tier,
-      and trust and absence violations don't rise.
+      off — `circadia eval --vault <dir> --queries <qs> --fact-expansion` /
+      `--no-fact-expansion`, which override `circadia.config.json` for the run only, so the
+      measurement never edits the vault. **Human-gated:** turn on only if no kind regresses
+      on either split of either tier, and trust and absence violations don't rise.
 - [ ] **Step 4 — Default flip, if step 3 passes.** The one-way step, in its own commit, with
       a line in `docs/RETRIEVAL.md`. **Human-gated.**
 
