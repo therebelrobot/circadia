@@ -561,6 +561,8 @@ AGENTS.md                  start here if you are an agent picking this up
   retrieval is measured, and what the numbers mean.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md): phases with acceptance criteria.
 - [`docs/SOURCES.md`](docs/SOURCES.md): every paper, doc, and issue this design draws on.
+- [`docs/AGENT-GUIDANCE.md`](docs/AGENT-GUIDANCE.md): a drop-in `AGENTS.md` block that tells
+  an agent to keep its memory in Circadia instead of the harness's own store.
 - [`docs/decisions/`](docs/decisions/) and [`docs/rfcs/`](docs/rfcs/): architecture
   decisions and design proposals.
 - [`AGENTS.md`](AGENTS.md): conventions and invariants for contributors, human or agent.
