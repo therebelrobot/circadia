@@ -18,7 +18,7 @@ without breaking its invariants. Read it fully before editing anything.
 ## 2. Commands
 
 ```bash
-npm test                  # node:test, ~19s. 387 tests.
+npm test                  # node:test, ~24s. 473 tests.
 npm run typecheck         # tsc --noEmit, strict + erasableSyntaxOnly
 npm run example:index     # index examples/vault (incremental; --full for a full rebuild)
 node bin/circadia.mjs watch --vault examples/vault   # reindex on change (Ctrl-C to stop)
@@ -31,7 +31,7 @@ npm run benchmark         # 10k-note synthetic vault: index, incremental, recall
 npm run eval              # generate the eval fixture, then run the retrieval eval
 npm run eval:check        # same, but exit non-zero on any baseline delta (CI)
 node bin/circadia.mjs eval --dream-sweep   # dream-edge weight sweep (report only)
-docker buildx build --load -t circadia:local .   # build the stdio image locally
+docker buildx build --load -t circadia:local --target runtime .   # stdio image; `server` is the last stage, so no --target builds circadia-server
 ./scripts/container-smoke.sh circadia:local      # non-root, read-only, MCP stdio, git, workspace :ro mounts
 node bin/circadia.mjs workspace init <dir>          # registry + global vault (RFC-0004)
 node bin/circadia.mjs workspace list --workspace <dir> --json
@@ -133,7 +133,7 @@ node bin/circadia.mjs --help
 | `eval/` | fixture generator, query set, committed baseline | `npm run eval`; `eval/.fixture/` is generated and gitignored |
 | `bin/circadia.mjs`, `tsconfig.build.json` | launcher and publish-time build | the launcher runs `src/` from a clone and `dist/` only when installed under `node_modules` (ADR-0012); `test/build.test.ts` guards it |
 | `docs/media/` | README and docs GIFs, plus their Remotion source in `blueprints/` | not shipped to npm; its own `package.json`, outside the root tests and typecheck; regenerate with `npm run gifs` there |
-| `Dockerfile`, `.dockerignore` | stdio container image | multi-arch; non-root, read-only root (via the `--read-only` run flag), vault the only writable host mount plus an ephemeral `/tmp` tmpfs; no listener, no scheduler, no `EXPOSE` (RFC-0003 covers the server image); the build stage runs `npm ci`, `npm run build`, `npm pack` but **not** `npm test` — the suite spawns child node processes that hang under QEMU emulation, so CI runs it natively (`container-pr.yml`, `container-publish.yml`) |
+| `Dockerfile`, `.dockerignore` | stdio container image | multi-arch; non-root, read-only root (via the `--read-only` run flag), vault the only writable host mount plus an ephemeral `/tmp` tmpfs; no listener, no scheduler, no `EXPOSE` (RFC-0003 covers the server image); `server` is the **last** stage, so a build without `--target` produces `circadia-server`, not this image; the build stage runs `npm ci`, `npm run build`, `npm pack` but **not** `npm test` — the suite spawns child node processes that hang under QEMU emulation, so CI runs it natively (`container-pr.yml`, `container-publish.yml`) |
 | `.github/workflows/container-*.yml` | container CI and GHCR publish | `container-build.yml` is reusable (`workflow_call`); `container-publish.yml` runs on `v*` tags; `container-pr.yml` builds amd64 and runs the smoke script; actions SHA-pinned |
 | `.github/workflows/release.yml` | automatic releases on merge | label-driven (`release:major\|minor\|patch` on the PR); bumps `package.json`, tags `vX.Y.Z`, creates a Release; since a `GITHUB_TOKEN` tag push does not trigger the publish workflows, it dispatches them on the tag with `gh workflow run` (`workflow_dispatch` is the exception `GITHUB_TOKEN` can fire), so no PAT secret is required |
 
@@ -202,8 +202,7 @@ node bin/circadia.mjs --help
 
 ## 10. Working rules for agents
 
-These came from real failures during remediation (`docs/remediation.md` §4). They apply to
-every change.
+These came from real failures while hardening the project. They apply to every change.
 
 **Verification**
 
