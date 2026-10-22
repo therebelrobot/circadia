@@ -77,11 +77,13 @@ function episodeNote(by: string, text: string): string {
 /** Replace global fetch with a canned extraction response; returns a restore fn. */
 function mockFetch(candidates: unknown[]): () => void {
   const original = globalThis.fetch;
+  const payload = JSON.stringify({ choices: [{ message: { content: JSON.stringify({ candidates }) } }] });
   globalThis.fetch = (async () => ({
     ok: true,
     status: 200,
     statusText: 'OK',
-    json: async () => ({ choices: [{ message: { content: JSON.stringify({ candidates }) } }] }),
+    // chatComplete reads the body as text first (to name an unparseable body, #12).
+    text: async () => payload,
   })) as unknown as typeof fetch;
   return () => {
     globalThis.fetch = original;

@@ -174,7 +174,7 @@ test('C10 malformed response: typed error, not a crash', async () => {
     },
     async (url) => {
       await assert.rejects(
-        () => chatComplete({ endpoint: url, model: 'test-model', messages: [{ role: 'user', content: 'hi' }] }),
+        () => chatComplete({ endpoint: url, model: 'test-model', messages: [{ role: 'user', content: 'hi' }], retryDelayMs: 5 }),
         (e: unknown) => e instanceof ChatError && e.code === 'llm.malformed-response',
       );
     },
@@ -188,8 +188,73 @@ test('C10 malformed response: typed error, not a crash', async () => {
     },
     async (url) => {
       await assert.rejects(
-        () => chatComplete({ endpoint: url, model: 'test-model', messages: [{ role: 'user', content: 'hi' }] }),
+        () => chatComplete({ endpoint: url, model: 'test-model', messages: [{ role: 'user', content: 'hi' }], retryDelayMs: 5 }),
         (e: unknown) => e instanceof ChatError && e.code === 'llm.invalid-json',
+      );
+    },
+  );
+});
+
+// --- #12: retry and diagnosable errors ----------------------------------------
+
+test('#12 retry: a transient 5xx is retried once, then succeeds', async () => {
+  let calls = 0;
+  await withMock(
+    (_body, res) => {
+      calls++;
+      if (calls === 1) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'upstream hiccup' }));
+        return;
+      }
+      ok(res, 'ok');
+    },
+    async (url, captured) => {
+      const content = await chatComplete({
+        endpoint: url,
+        model: 'test-model',
+        messages: [{ role: 'user', content: 'hi' }],
+        retryDelayMs: 5,
+      });
+      assert.equal(content, 'ok', 'the retry must return the second response');
+      assert.equal(captured.length, 2, 'the request must be attempted twice');
+    },
+  );
+  assert.equal(calls, 2);
+});
+
+test('#12 retry: a non-transient 4xx is not retried', async () => {
+  await withMock(
+    (_body, res) => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'bad request' }));
+    },
+    async (url, captured) => {
+      await assert.rejects(
+        () => chatComplete({ endpoint: url, model: 'test-model', messages: [{ role: 'user', content: 'hi' }], retryDelayMs: 5 }),
+        (e: unknown) => e instanceof ChatError && e.code === 'llm.http-error' && e.status === 400,
+      );
+      assert.equal(captured.length, 1, 'a 400 must fail on the first attempt');
+    },
+  );
+});
+
+test('#12 diagnostics: a non-JSON body is named in the error', async () => {
+  await withMock(
+    (_body, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<html>\n  <body>upstream provider failure</body>\n</html>');
+    },
+    async (url) => {
+      await assert.rejects(
+        () => chatComplete({ endpoint: url, model: 'test-model', messages: [{ role: 'user', content: 'hi' }], maxAttempts: 1 }),
+        (e: unknown) => {
+          assert.ok(e instanceof ChatError && e.code === 'llm.invalid-json');
+          assert.match(e.message, /HTTP 200/, 'error must name the status');
+          assert.match(e.message, /text\/html/, 'error must name the content-type');
+          assert.match(e.message, /upstream provider failure/, 'error must quote the body');
+          return true;
+        },
       );
     },
   );
@@ -210,6 +275,7 @@ test('C10 timeout: a server that never responds triggers llm.timeout', async () 
             model: 'test-model',
             messages: [{ role: 'user', content: 'hi' }],
             timeoutMs: 100,
+            retryDelayMs: 5,
           }),
         (e: unknown) => e instanceof ChatError && e.code === 'llm.timeout',
       );

@@ -165,14 +165,24 @@ export async function consolidate(
   // --- Candidate collection ------------------------------------------------------
   const allCandidates: Candidate[] = [];
   let droppedCandidates = 0;
+  // Episodes whose extraction failed. They are isolated: the rest of the night still
+  // runs, and the failed ones are left unmarked so the next run re-selects them. One
+  // poisoned episode (a body the model can never parse, say) must not block every other
+  // memory from consolidating forever.
+  const failedExtraction = new Set<string>();
   for (const ep of episodes) {
     if (cfg.extraction.provider === 'none') {
       // Without extraction, skip candidate generation
       continue;
     }
-    const { candidates, dropped } = await extractCandidates(ep, cfg);
-    droppedCandidates += dropped;
-    allCandidates.push(...candidates);
+    try {
+      const { candidates, dropped } = await extractCandidates(ep, cfg);
+      droppedCandidates += dropped;
+      allCandidates.push(...candidates);
+    } catch (e) {
+      failedExtraction.add(ep.path);
+      console.warn(`warning: extract.failed ${ep.path}: ${(e as Error).message}`);
+    }
   }
   if (droppedCandidates > 0) {
     // Surface invalid model output instead of silently discarding it (C11).
@@ -301,6 +311,8 @@ export async function consolidate(
   // Local calendar date, not UTC: an evening run in a negative-offset timezone must not
   // stamp tomorrow's date on the episode.
   for (const ep of episodes) {
+    // An episode whose extraction failed is not marked: it must be re-selected next run.
+    if (failedExtraction.has(ep.path)) continue;
     const raw = episodeRaw.get(ep.path) ?? readFileSync(join(vault, ep.path), 'utf8');
     if (!hasFencedFrontmatter(raw)) {
       // Don't corrupt a malformed episode; surface it instead.
@@ -332,7 +344,18 @@ export async function consolidate(
   // other write so a dry run leaves it untouched (C7) and the commit includes it.
   if (episodeHashes.size > 0 || existsSync(statePath)) {
     const nextHashes: Record<string, string> = {};
-    for (const [path, hash] of episodeHashes) nextHashes[path] = hash;
+    for (const [path, hash] of episodeHashes) {
+      if (failedExtraction.has(path)) {
+        // The episode was not consolidated, so do NOT adopt its current body as the
+        // baseline. Carry the previous hash forward so an edited-but-failed episode keeps
+        // differing from its baseline and is re-selected next run; omitting it would look
+        // "already consolidated with no baseline" (isUnconsolidated returns false).
+        const prev = state.hashes[path];
+        if (prev !== undefined) nextHashes[path] = prev;
+        continue;
+      }
+      nextHashes[path] = hash;
+    }
     const rel = join(STATE_DIR, 'consolidated.json');
     stage(rel, () => serializeConsolidatedState({ v: CONSOLIDATED_STATE_VERSION, hashes: nextHashes }));
   }

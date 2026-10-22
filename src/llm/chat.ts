@@ -38,10 +38,23 @@ export interface ChatOptions {
   jsonObject?: boolean;
   /** request timeout in ms; defaults to DEFAULT_CHAT_TIMEOUT_MS */
   timeoutMs?: number;
+  /** total attempts on a transient failure; defaults to DEFAULT_CHAT_ATTEMPTS */
+  maxAttempts?: number;
+  /** backoff before a retry, in ms; defaults to DEFAULT_CHAT_RETRY_DELAY_MS */
+  retryDelayMs?: number;
 }
 
 /** 30s: long enough for a local model to answer, short enough to fail a dead server. */
 export const DEFAULT_CHAT_TIMEOUT_MS = 30_000;
+
+/**
+ * Transient failures are retried once, matching `embeddings.ts` (`requestBatch`). Before
+ * this, a single hiccup aborted the whole nightly consolidation: no retry existed on this
+ * path, so one non-JSON body lost the entire run. A non-transient failure (4xx other than
+ * 429) still fails on the first attempt.
+ */
+export const DEFAULT_CHAT_ATTEMPTS = 2;
+export const DEFAULT_CHAT_RETRY_DELAY_MS = 1000;
 
 export type ChatErrorCode =
   | 'llm.http-error'
@@ -66,7 +79,8 @@ export class ChatError extends Error {
 }
 
 /**
- * POST a chat completion and return the assistant message content.
+ * POST a chat completion and return the assistant message content, retrying a transient
+ * failure a bounded number of times (see `DEFAULT_CHAT_ATTEMPTS`).
  *
  * Throws `ChatError` on: non-2xx status (`llm.http-error`), timeout (`llm.timeout`),
  * a non-JSON body (`llm.invalid-json`), or a JSON body missing
@@ -74,6 +88,59 @@ export class ChatError extends Error {
  * response blindly.
  */
 export async function chatComplete(opts: ChatOptions): Promise<string> {
+  const attempts = Math.max(1, opts.maxAttempts ?? DEFAULT_CHAT_ATTEMPTS);
+  const delayMs = opts.retryDelayMs ?? DEFAULT_CHAT_RETRY_DELAY_MS;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await completeOnce(opts);
+    } catch (e) {
+      // Give up on a non-transient error, or once the attempts are spent; otherwise
+      // back off and try again.
+      if (!(e instanceof ChatError) || !isTransient(e) || attempt >= attempts) throw e;
+    }
+    await sleep(delayMs);
+  }
+}
+
+/**
+ * A transient error is a *fast* failure a retry can plausibly fix: a network error, a
+ * 429/5xx, or a 2xx body that was not the JSON we expect (a truncated body or a provider
+ * error page). A 4xx that is not 429 means the request itself is wrong and a retry would
+ * only repeat it.
+ *
+ * `llm.timeout` is deliberately not retried: it already waited the full budget, so a
+ * retry only doubles the worst-case latency (and doubles the model calls a caller like the
+ * dream pass records per sample). Callers that must not lose work on a timeout — the
+ * consolidation loop — isolate the failure and retry the whole episode next run.
+ */
+function isTransient(e: ChatError): boolean {
+  switch (e.code) {
+    case 'llm.invalid-json':
+    case 'llm.malformed-response':
+      return true;
+    case 'llm.http-error':
+      return e.status === null || e.status === 429 || e.status >= 500;
+    default:
+      return false;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * First ~200 chars of a response body, whitespace-collapsed, for diagnosis. It is the
+ * response, never a request header, so it can never contain the bearer token.
+ */
+function bodySnippet(raw: string, max = 200): string {
+  const flat = raw.replace(/\s+/g, ' ').trim();
+  if (!flat) return '<empty body>';
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}
+
+/** One attempt: POST, check the status, read the body, and extract the content. */
+async function completeOnce(opts: ChatOptions): Promise<string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   // Only send a bearer when a key is resolvable AND non-empty. An empty
   // `Authorization: Bearer ` header is rejected by some servers and leaks intent.
@@ -110,16 +177,34 @@ export async function chatComplete(opts: ChatOptions): Promise<string> {
     throw new ChatError('llm.http-error', `chat endpoint returned ${res.status}: ${res.statusText}`, res.status);
   }
 
+  // Read the body as text first so an unparseable body can be named in the error. A
+  // failed read (connection dropped mid-body) is transient too.
+  let raw: string;
+  try {
+    raw = await res.text();
+  } catch (e) {
+    throw new ChatError('llm.invalid-json', `chat endpoint body read failed: ${(e as Error).message}`, res.status);
+  }
+
   let data: unknown;
   try {
-    data = await res.json();
+    data = JSON.parse(raw);
   } catch {
-    throw new ChatError('llm.invalid-json', 'chat endpoint returned a non-JSON body');
+    const ct = res.headers.get('content-type') ?? 'none';
+    throw new ChatError(
+      'llm.invalid-json',
+      `chat endpoint returned a non-JSON body (HTTP ${res.status}, content-type ${ct}): ${bodySnippet(raw)}`,
+      res.status,
+    );
   }
 
   const content = extractContent(data);
   if (content === null) {
-    throw new ChatError('llm.malformed-response', 'chat response missing choices[0].message.content');
+    throw new ChatError(
+      'llm.malformed-response',
+      `chat response missing choices[0].message.content: ${bodySnippet(raw)}`,
+      res.status,
+    );
   }
   return content;
 }
