@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { createServer, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { chatComplete, ChatError, fenceData } from '../src/llm/chat.ts';
-import { extractCandidates } from '../src/consolidation/candidate.ts';
+import { extractCandidates, isPlausibleEntityName } from '../src/consolidation/candidate.ts';
 import { DEFAULT_CONFIG, type Config } from '../src/config.ts';
 import type { ParsedNote } from '../src/types.ts';
 
@@ -354,6 +354,34 @@ test('C11 validation: invalid items are dropped and counted', async () => {
       assert.equal(candidates.length, 1);
       assert.equal(dropped, 5);
       assert.equal(candidates[0].subject, 'a');
+    },
+  );
+});
+
+// --- #16: implausible subjects -------------------------------------------------
+
+test('#16: isPlausibleEntityName rejects hashes, paths and filenames, keeps real names', () => {
+  for (const junk of ['bc59f1d', '0fda15b', '4d6b541aabbcc', 'src/consolidation', 'a\\b', 'test-git-commit.test.ts', 'notes.md', 'data.json', '12345']) {
+    assert.equal(isPlausibleEntityName(junk), false, `should reject ${junk}`);
+  }
+  for (const real of ['circadia', 'pi-cluster', 'aster', 'openpronoun', 'the-forge-project']) {
+    assert.equal(isPlausibleEntityName(real), true, `should keep ${real}`);
+  }
+});
+
+test('#16: a candidate with a hash/path subject is dropped, not promoted', async () => {
+  const items = [
+    { subject: 'bc59f1d', predicate: 'runs_on', object: 'delta' }, // commit hash
+    { subject: 'test/foo.test.ts', predicate: 'runs_on', object: 'delta' }, // path
+    { subject: 'alpha', predicate: 'runs_on', object: 'delta' }, // plausible
+  ];
+  await withMock(
+    (_body, res) => ok(res, JSON.stringify({ candidates: items })),
+    async (url) => {
+      const { candidates, dropped } = await extractCandidates(episode(), cfgFor(url));
+      assert.equal(candidates.length, 1, 'only the plausible subject survives');
+      assert.equal(candidates[0].subject, 'alpha');
+      assert.equal(dropped, 2, 'the junk subjects are counted as dropped');
     },
   );
 });

@@ -41,6 +41,28 @@ export interface CandidateExtraction {
 /** snake_case: starts with a lowercase letter, then lowercase letters, digits, underscores. */
 const SNAKE_CASE = /^[a-z][a-z0-9_]*$/;
 
+/** A 7–40 char hex string: a commit id, not an entity name (#16). */
+const HEX_HASH = /^[0-9a-f]{7,40}$/i;
+/** A source or config file extension: a filename, not an entity name. */
+const FILE_EXT = /\.(ts|tsx|js|mjs|cjs|jsx|json|md|txt|yml|yaml|py|rb|go|rs|sh|css|scss|html|sql|toml|lock)$/i;
+
+/**
+ * Is this subject string plausibly a *thing* rather than an artifact of extraction? With
+ * additive corroboration, a single agent episode can promote its claim and the subject
+ * becomes an entity note, so junk subjects (commit hashes, file paths, filenames) would
+ * otherwise fill the vault (#16). Deterministic rules only — no semantic guessing:
+ * a hex hash, a path separator, a file extension, all digits, or absurdly long (> 80).
+ */
+export function isPlausibleEntityName(name: string): boolean {
+  const s = name.trim();
+  if (s.length > 80) return false;
+  if (s.includes('/') || s.includes('\\')) return false;
+  if (HEX_HASH.test(s)) return false;
+  if (/^\d+$/.test(s)) return false;
+  if (FILE_EXT.test(s)) return false;
+  return true;
+}
+
 export async function extractCandidates(episode: ParsedNote, cfg: Config): Promise<CandidateExtraction> {
   const llm = resolveExtraction(cfg);
   if (llm.provider === 'none') return { candidates: [], dropped: 0 };
@@ -164,6 +186,8 @@ function validateCandidate(item: unknown): ValidCandidate | null {
   const predicate = o.predicate;
   const object = o.object;
   if (typeof subject !== 'string' || subject.trim() === '') return null;
+  // #16: a subject that is a hash, path, or filename is not a thing; drop the candidate.
+  if (!isPlausibleEntityName(subject)) return null;
   if (typeof predicate !== 'string' || !SNAKE_CASE.test(predicate)) return null;
   if (typeof object !== 'string' || object.trim() === '') return null;
 
