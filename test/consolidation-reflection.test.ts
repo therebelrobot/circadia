@@ -62,6 +62,8 @@ describe('reflection', () => {
     if (!content.includes('derived: true')) throw new Error('Should have derived flag');
     if (!content.includes('sources:')) throw new Error('Should have sources');
     if (!content.includes('runs_on')) throw new Error('Should include facts');
+    // #18: lint requires every note to declare a type; a schema note is `type: schema`.
+    if (!/^type: schema$/m.test(content)) throw new Error('Should declare type: schema');
   });
 
   test('returns null when importance below threshold', () => {

@@ -182,6 +182,31 @@ test('corroboration: a contradiction still queues even with corroboration on', a
   });
 });
 
+test('#17: an entity-typed predicate creates the object entity and writes a link', async () => {
+  await withMock(async (url) => {
+    const v = makeVault('object-entity', url, {
+      'episodes/2026/09/2026-09-20-a.md': episodeNote('agent', 'CANDIDATE alpha related_to gamma'),
+      'episodes/2026/09/2026-09-21-b.md': episodeNote('agent', 'CANDIDATE alpha related_to gamma'),
+    });
+    // related_to is declared with an entity object, so the fact must carry a [[link]].
+    writeFileSync(
+      join(v, CONFIG_FILENAME),
+      JSON.stringify({
+        extraction: { provider: 'http', endpoint: url, model: 'm', apiKeyEnv: null },
+        predicates: { strict: false, defs: { related_to: { object: 'entity' } } },
+        consolidation: { corroboration: true, corroborationMinSupport: 2 },
+      }),
+    );
+    const cfg = loadConfig(v);
+    buildIndex(v, cfg);
+    const r = await consolidate(v, cfg);
+    assert.equal(r.promoted, 1);
+    assert.ok(existsSync(join(v, 'entities', 'gamma.md')), 'the object entity is created');
+    const note = readFileSync(join(v, 'entities', 'alpha.md'), 'utf8');
+    assert.match(note, /\[related_to:: \[\[gamma\]\]\]/, 'the fact object is a wikilink, not a literal');
+  });
+});
+
 test('corroboration: off by default changes nothing', async () => {
   await withMock(async (url) => {
     const v = makeVault(

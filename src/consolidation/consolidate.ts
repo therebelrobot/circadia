@@ -326,6 +326,16 @@ export async function consolidate(
     const decision = evaluateGate(c, cfg, subjectRef, objectRef, currentFacts, validAt, corroborationOn ? support : 1);
     const corroborated = decision.reason.startsWith('corroborated');
 
+    // A predicate declared `object: entity` must carry a [[link]], not a literal. If the
+    // object did not resolve, derive its entity note (symmetric with a new subject) and use
+    // the link; the note is staged only when a fact is actually written (#17).
+    const objectName = asWikiLink(c.object)?.target ?? c.object;
+    const derivedObject =
+      !objectRef && cfg.predicates.defs[c.predicate]?.object === 'entity'
+        ? deriveEntityNote(objectName, today)
+        : null;
+    const objectId = objectRef?.id ?? derivedObject?.id ?? null;
+
     if (decision.action === 'promote') {
       // A corroborated promotion may be about a subject the vault has never seen: create a
       // minimal entity note so the fact has somewhere to live (tier-0 resolvable next run).
@@ -335,7 +345,8 @@ export async function consolidate(
         stage(derived.path, () => derived.content);
         target = { id: derived.id, title: c.subject, path: derived.path };
       }
-      const fact = buildFact(c, target.id, objectRef?.id ?? null, todayMs, validAt);
+      if (derivedObject) stage(derivedObject.path, () => derivedObject.content);
+      const fact = buildFact(c, target.id, objectId, todayMs, validAt);
       if (corroborated) fact.conf = confForSupport(support);
       stage(target.path, (raw) =>
         appendFactLine(raw, fact, { factsHeading: cfg.vault.factsHeading }),
@@ -346,7 +357,7 @@ export async function consolidate(
       if (corroborated) promotedClaimKeys.add(claimKey);
     } else if (decision.action === 'supersede' && subjectRef) {
       const supersededAt = todayMs;
-      const newFact = buildFact(c, subjectRef.id, objectRef?.id ?? null, supersededAt, validAt);
+      const newFact = buildFact(c, subjectRef.id, objectId, supersededAt, validAt);
       let changed = false;
       stage(subjectRef.path, (raw) => {
         const r = applySupersede(raw, {
@@ -360,6 +371,8 @@ export async function consolidate(
       });
       if (changed) {
         superseded++;
+        // Only materialize the derived object entity if the supersession actually wrote.
+        if (derivedObject) stage(derivedObject.path, () => derivedObject.content);
         trackFact(entityFacts, subjectRef.path, newFact);
       } else {
         queued++;

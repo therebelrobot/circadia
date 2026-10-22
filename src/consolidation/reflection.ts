@@ -98,6 +98,7 @@ export function renderReflection(
 
   const content = [
     '---',
+    'type: schema',
     'derived: true',
     `sources: ${sources.map((s) => `[[${s}]]`).join(', ') || 'none'}`,
     `generated_hash: ${hash}`,

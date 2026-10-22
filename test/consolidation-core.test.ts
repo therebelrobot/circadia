@@ -2,7 +2,7 @@
 // C4 (untrusted-source gate), C13 (triple candidates always queue), idempotency.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { CONFIG_FILENAME, loadConfig, validateConfig, DEFAULT_CONFIG } from '../src/config.ts';
@@ -135,7 +135,7 @@ test('C2: promotes a known entity + known predicate and writes the exact fact li
   assert.deepEqual(lintErrors(v), [], 'lint must stay clean after promotion');
 });
 
-test('C2: a resolved object renders as a wikilink, an unresolved object as a literal', async () => {
+test('C2/#17: an entity-typed predicate links its object; an unresolved object gets a stub entity', async () => {
   const v = makeVault('c2-render', {
     'entities/projects/x.md': entityNote('x', '## Facts\n- [status:: active] [by:: user]\n'),
     'entities/tools/y.md': entityNote('y', ''),
@@ -155,8 +155,11 @@ test('C2: a resolved object renders as a wikilink, an unresolved object as a lit
   }
 
   const text = readFileSync(join(v, 'entities/projects/x.md'), 'utf8');
-  assert.ok(text.includes('[runs_on:: [[y]]]'), 'resolved object should be a wikilink');
-  assert.ok(text.includes('[runs_on:: ghost]'), 'unresolved object should be a literal');
+  assert.ok(text.includes('[runs_on:: [[y]]]'), 'resolved object is a wikilink');
+  // #17: `runs_on` declares an entity object, so an unresolved object gets a stub entity and
+  // a wikilink (a literal would be a lint error: fact.object-kind).
+  assert.ok(text.includes('[runs_on:: [[ghost]]]'), 'an unresolved entity object is created and linked');
+  assert.ok(existsSync(join(v, 'entities/ghost.md')), 'the object stub entity is created');
 });
 
 test('C3: a user episode supersedes a contradicting fact (roadmap Phase 4 fixture)', async () => {

@@ -79,6 +79,9 @@ export async function writeEpisodes(
       '---',
       `title: ${seg.title || 'Untitled'}`,
       `type: episode`,
+      // `started` is required by the schema (lint: note.missing-field); world time is the
+      // local calendar date the episode was written.
+      `started: ${dateStr}`,
       `boundary: ${seg.boundary}`,
       `by: ${by}`,
       `source: ${source}`,
