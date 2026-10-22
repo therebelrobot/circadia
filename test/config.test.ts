@@ -109,3 +109,49 @@ test('loadConfig: an invalid factExpansion.maxInserted fails loudly', () => {
   );
   rmSync(v, { recursive: true, force: true });
 });
+
+test('loadConfig: extraction.routing and dreaming.llm deep-merge over the defaults', () => {
+  const v = join(tmp, 'circadia-llm-routing');
+  mkdirSync(v);
+  writeFileSync(
+    join(v, 'circadia.config.json'),
+    JSON.stringify({
+      extraction: { provider: 'http', model: 'extract', routing: { zdr: true } },
+      dreaming: { llm: { model: 'dream' } },
+    }),
+  );
+  const cfg = loadConfig(v);
+  assert.equal(cfg.extraction.routing?.zdr, true);
+  assert.equal(cfg.dreaming.llm?.model, 'dream');
+  // An untouched nested default is preserved.
+  assert.deepEqual(cfg.extraction.routing, { zdr: true });
+  rmSync(v, { recursive: true, force: true });
+});
+
+test('loadConfig: an invalid extraction.routing.dataCollection fails loudly', () => {
+  const v = join(tmp, 'circadia-routing-bad');
+  mkdirSync(v);
+  writeFileSync(
+    join(v, 'circadia.config.json'),
+    JSON.stringify({ extraction: { routing: { dataCollection: 'maybe' } } }),
+  );
+  assert.throws(
+    () => loadConfig(v),
+    /extraction\.routing\.dataCollection must be "allow" or "deny"/,
+  );
+  rmSync(v, { recursive: true, force: true });
+});
+
+test('loadConfig: an invalid dreaming.llm.provider fails loudly', () => {
+  const v = join(tmp, 'circadia-dream-llm-bad');
+  mkdirSync(v);
+  writeFileSync(
+    join(v, 'circadia.config.json'),
+    JSON.stringify({ dreaming: { llm: { provider: 'postgres' } } }),
+  );
+  assert.throws(
+    () => loadConfig(v),
+    /dreaming\.llm\.provider must be "none" or "http"/,
+  );
+  rmSync(v, { recursive: true, force: true });
+});

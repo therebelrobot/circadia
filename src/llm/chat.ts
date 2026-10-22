@@ -36,6 +36,11 @@ export interface ChatOptions {
   maxTokens?: number;
   /** ask the server for a JSON object body (`response_format: { type: "json_object" }`) */
   jsonObject?: boolean;
+  /**
+   * OpenRouter-style routing preferences, sent verbatim as the request's `provider`
+   * object (#13). Undefined sends none, so the body is unchanged for a local server.
+   */
+  provider?: Record<string, unknown>;
   /** request timeout in ms; defaults to DEFAULT_CHAT_TIMEOUT_MS */
   timeoutMs?: number;
   /** total attempts on a transient failure; defaults to DEFAULT_CHAT_ATTEMPTS */
@@ -154,6 +159,7 @@ async function completeOnce(opts: ChatOptions): Promise<string> {
     max_tokens: opts.maxTokens ?? 512,
   };
   if (opts.jsonObject) body.response_format = { type: 'json_object' };
+  if (opts.provider) body.provider = opts.provider;
 
   const timeoutMs = opts.timeoutMs ?? DEFAULT_CHAT_TIMEOUT_MS;
 

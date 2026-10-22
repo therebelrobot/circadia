@@ -33,6 +33,32 @@ export interface PredicateDef {
   cardinality?: 'single' | 'many';
 }
 
+/**
+ * OpenRouter-style provider routing preferences, sent as the request's `provider` object
+ * (#13). Opt-in, so an endpoint that does not understand `provider` (a local llama-server)
+ * is unaffected. The operator who blocks Zero Data Retention violations sets
+ * `zdr: true` here.
+ */
+export interface LlmRouting {
+  /** restrict routing to Zero Data Retention endpoints */
+  zdr?: boolean;
+  /** `deny` excludes providers that may store or train on the data */
+  dataCollection?: 'allow' | 'deny';
+}
+
+/**
+ * An optional override of the LLM the dream (REM) pass uses (#13). Every field falls back
+ * to the matching `extraction.*` value, so leaving it unset runs dreaming on the extraction
+ * model — the behavior before this key existed.
+ */
+export interface DreamLlm {
+  provider?: 'none' | 'http';
+  endpoint?: string;
+  model?: string;
+  apiKeyEnv?: string | null;
+  apiKeyFileEnv?: string | null;
+}
+
 export interface Config {
   vault: {
     factsHeading: string;
@@ -149,6 +175,11 @@ export interface Config {
     logTtlHours: number;
     /** candidate lifetime in nights */
     candidateTtlNights: number;
+    /**
+     * Optional LLM override for the REM pass (#13). Unset fields fall back to
+     * `extraction.*`. `routing` is not overridden here; it mirrors `extraction.routing`.
+     */
+    llm?: DreamLlm;
   };
   mcp: {
     /**
@@ -181,6 +212,8 @@ export interface Config {
     apiKeyEnv: string | null;
     /** RFC-0003 §7: env var naming a file that holds the key (Docker secrets). Optional. */
     apiKeyFileEnv?: string | null;
+    /** Opt-in provider routing preferences, sent as the request's `provider` object (#13). */
+    routing?: LlmRouting;
   };
   /**
    * `circadia serve` (RFC-0003): the long-lived HTTP MCP service. Every key here is inert
@@ -293,6 +326,8 @@ export const DEFAULT_CONFIG: Config = {
     recallFragments: 3,
     logTtlHours: 12,
     candidateTtlNights: 14,
+    // Empty: every field inherits `extraction.*`, so dreaming runs on the extraction model.
+    llm: {},
   },
   mcp: {
     logAccess: true,
@@ -311,6 +346,8 @@ export const DEFAULT_CONFIG: Config = {
     model: '',
     apiKeyEnv: null,
     apiKeyFileEnv: null,
+    // Empty: no `provider` object is sent, so the request body is unchanged.
+    routing: {},
   },
   serve: {
     bind: '127.0.0.1',
@@ -457,6 +494,29 @@ export function validateConfig(c: Config): string[] {
   }
   if (c.extraction.apiKeyFileEnv != null && typeof c.extraction.apiKeyFileEnv !== 'string') {
     errs.push('extraction.apiKeyFileEnv must be a string or null');
+  }
+  const r = c.extraction.routing ?? {};
+  if (r.zdr !== undefined && typeof r.zdr !== 'boolean') {
+    errs.push('extraction.routing.zdr must be a boolean');
+  }
+  if (r.dataCollection !== undefined && r.dataCollection !== 'allow' && r.dataCollection !== 'deny') {
+    errs.push('extraction.routing.dataCollection must be "allow" or "deny"');
+  }
+  const dl = c.dreaming.llm ?? {};
+  if (dl.provider !== undefined && dl.provider !== 'none' && dl.provider !== 'http') {
+    errs.push('dreaming.llm.provider must be "none" or "http"');
+  }
+  if (dl.endpoint !== undefined && typeof dl.endpoint !== 'string') {
+    errs.push('dreaming.llm.endpoint must be a string');
+  }
+  if (dl.model !== undefined && typeof dl.model !== 'string') {
+    errs.push('dreaming.llm.model must be a string');
+  }
+  if (dl.apiKeyEnv !== undefined && dl.apiKeyEnv !== null && typeof dl.apiKeyEnv !== 'string') {
+    errs.push('dreaming.llm.apiKeyEnv must be a string or null');
+  }
+  if (dl.apiKeyFileEnv !== undefined && dl.apiKeyFileEnv !== null && typeof dl.apiKeyFileEnv !== 'string') {
+    errs.push('dreaming.llm.apiKeyFileEnv must be a string or null');
   }
   return errs;
 }

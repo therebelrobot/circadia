@@ -16,6 +16,7 @@ test('dreaming defaults: a user who sets nothing gets no dreaming', () => {
     recallFragments: 3,
     logTtlHours: 12,
     candidateTtlNights: 14,
+    llm: {},
   });
 });
 

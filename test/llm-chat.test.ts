@@ -116,6 +116,27 @@ test('C10 wire format: sends a messages array, never a prompt', async () => {
   );
 });
 
+// --- #13: provider routing ----------------------------------------------------
+
+test('#13 routing: the provider object is sent when set, omitted when not', async () => {
+  const respond = (_body: Record<string, unknown>, res: ServerResponse): void => ok(res, 'ok');
+
+  await withMock(respond, async (url, captured) => {
+    await chatComplete({
+      endpoint: url,
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'hi' }],
+      provider: { zdr: true, data_collection: 'deny' },
+    });
+    assert.deepEqual(captured[0].body.provider, { zdr: true, data_collection: 'deny' });
+  });
+
+  await withMock(respond, async (url, captured) => {
+    await chatComplete({ endpoint: url, model: 'test-model', messages: [{ role: 'user', content: 'hi' }] });
+    assert.equal('provider' in captured[0].body, false, 'no provider field when routing is unset');
+  });
+});
+
 // --- C10: auth ----------------------------------------------------------------
 
 test('C10 auth: no Authorization header without a key, Bearer <key> with one', async () => {

@@ -9,6 +9,7 @@ import type { Config } from '../config.ts';
 import type { ParsedNote, SourceKind, Trust } from '../types.ts';
 import { DEFAULT_TRUST } from '../vault/facts.ts';
 import { chatComplete, fenceData } from '../llm/chat.ts';
+import { resolveExtraction, providerBody } from '../llm/resolve.ts';
 
 export interface Candidate {
   subject: string;
@@ -41,7 +42,8 @@ export interface CandidateExtraction {
 const SNAKE_CASE = /^[a-z][a-z0-9_]*$/;
 
 export async function extractCandidates(episode: ParsedNote, cfg: Config): Promise<CandidateExtraction> {
-  if (cfg.extraction.provider === 'none') return { candidates: [], dropped: 0 };
+  const llm = resolveExtraction(cfg);
+  if (llm.provider === 'none') return { candidates: [], dropped: 0 };
 
   const text = episode.passages.map((p) => p.text).join('\n\n');
   const predicates = Object.keys(cfg.predicates.defs);
@@ -68,14 +70,15 @@ Output JSON only, no other text.
 ${fenceData(text, 'episode-data')}`;
 
   const content = await chatComplete({
-    endpoint: cfg.extraction.endpoint,
-    model: cfg.extraction.model,
+    endpoint: llm.endpoint,
+    model: llm.model,
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: user },
     ],
-    apiKeyEnv: cfg.extraction.apiKeyEnv,
-    apiKeyFileEnv: cfg.extraction.apiKeyFileEnv ?? null,
+    apiKeyEnv: llm.apiKeyEnv,
+    apiKeyFileEnv: llm.apiKeyFileEnv,
+    provider: providerBody(llm.routing),
     temperature: 0.1,
     maxTokens: 1024,
     jsonObject: true,

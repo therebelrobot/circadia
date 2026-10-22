@@ -67,8 +67,13 @@ facts. Point it at a model:
 - Use **non-OpenAI, non-xAI** models (owner requirement, `AGENTS.md` §3). A small instruct
   model is the right size: this is batch entity extraction, not reasoning.
 - A local `llama-server` works too; that is the default endpoint and makes no network calls.
-- The same `extraction.*` block drives **dreaming** (the REM pass); there is no separate
-  dreaming model. Dreaming stays off unless you set `dreaming.enabled: true`.
+- The same `extraction.*` block drives **dreaming** (the REM pass) by default. To run dreaming
+  on a different (e.g. cheaper) model, set `dreaming.llm.model` (and any of
+  `provider`/`endpoint`/`apiKeyEnv`/`apiKeyFileEnv`); unset fields fall back to `extraction.*`.
+  Dreaming stays off unless you set `dreaming.enabled: true`.
+- To enforce Zero Data Retention on a hosted endpoint, set `extraction.routing.zdr: true`
+  (and `extraction.routing.dataCollection: "deny"`). It is sent as the request's `provider`
+  object and applies to consolidation and dreaming alike.
 - Full key list: [`CONFIG.md`](CONFIG.md) §extraction.
 
 ## 5. Wire the MCP server into your harness

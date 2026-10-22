@@ -73,9 +73,20 @@ The REM pass (RFC-0001). A user who never sets any of these gets no dreaming at 
 | `dreaming.recallFragments` | `3` | fragments shown by `wake` |
 | `dreaming.logTtlHours` | `12` | unread log lifetime in hours; `0` turns the TTL off |
 | `dreaming.candidateTtlNights` | `14` | candidate lifetime in nights |
+| `dreaming.llm.provider` | *(inherited)* | `none` \| `http`; overrides `extraction.provider` for the REM pass only |
+| `dreaming.llm.endpoint` | *(inherited)* | overrides `extraction.endpoint` for the REM pass only |
+| `dreaming.llm.model` | *(inherited)* | overrides `extraction.model` for the REM pass only; lets dreaming run a cheaper model than consolidation |
+| `dreaming.llm.apiKeyEnv` | *(inherited)* | overrides `extraction.apiKeyEnv` for the REM pass only |
+| `dreaming.llm.apiKeyFileEnv` | *(inherited)* | overrides `extraction.apiKeyFileEnv` for the REM pass only |
 
-Proposals use the configured `extraction` endpoint, a local model by default. A hosted
-endpoint is the user's choice and carries passage text off the machine.
+Every `dreaming.llm.*` field falls back to the matching `extraction.*` value when unset, so
+an unset `dreaming.llm` runs the REM pass on the extraction model — the behavior before this
+key existed. `extraction.routing` still applies to dream calls: routing preferences are not
+overridable per pass.
+
+Proposals use the configured `extraction` endpoint (or `dreaming.llm`, when set), a local
+model by default. A hosted endpoint is the user's choice and carries passage text off the
+machine.
 
 ## mcp
 
@@ -110,6 +121,16 @@ LLM used for hipporag triple extraction and for consolidation.
 | `extraction.model` | `""` | model id |
 | `extraction.apiKeyEnv` | `null` | env var name for the key. Use a spend-capped key (e.g. an OpenRouter key with a per-key `limit`) |
 | `extraction.apiKeyFileEnv` | `null` | env var naming a *file* that holds the key (Docker secrets). Additive; wins over `apiKeyEnv` when set and non-empty (RFC-0003 §7) |
+| `extraction.routing.zdr` | *(unset)* | `true` restricts routing to Zero Data Retention endpoints (sent as the request's `provider.zdr`) |
+| `extraction.routing.dataCollection` | *(unset)* | `"deny"` excludes providers that may store or train on the data (sent as `provider.data_collection`); `"allow"` is the endpoint default |
+
+`extraction.routing` maps to the OpenAI-compatible request `provider` object. It is opt-in:
+with nothing set, no `provider` field is sent, so the request body is unchanged, and an
+endpoint that does not understand `provider` (a local `llama-server`) simply ignores it.
+A user who blocks Zero Data Retention violations should set `extraction.routing.zdr: true`
+(or the equivalent OpenRouter account privacy setting) so retention is enforced by the
+client rather than only by the account. The same routing applies to the dream pass (see
+`dreaming.llm`).
 
 ## serve (`circadia serve`, RFC-0003)
 

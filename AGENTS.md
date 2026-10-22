@@ -18,7 +18,7 @@ without breaking its invariants. Read it fully before editing anything.
 ## 2. Commands
 
 ```bash
-npm test                  # node:test, ~22s. 481 tests.
+npm test                  # node:test, ~22s. 492 tests.
 npm run typecheck         # tsc --noEmit, strict + erasableSyntaxOnly
 npm run example:index     # index examples/vault (incremental; --full for a full rebuild)
 node bin/circadia.mjs watch --vault examples/vault   # reindex on change (Ctrl-C to stop)
@@ -118,6 +118,7 @@ node bin/circadia.mjs --help
 | `src/vault/walk.ts` | file discovery | skips dot-folders, `_meta/`, `vault.ignore` globs |
 | `src/extract/scope.ts` | per-note extraction mode | precedence: frontmatter > first scope rule > default |
 | `src/extract/triples.ts` | hipporag triple cache + `TripleExtractor` contract | Phase 5 implements an extractor |
+| `src/llm/` | shared chat-completions client, key resolution, per-call-site LLM resolution | `chat.ts` retries a fast transient failure once and never logs the key; `resolve.ts` maps `extraction.*` / `dreaming.llm` to request settings and `providers` routing; `api-key.ts` reads the env/file key |
 | `src/index/db.ts` | SQLite schema, FTS5 probe | bump `INDEX_SCHEMA_VERSION` on schema changes; `openIndex(file, { readOnly })` opens a `:ro` layer with SQLite's `immutable=1` URI (a WAL `-shm` sidecar can't be created on a read-only mount; RFC-0004 open question 6) |
 | `src/index/indexer.ts` | full rebuild + incremental update + `embedPassages` + dream-edge emission | `buildIndex` (full) and `incrementalIndex` (diffs the `files` table) stay synchronous; `embedPassages` is the async follow-up. `emitDreamEdges()` rebuilds `dream` edges from `.circadia/dreams/candidates.jsonl` on every index (RFC-0001 Stage 4) |
 | `src/retrieval/*` | keyword, PPR, ACT-R, modes, recall, embeddings, relate, timeline, graph cache | `recall.ts` is the orchestrator; `graph-cache.ts` owns edge loading/filtering (`loadGraph`) shared by recall and the cache |
