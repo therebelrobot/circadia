@@ -109,6 +109,8 @@ options
   --check               (eval) exit non-zero on any baseline delta
   --fact-expansion      (eval) force entity-anchored fact expansion on for this run
   --no-fact-expansion   (eval) force it off, overriding circadia.config.json
+  --generate            (eval) write a personal query set derived from --vault and exit
+  --out <path>          (eval) where --generate writes the query set
                         (serve) read the heartbeat file and exit non-zero when unhealthy
   -h, --help            this help
 `;
@@ -122,7 +124,7 @@ interface Args {
 export function parseArgs(argv: string[]): Args {
   const flags = new Map<string, string | true>();
   const pos: string[] = [];
-  const valued = new Set(['vault', 'workspace', 'project', 'agent', 'from', 'to', 'layers', 'mode', 'as-of', 'top', 'budget', 'scope', 'queries', 'baseline', 'split', 'fixture', 'adapter', 'report']);
+  const valued = new Set(['vault', 'workspace', 'project', 'agent', 'from', 'to', 'layers', 'mode', 'as-of', 'top', 'budget', 'scope', 'queries', 'baseline', 'split', 'fixture', 'adapter', 'report', 'out']);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '-h') flags.set('help', true);
@@ -1068,6 +1070,20 @@ export async function main(argv: string[]): Promise<number> {
       return 0;
     }
     case 'eval': {
+      // #21: `--generate` writes a personal query set derived from the vault and exits; it
+      // does not run the eval. Read-only on the vault; the file goes wherever `--out` points.
+      if (args.flags.has('generate')) {
+        const out = str(args.flags, 'out');
+        if (!vault || !out) {
+          console.error('error: --generate needs --vault <dir> and --out <path>');
+          return 1;
+        }
+        const { generatePersonalQueries } = await import('../eval/generate-personal.ts');
+        const queries = generatePersonalQueries(vault, loadConfig(vault));
+        writeFileSync(out, queries.map((q) => JSON.stringify(q)).join('\n') + '\n');
+        console.log(`wrote ${queries.length} generated queries to ${out}`);
+        return 0;
+      }
       const { runEval, buildReport } = await import('../eval/run.ts');
       const { readBaseline, diffBaseline, toBaseline } = await import('../eval/baseline.ts');
       const { aggregate } = await import('../eval/metrics.ts');

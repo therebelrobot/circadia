@@ -199,6 +199,32 @@ circadia eval --vault <dir> --queries <queries.jsonl> --no-fact-expansion
 `--fact-expansion` and `--no-fact-expansion` override `retrieval.factExpansion.enabled`
 for that run only, and passing both is an error. With neither flag the config value wins.
 
+### Generating a personal query set
+
+Hand-authoring gold passages is unreasonable for an operator, so `eval --generate` derives a
+set from the vault itself and exits (read-only on the vault; the file goes wherever you point):
+
+```bash
+circadia eval --generate --vault <dir> --out <queries.jsonl>
+```
+
+It emits, from the vault's own current facts:
+
+- **single-hop** — one per entity note (`query` = the id; gold = `<id>#0`);
+- **multi-hop** — one per fact whose object is a link (`query` = `"<subject> <predicate>"`;
+  gold = an any-of group of the object's first passage and the subject's `#facts` passage);
+- **temporal** — a fact with a closed `valid` interval, with `as_of` at its start.
+
+Only passage ids that exist are used, so the result passes `eval` without `--allow-missing`.
+`split` (dev/holdout) is deterministic.
+
+**This is a regression set, not an answer-quality eval.** It asks whether recall resurfaces
+the vault's *own* assertions — circular by construction — and the phrasing is mechanical
+(`"<subject> <predicate>"`), so it does not exercise paraphrase the way the fixture does. That
+is exactly what RFC-0002 step 3 needs (does fact expansion find the fact?), but its numbers
+must not be reported as retrieval quality. A vault with only literal-object facts yields only
+single-hop queries, which do not exercise expansion.
+
 **Flag-off output is unchanged.** `expanded` is present on a result only when
 the flag is on, and `expansionShare` is present on an aggregate only when at
 least one of its results carries `expanded`. With the flag off (the default),
