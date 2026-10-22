@@ -14,6 +14,7 @@ import { writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Fact } from '../types.ts';
 import { splitFrontmatter } from '../vault/frontmatter.ts';
+import { localDateString, systemDateNow } from '../vault/time.ts';
 
 export interface ReflectionResult {
   entity: string;
@@ -48,6 +49,18 @@ function readGeneratedHash(raw: string): string | null {
 }
 
 /**
+ * The `generated:` date a `type: schema` note must declare (parse.ts). Deterministic: the
+ * newest fact's recorded time, so a re-run on the same facts does not churn the note (#20).
+ */
+function newestFactDate(facts: Fact[]): string {
+  const times = facts.map((f) => f.recordedAt).filter((t): t is number => typeof t === 'number');
+  // A note date must be a local calendar date via systemDateNow(), never a raw UTC stamp
+  // (see the determinism guard in test/review.test.ts).
+  const t = times.length ? Math.max(...times) : systemDateNow();
+  return localDateString(new Date(t));
+}
+
+/**
  * Compute the schema note for an entity, without writing it.
  * Returns null when the summed importance is below the threshold.
  */
@@ -56,6 +69,7 @@ export function renderReflection(
   entity: string,
   facts: Fact[],
   threshold: number,
+  generated: string = newestFactDate(facts),
 ): ReflectionRender | null {
   // Compute summed importance
   const importance = facts.reduce((acc, f) => acc + (f.conf ?? 1), 0);
@@ -101,6 +115,7 @@ export function renderReflection(
     'type: schema',
     'derived: true',
     `sources: ${sources.map((s) => `[[${s}]]`).join(', ') || 'none'}`,
+    `generated: ${generated}`,
     `generated_hash: ${hash}`,
     '---',
     body,

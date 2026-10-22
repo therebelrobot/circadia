@@ -452,7 +452,7 @@ export async function consolidate(
   // Generate schema notes for entities with sufficient importance.
   const threshold = opts.reflectionThreshold ?? 3;
   for (const [entity, facts] of entityFacts) {
-    const render = renderReflection(vault, entity, facts, threshold);
+    const render = renderReflection(vault, entity, facts, threshold, today);
     if (render?.changed) {
       stage(render.relPath, () => render.content);
     }

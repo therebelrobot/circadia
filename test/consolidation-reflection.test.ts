@@ -64,6 +64,8 @@ describe('reflection', () => {
     if (!content.includes('runs_on')) throw new Error('Should include facts');
     // #18: lint requires every note to declare a type; a schema note is `type: schema`.
     if (!/^type: schema$/m.test(content)) throw new Error('Should declare type: schema');
+    // #20: a `type: schema` note must also declare `generated`.
+    if (!/^generated: \d{4}-\d{2}-\d{2}$/m.test(content)) throw new Error('Should declare generated');
   });
 
   test('returns null when importance below threshold', () => {
