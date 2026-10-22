@@ -232,6 +232,13 @@ export interface Config {
     apiKeyFileEnv?: string | null;
     /** Opt-in provider routing preferences, sent as the request's `provider` object (#13). */
     routing?: LlmRouting;
+    /**
+     * Per-request timeout (ms) for the extraction LLM. Higher than the client default so a
+     * long episode (a pasted transcript, an exported profile) still extracts instead of
+     * timing out. A timeout is isolated but never retried, so a persistently slow episode
+     * would otherwise never consolidate (#15).
+     */
+    timeoutMs: number;
   };
   /**
    * `circadia serve` (RFC-0003): the long-lived HTTP MCP service. Every key here is inert
@@ -370,6 +377,7 @@ export const DEFAULT_CONFIG: Config = {
     apiKeyFileEnv: null,
     // Empty: no `provider` object is sent, so the request body is unchanged.
     routing: {},
+    timeoutMs: 60_000,
   },
   serve: {
     bind: '127.0.0.1',
@@ -516,6 +524,9 @@ export function validateConfig(c: Config): string[] {
   }
   if (c.extraction.apiKeyFileEnv != null && typeof c.extraction.apiKeyFileEnv !== 'string') {
     errs.push('extraction.apiKeyFileEnv must be a string or null');
+  }
+  if (!Number.isInteger(c.extraction.timeoutMs) || c.extraction.timeoutMs < 1) {
+    errs.push('extraction.timeoutMs must be a positive integer (milliseconds)');
   }
   const r = c.extraction.routing ?? {};
   if (r.zdr !== undefined && typeof r.zdr !== 'boolean') {

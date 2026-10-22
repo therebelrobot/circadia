@@ -182,3 +182,22 @@ test('loadConfig: a corroborationMinSupport below 1 fails loudly', () => {
   );
   rmSync(v, { recursive: true, force: true });
 });
+
+test('loadConfig: extraction.timeoutMs defaults to 60000 and deep-merges', () => {
+  const v = join(tmp, 'circadia-extraction-timeout');
+  mkdirSync(v);
+  writeFileSync(join(v, 'circadia.config.json'), JSON.stringify({ extraction: { timeoutMs: 180000 } }));
+  assert.equal(loadConfig(v).extraction.timeoutMs, 180000);
+  rmSync(v, { recursive: true, force: true });
+  mkdirSync(v);
+  assert.equal(loadConfig(v).extraction.timeoutMs, 60000);
+  rmSync(v, { recursive: true, force: true });
+});
+
+test('loadConfig: a non-positive extraction.timeoutMs fails loudly', () => {
+  const v = join(tmp, 'circadia-extraction-timeout-bad');
+  mkdirSync(v);
+  writeFileSync(join(v, 'circadia.config.json'), JSON.stringify({ extraction: { timeoutMs: 0 } }));
+  assert.throws(() => loadConfig(v), /extraction\.timeoutMs must be a positive integer/);
+  rmSync(v, { recursive: true, force: true });
+});

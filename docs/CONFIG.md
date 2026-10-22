@@ -135,6 +135,7 @@ LLM used for hipporag triple extraction and for consolidation.
 | `extraction.apiKeyFileEnv` | `null` | env var naming a *file* that holds the key (Docker secrets). Additive; wins over `apiKeyEnv` when set and non-empty (RFC-0003 §7) |
 | `extraction.routing.zdr` | *(unset)* | `true` restricts routing to Zero Data Retention endpoints (sent as the request's `provider.zdr`) |
 | `extraction.routing.dataCollection` | *(unset)* | `"deny"` excludes providers that may store or train on the data (sent as `provider.data_collection`); `"allow"` is the endpoint default |
+| `extraction.timeoutMs` | `60000` | per-request timeout (ms) for the extraction LLM. Raise it for long episodes (a pasted transcript, an exported profile). A timeout is isolated but not retried, so a persistently slow episode would otherwise never consolidate |
 
 `extraction.routing` maps to the OpenAI-compatible request `provider` object. It is opt-in:
 with nothing set, no `provider` field is sent, so the request body is unchanged, and an

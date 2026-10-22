@@ -82,6 +82,7 @@ ${fenceData(text, 'episode-data')}`;
     temperature: 0.1,
     maxTokens: 1024,
     jsonObject: true,
+    timeoutMs: cfg.extraction.timeoutMs,
   });
 
   // Source monitoring: the episode's `by` decides trust, and a non-speculative
