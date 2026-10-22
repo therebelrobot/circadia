@@ -155,3 +155,30 @@ test('loadConfig: an invalid dreaming.llm.provider fails loudly', () => {
   );
   rmSync(v, { recursive: true, force: true });
 });
+
+test('loadConfig: consolidation.corroboration defaults off and deep-merges', () => {
+  const v = join(tmp, 'circadia-corroboration-config');
+  mkdirSync(v);
+  writeFileSync(
+    join(v, 'circadia.config.json'),
+    JSON.stringify({ consolidation: { corroboration: true, corroborationMinSupport: 3 } }),
+  );
+  const cfg = loadConfig(v);
+  assert.equal(cfg.consolidation.corroboration, true);
+  assert.equal(cfg.consolidation.corroborationMinSupport, 3);
+  rmSync(v, { recursive: true, force: true });
+});
+
+test('loadConfig: a corroborationMinSupport below 1 fails loudly', () => {
+  const v = join(tmp, 'circadia-corroboration-bad');
+  mkdirSync(v);
+  writeFileSync(
+    join(v, 'circadia.config.json'),
+    JSON.stringify({ consolidation: { corroborationMinSupport: 0 } }),
+  );
+  assert.throws(
+    () => loadConfig(v),
+    /consolidation\.corroborationMinSupport must be an integer >= 1/,
+  );
+  rmSync(v, { recursive: true, force: true });
+});

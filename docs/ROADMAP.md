@@ -166,6 +166,11 @@ works in TypeScript and uses Mastra as their agent framework.
 
 **Notes**
 
+- **Additive corroboration** (`consolidation.corroboration`, default `false`; issue #14,
+  ADR-0015): the gate's "corroboration by a second episode" path, weighted so a human
+  assertion counts double an agent's, plus entity creation so a new-entity claim can promote
+  (or be accepted in `review`) at all. With the flag on, a promoted claim's `conf` grows with
+  support, and an already-current fact is strengthened as more sources agree.
 - `predicates.defs` defaults to `{}`: with no predicates declared, every candidate is an
   unknown predicate and queues — nothing auto-promotes until predicates are defined.
 - `cardinality` defaults to `many`: an unconfigured predicate accumulates objects rather

@@ -16,6 +16,7 @@ import { parseVault, buildResolver } from '../index/indexer.ts';
 import { appendFactLine, writeFactToNote, type WritableFact } from '../vault/fact-write.ts';
 import { applySupersede } from '../consolidation/supersede.ts';
 import { isSingleValued } from '../consolidation/schema.ts';
+import { deriveEntityNote } from '../consolidation/entity.ts';
 import { asWikiLink, shortHash } from '../vault/util.ts';
 import { DEFAULT_TRUST } from '../vault/facts.ts';
 import { localDateString, systemDateNow } from '../vault/time.ts';
@@ -113,14 +114,22 @@ export function applyReviewDecision(
   const notes = parseVault(vault, cfg);
   const { resolver } = buildResolver(notes);
   const subjectRef = resolver.resolve(record.subject);
-  const subjectNote = subjectRef ? notes.find((n) => n.id === subjectRef.id) : undefined;
-  if (!subjectNote) {
-    // Never drop silently: keep the candidate and tell the reviewer why.
-    return {
-      action: 'error',
-      keep: record,
-      message: `subject "${record.subject}" does not resolve to a note; left in the queue`,
-    };
+  const resolved = subjectRef ? notes.find((n) => n.id === subjectRef.id) : undefined;
+
+  // A reviewer confirming a subject the vault has not seen authorizes creating it, so the
+  // fact has somewhere to live. Without this, a new-entity candidate could never be accepted
+  // by any path. The minimal note is tier-0 resolvable on the next index.
+  let subjectId: string;
+  let subjectPath: string;
+  if (resolved) {
+    subjectId = resolved.id;
+    subjectPath = resolved.path;
+  } else {
+    const derived = deriveEntityNote(record.subject, localDateString(new Date(systemDateNow())));
+    subjectPath = derived.path;
+    subjectId = derived.id;
+    const newAbs = join(vault, derived.path);
+    if (!existsSync(newAbs)) writeFileSync(newAbs, derived.content, 'utf8');
   }
 
   const objLink = asWikiLink(record.object);
@@ -132,9 +141,9 @@ export function applyReviewDecision(
   const episodeNote = notes.find((n) => n.id === record.episode);
   const validFrom = episodeNote?.created ?? now;
 
-  const newFact = buildUserFact(record, subjectNote.id, objectRef?.id ?? null, now, validFrom);
+  const newFact = buildUserFact(record, subjectId, objectRef?.id ?? null, now, validFrom);
 
-  const abs = join(vault, subjectNote.path);
+  const abs = join(vault, subjectPath);
   const content = readFileSync(abs, 'utf8');
 
   let updated = content;
@@ -143,7 +152,7 @@ export function applyReviewDecision(
     // A single-valued predicate with a different object is a contradiction: strike the
     // old fact and move it to ## History rather than accumulating a second value.
     const r = applySupersede(content, {
-      path: subjectNote.path,
+      path: subjectPath,
       supersededAt: now,
       validAt: validFrom,
       newFact,

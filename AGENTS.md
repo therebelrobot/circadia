@@ -18,7 +18,7 @@ without breaking its invariants. Read it fully before editing anything.
 ## 2. Commands
 
 ```bash
-npm test                  # node:test, ~22s. 492 tests.
+npm test                  # node:test, ~21s. 508 tests.
 npm run typecheck         # tsc --noEmit, strict + erasableSyntaxOnly
 npm run example:index     # index examples/vault (incremental; --full for a full rebuild)
 node bin/circadia.mjs watch --vault examples/vault   # reindex on change (Ctrl-C to stop)
@@ -125,7 +125,7 @@ node bin/circadia.mjs --help
 | `src/cli/main.ts` | CLI | `main(argv)` is async and returns an exit code, so it's testable (`await main(...)`) |
 | `src/cli/watch.ts` | `watch` command | reindexes on change; embeds best-effort after each reindex |
 | `benchmarks/` | synthetic vault generator + benchmark runner | `npm run benchmark`; results in `docs/PERFORMANCE.md` |
-| `src/consolidation/` | episode replay → candidate extraction → schema-fit gate → promote/queue/supersede | `schema.ts` `evaluateGate` is pure (facts are read in `consolidate.ts`); untrusted sources and triple candidates always queue (ADR-0006) |
+| `src/consolidation/` | episode replay → candidate extraction → schema-fit gate → promote/queue/supersede | `schema.ts` `evaluateGate` is pure (facts are read in `consolidate.ts`); untrusted sources and triple candidates always queue (ADR-0006); additive, source-weighted corroboration + entity creation sit behind `consolidation.corroboration` (ADR-0015) |
 | `src/dreams/` | REM pass → candidate associations → read-once wake recall | writes only under `.circadia/dreams/`; never writes the vault; dream edges ship at weight 0 (ADR-0011); contract in its README |
 | `src/mcp/` | MCP server (stdio) | contract in its README; `runWorkspaceServer` implements RFC-0004 pinned and request-selected bindings |
 | `src/serve/` | `circadia serve`: HTTP MCP transport, bearer auth, write gate, nightly scheduler | RFC-0003; the only runtime `node:http` (ADR-0014); contract in its README |

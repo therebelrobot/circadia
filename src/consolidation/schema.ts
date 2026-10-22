@@ -92,6 +92,7 @@ export function evaluateGate(
   objectRef: NoteRef | null,
   currentFacts: Fact[] = [],
   candidateValidFrom: number | null = null,
+  support = 1,
 ): GateDecision {
   // C4: untrusted sources never auto-promote. Checked first.
   if (candidate.by === 'web' || candidate.by === 'tool' || candidate.trust === 'low') {
@@ -147,6 +148,19 @@ export function evaluateGate(
     return {
       action: 'promote',
       reason: 'known entity + known predicate + no conflict',
+      candidate,
+      subjectRef,
+      objectRef,
+    };
+  }
+
+  // Additive corroboration (opt-in): a claim that only lacks a known entity or predicate
+  // promotes once enough independent episodes agree. Untrusted sources and contradictions
+  // returned above, so this can never launder a third-party claim or suppress a conflict.
+  if (cfg.consolidation.corroboration && support >= cfg.consolidation.corroborationMinSupport) {
+    return {
+      action: 'promote',
+      reason: `corroborated by ${support} independent episode(s)`,
       candidate,
       subjectRef,
       objectRef,

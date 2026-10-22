@@ -13,16 +13,17 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { openIndex } from '../index/db.ts';
 import { STATE_DIR, type Config } from '../config.ts';
-import type { ParsedNote, Fact } from '../types.ts';
+import type { ParsedNote, Fact, SourceKind } from '../types.ts';
 import { parseVault } from '../index/indexer.ts';
 import { setConsolidatedDate, hasFencedFrontmatter } from '../vault/episode-mark.ts';
 import { localDateString, systemDateNow } from '../vault/time.ts';
 import { asWikiLink, shortHash } from '../vault/util.ts';
-import { appendFactLine, type WritableFact } from '../vault/fact-write.ts';
+import { appendFactLine, replaceLine, type WritableFact } from '../vault/fact-write.ts';
+import { formatFact, confForSupport, strengthenConf, sourceWeight } from '../vault/facts.ts';
 import { unifiedDiff } from '../vault/diff.ts';
 import { getPreexistingModifiedPaths, createConsolidationCommit } from '../vault/git.ts';
 import { extractCandidates, type Candidate } from './candidate.ts';
-import { resolveEntity } from './entity.ts';
+import { resolveEntity, deriveEntityNote } from './entity.ts';
 import { evaluateGate, factObjectKey } from './schema.ts';
 import { promoteTriplesToCandidates, readSeenHashes, serializeSeenHashes } from './promote.ts';
 import { applySupersede } from './supersede.ts';
@@ -42,6 +43,7 @@ import {
   pendingPath as pendingPathFor,
   rejectedPath as rejectedPathFor,
   readKeys,
+  readRecords,
   serializeRecords,
   type PendingRecord,
 } from './pending.ts';
@@ -221,6 +223,33 @@ export async function consolidate(
     }
   }
 
+  // --- Additive corroboration (opt-in) -------------------------------------------
+  // Support is the number of DISTINCT episodes asserting the same resolved claim, counted
+  // across the pending queue and this run. An already-current claim is strengthened (its
+  // `conf::` moves one step toward 1) rather than re-written. Corroboration never applies
+  // to a claim a human rejected, nor to a contradiction or untrusted source (the gate
+  // returns those before the corroboration check).
+  const pendingRecords = readRecords(pendingPathFor(vault));
+  const claimKeyOfRecord = (r: PendingRecord): string => {
+    const subj = resolveEntity(db, r.subject);
+    const link = asWikiLink(r.object);
+    const ob = resolveEntity(db, link ? link.target : r.object);
+    const objectKey = ob ? `[[${ob.id}]]` : (asWikiLink(r.object)?.target ?? r.object);
+    return `${subj?.id ?? r.subject}|${r.predicate}|${objectKey}`;
+  };
+  // episode id -> source kind, per claim, so support can be weighted (a human assertion
+  // counts double an agent's; see `sourceWeight`).
+  const pendingClaimEpisodes = new Map<string, Map<string, SourceKind>>();
+  for (const r of pendingRecords) {
+    const k = claimKeyOfRecord(r);
+    const m = pendingClaimEpisodes.get(k) ?? new Map<string, SourceKind>();
+    m.set(r.episode, r.by);
+    pendingClaimEpisodes.set(k, m);
+  }
+  const rejectedClaimKeys = new Set(readRecords(rejectedPathFor(vault)).map(claimKeyOfRecord));
+  const runClaimEpisodes = new Map<string, Map<string, SourceKind>>();
+  const promotedClaimKeys = new Set<string>();
+
   // System time for `at::`/`superseded::` is the LOCAL calendar date (systemDateNow), so
   // an evening run in a negative-offset timezone does not stamp tomorrow's UTC date.
   const now = Date.now();
@@ -246,9 +275,37 @@ export async function consolidate(
     if (seenKeys.has(key)) continue;
     seenKeys.add(key);
 
+    // Weighted corroboration support for this claim: distinct episodes across the pending
+    // queue and this run, weighted by source (human > agent). Disabled when a human already
+    // rejected the claim.
+    const claimKey = `${subjectRef?.id ?? c.subject}|${c.predicate}|${objectKey}`;
+    const runSet = runClaimEpisodes.get(claimKey) ?? new Map<string, SourceKind>();
+    runSet.set(c.episodeId, c.by);
+    runClaimEpisodes.set(claimKey, runSet);
+    const merged = new Map<string, SourceKind>([...(pendingClaimEpisodes.get(claimKey) ?? []), ...runSet]);
+    let support = 0;
+    for (const by of merged.values()) support += sourceWeight(by);
+    const corroborationOn = cfg.consolidation.corroboration && !rejectedClaimKeys.has(claimKey);
+
     // The gate is pure: read the subject note's current facts here and pass them in.
     const subjectNote = subjectRef ? noteById.get(subjectRef.id) : undefined;
     const currentFacts = subjectNote ? subjectNote.facts.filter((f) => f.status === 'current') : [];
+
+    // Additive strengthening: a new independent episode that agrees with a fact already
+    // current moves its conf one step toward 1 instead of re-writing it. This runs before
+    // the gate so it applies whether or not the predicate is declared.
+    const existingFact = subjectNote?.facts.find(
+      (f) => f.status === 'current' && f.predicate === c.predicate && factObjectKey(f) === objectKey,
+    );
+    if (corroborationOn && existingFact && subjectRef) {
+      if (existingFact.conf < 1) {
+        const newConf = strengthenConf(existingFact.conf, c.by);
+        stage(subjectRef.path, (raw) =>
+          replaceLine(raw, existingFact.line, formatFact({ ...existingFact, conf: newConf })),
+        );
+      }
+      continue;
+    }
 
     // World time is when the claim was made (the episode's `started`), not the run date.
     // `at::` and `superseded::` keep the run date (system time). The gate needs it to refuse
@@ -266,15 +323,27 @@ export async function consolidate(
         ? ('reconsolidation' as const)
         : undefined;
 
-    const decision = evaluateGate(c, cfg, subjectRef, objectRef, currentFacts, validAt);
+    const decision = evaluateGate(c, cfg, subjectRef, objectRef, currentFacts, validAt, corroborationOn ? support : 1);
+    const corroborated = decision.reason.startsWith('corroborated');
 
-    if (decision.action === 'promote' && subjectRef) {
-      const fact = buildFact(c, subjectRef.id, objectRef?.id ?? null, todayMs, validAt);
-      stage(subjectRef.path, (raw) =>
+    if (decision.action === 'promote') {
+      // A corroborated promotion may be about a subject the vault has never seen: create a
+      // minimal entity note so the fact has somewhere to live (tier-0 resolvable next run).
+      let target = subjectRef;
+      if (!target) {
+        const derived = deriveEntityNote(c.subject, today);
+        stage(derived.path, () => derived.content);
+        target = { id: derived.id, title: c.subject, path: derived.path };
+      }
+      const fact = buildFact(c, target.id, objectRef?.id ?? null, todayMs, validAt);
+      if (corroborated) fact.conf = confForSupport(support);
+      stage(target.path, (raw) =>
         appendFactLine(raw, fact, { factsHeading: cfg.vault.factsHeading }),
       );
       promoted++;
-      trackFact(entityFacts, subjectRef.path, fact);
+      trackFact(entityFacts, target.path, fact);
+      // Drop any pending record(s) for this claim so review no longer shows a stale queue.
+      if (corroborated) promotedClaimKeys.add(claimKey);
     } else if (decision.action === 'supersede' && subjectRef) {
       const supersededAt = todayMs;
       const newFact = buildFact(c, subjectRef.id, objectRef?.id ?? null, supersededAt, validAt);
@@ -325,9 +394,15 @@ export async function consolidate(
   }
 
   // --- Pending queue -------------------------------------------------------------
-  if (newPending.length > 0) {
+  // Drop any record for a claim that corroborated and promoted this run, whether it came
+  // from a previous run or from an earlier episode in this one. A plain queue run keeps the
+  // append-only shape, so re-running stays byte-identical (C6).
+  const retainedPending = pendingRecords.filter((r) => !promotedClaimKeys.has(claimKeyOfRecord(r)));
+  const keptNewPending = newPending.filter((r) => !promotedClaimKeys.has(claimKeyOfRecord(r)));
+  queued = keptNewPending.length;
+  if (retainedPending.length > 0 || keptNewPending.length > 0 || promotedClaimKeys.size > 0) {
     const rel = join(STATE_DIR, 'pending.jsonl');
-    stage(rel, (before) => before + serializeRecords(newPending));
+    stage(rel, () => serializeRecords([...retainedPending, ...keptNewPending]));
   }
 
   // --- Triple seen-hash state ----------------------------------------------------

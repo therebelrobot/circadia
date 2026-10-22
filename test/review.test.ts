@@ -8,7 +8,7 @@
 import { test, describe, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, sep, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -104,6 +104,21 @@ describe('review (C9)', () => {
 
     const code = await main(['lint', '--vault', v]);
     assert.equal(code, 0, 'lint must stay clean after an accept');
+  });
+
+  test('accept on a new-entity candidate creates the entity note and writes the fact', () => {
+    const v = makeVault();
+    const cfg = loadConfig(v);
+    // A subject the vault has never seen: before this, accept refused it (no note to hold
+    // the fact) and the candidate could never be cleared by any path.
+    const rec = record({ subject: 'brand-new-thing', predicate: 'status', object: 'active' });
+
+    const d = applyReviewDecision(rec, 'a', v, cfg);
+    assert.equal(d.action, 'accepted', 'a new-entity candidate is now acceptable');
+    assert.ok(existsSync(join(v, 'entities', 'brand-new-thing.md')), 'the entity note is created');
+    const body = readFileSync(join(v, 'entities', 'brand-new-thing.md'), 'utf8');
+    assert.match(body, /\[status:: active\]/, 'the accepted fact is written into the new note');
+    assert.match(body, /\[by:: user\]/, 'the reviewer is the source');
   });
 
   test('accept supersedes a contradicting single-valued fact into ## History', () => {

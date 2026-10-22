@@ -190,6 +190,24 @@ export interface Config {
      */
     logAccess: boolean;
   };
+  /**
+   * Consolidation behavior (Phase 4). Governs how the schema-fit gate treats a claim that
+   * would otherwise queue only because its subject is a new entity or its predicate is
+   * unknown.
+   */
+  consolidation: {
+    /**
+     * Additive corroboration. A claim that would queue only for a *new entity* or an
+     * *unknown predicate* promotes once `corroborationMinSupport` independent episodes
+     * agree; the written `conf::` grows with that support, and an already-current fact is
+     * strengthened as further episodes agree. Off by default: it loosens the
+     * memory-poisoning defense (the schema-fit gate), so a vault opts in. Corroboration
+     * never touches a contradiction, an untrusted source, or a claim a human rejected.
+     */
+    corroboration: boolean;
+    /** independent episodes that must agree before a new claim promotes (>= 1) */
+    corroborationMinSupport: number;
+  };
   embeddings: {
     provider: 'none' | 'http';
     /** an OpenAI-compatible /v1/embeddings endpoint, e.g. llama.cpp's llama-server */
@@ -331,6 +349,10 @@ export const DEFAULT_CONFIG: Config = {
   },
   mcp: {
     logAccess: true,
+  },
+  consolidation: {
+    corroboration: false,
+    corroborationMinSupport: 2,
   },
   embeddings: {
     provider: 'none',
@@ -517,6 +539,12 @@ export function validateConfig(c: Config): string[] {
   }
   if (dl.apiKeyFileEnv !== undefined && dl.apiKeyFileEnv !== null && typeof dl.apiKeyFileEnv !== 'string') {
     errs.push('dreaming.llm.apiKeyFileEnv must be a string or null');
+  }
+  if (typeof c.consolidation.corroboration !== 'boolean') {
+    errs.push('consolidation.corroboration must be a boolean');
+  }
+  if (!Number.isInteger(c.consolidation.corroborationMinSupport) || c.consolidation.corroborationMinSupport < 1) {
+    errs.push('consolidation.corroborationMinSupport must be an integer >= 1');
   }
   return errs;
 }

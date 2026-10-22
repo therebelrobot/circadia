@@ -229,6 +229,38 @@ function fmtDate(ms: number): string {
 }
 
 /** Serialize a fact back to canonical line form (used by consolidation in Phase 4). */
+/**
+ * Additive corroboration weights a source kind. A human assertion (`by: user`, or an
+ * imported note) counts double an agent's, per the operator: "human corroboration should
+ * hold higher weight than automated corroboration". `tool`/`web` are 0 because the gate
+ * queues untrusted sources before corroboration is consulted.
+ */
+export const SOURCE_WEIGHT: Record<SourceKind, number> = {
+  user: 2,
+  import: 2,
+  agent: 1,
+  tool: 0,
+  web: 0,
+};
+
+export function sourceWeight(by: SourceKind): number {
+  return SOURCE_WEIGHT[by] ?? 1;
+}
+
+/**
+ * Additive corroboration: confidence as a function of weighted support. One agent episode
+ * is 0.5; each further weighted unit adds a step, saturating at 1. So a single human
+ * assertion (weight 2) starts at 0.75, and agreement pushes it toward 1.
+ */
+export function confForSupport(weightedSupport: number): number {
+  return Math.min(1, 0.5 + 0.25 * Math.max(0, weightedSupport - 1));
+}
+
+/** The effect of one more corroborating episode on an already-current fact's conf. */
+export function strengthenConf(conf: number, by: SourceKind): number {
+  return Math.min(1, conf + 0.125 * sourceWeight(by));
+}
+
 export function formatFact(f: Omit<Fact, 'line' | 'raw' | 'trust'> & { trust?: Trust }): string {
   const obj = f.object.kind === 'link' ? `[[${f.object.link.target}]]` : f.object.value;
   const claim = `[${f.predicate}:: ${obj}]`;

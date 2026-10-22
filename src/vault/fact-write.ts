@@ -80,6 +80,20 @@ export function appendFactLine(raw: string, fact: WritableFact, opts: FactWriteO
 }
 
 /**
+ * Replace line `lineNo` (1-based) in `raw` with `text`, byte-preserving every other line.
+ * Used to strengthen an already-current fact's `conf::` (additive corroboration). Returns
+ * `raw` unchanged when the line number is out of range, so a stale parse cannot corrupt a
+ * note.
+ */
+export function replaceLine(raw: string, lineNo: number, text: string): string {
+  const lines = raw.split('\n');
+  const idx = lineNo - 1;
+  if (idx < 0 || idx >= lines.length) return raw;
+  lines[idx] = text;
+  return lines.join('\n');
+}
+
+/**
  * I/O wrapper: read `notePath` (vault-relative), append the fact, write it back.
  * Returns true when the file changed, false when the fact was already present.
  */

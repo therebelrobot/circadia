@@ -1,6 +1,7 @@
 // Entity resolution: match candidate subjects/objects to existing notes by id, alias, or title.
 
 import { DatabaseSync } from 'node:sqlite';
+import { slugify } from '../vault/util.ts';
 
 export interface NoteRef {
   id: string;
@@ -42,4 +43,18 @@ export function resolveEntity(db: DatabaseSync, name: string): NoteRef | null {
  */
 export function entityExists(db: DatabaseSync, name: string): boolean {
   return resolveEntity(db, name) !== null;
+}
+
+/**
+ * Build a minimal entity note for a subject the vault has not seen before. The id is the
+ * file stem, so `resolveEntity` finds it (tier 0) on the next run. Used when additive
+ * corroboration promotes a claim about a new subject, or a reviewer accepts one.
+ */
+export function deriveEntityNote(subject: string, today: string): { id: string; path: string; content: string } {
+  const id = slugify(subject) || 'entity';
+  const path = `entities/${id}.md`;
+  const content =
+    `---\ntype: entity\nid: ${id}\nkind: concept\naliases: []\ntags: []\n` +
+    `created: ${today}\nupdated: ${today}\nimportance: 0.5\n---\n# ${subject}\n\n`;
+  return { id, path, content };
 }

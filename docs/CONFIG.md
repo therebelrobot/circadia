@@ -94,6 +94,18 @@ machine.
 |---|---|---|
 | `mcp.logAccess` | `true` | log MCP `recall` hits to the access log. The log stores only the query hash, never the query text, so this is privacy-safe; without it, agent use through MCP never feeds ACT-R or the reconsolidation window. Set `false` to keep MCP traffic out of the log |
 
+## consolidation (Phase 4)
+
+| key | default | meaning |
+|---|---|---|
+| `consolidation.corroboration` | `false` | **Additive corroboration.** A claim that would queue only for a *new entity* or an *unknown predicate* promotes once enough weighted support agrees, instead of waiting for `circadia review`. Off by default: it loosens the schema-fit gate (the memory-poisoning defense, ADR-0006). It never applies to a contradiction, an untrusted source (`by: web\|tool` or `trust: low`, queued by the C4 gate first), or a claim already in `rejected.jsonl` |
+| `consolidation.corroborationMinSupport` | `2` | weighted support a new claim needs before it promotes. Weight is by source kind: `user`/`import` **2**, `agent` **1** (`tool`/`web` never corroborate). So **one human episode promotes a new claim alone**, while an agent needs two independent episodes. Support is counted across `pending.jsonl` and the current run |
+
+With corroboration on, a promoted claim's `conf::` grows with support
+(`min(1, 0.5 + 0.25·(support − 1))`), and an already-current fact is **strengthened** by
+`0.125 × weight` as each new independent episode agrees — so a fact's strength rises as more
+sources agree. `conf` is the fact-edge weight, so this affects retrieval. See ADR-0015.
+
 ## embeddings
 
 Passage embeddings for vector seeds (Phase 2). With `provider: "http"`,
