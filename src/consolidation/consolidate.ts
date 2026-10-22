@@ -22,7 +22,7 @@ import { appendFactLine, replaceLine, type WritableFact } from '../vault/fact-wr
 import { formatFact, confForSupport, strengthenConf, sourceWeight } from '../vault/facts.ts';
 import { unifiedDiff } from '../vault/diff.ts';
 import { getPreexistingModifiedPaths, createConsolidationCommit } from '../vault/git.ts';
-import { extractCandidates, type Candidate } from './candidate.ts';
+import { extractCandidates, isPlausibleEntityName, type Candidate } from './candidate.ts';
 import { resolveEntity, deriveEntityNote } from './entity.ts';
 import { evaluateGate, factObjectKey } from './schema.ts';
 import { promoteTriplesToCandidates, readSeenHashes, serializeSeenHashes } from './promote.ts';
@@ -330,13 +330,17 @@ export async function consolidate(
     // object did not resolve, derive its entity note (symmetric with a new subject) and use
     // the link; the note is staged only when a fact is actually written (#17).
     const objectName = asWikiLink(c.object)?.target ?? c.object;
+    const wantsEntityObject = cfg.predicates.defs[c.predicate]?.object === 'entity';
+    // #23: only stub a *plausible* object name. Otherwise the candidate can produce neither a
+    // valid link nor a valid literal, so it queues for a human instead.
     const derivedObject =
-      !objectRef && cfg.predicates.defs[c.predicate]?.object === 'entity'
+      !objectRef && wantsEntityObject && isPlausibleEntityName(objectName)
         ? deriveEntityNote(objectName, today)
         : null;
     const objectId = objectRef?.id ?? derivedObject?.id ?? null;
+    const objectReady = !wantsEntityObject || objectId !== null;
 
-    if (decision.action === 'promote') {
+    if (decision.action === 'promote' && objectReady) {
       // A corroborated promotion may be about a subject the vault has never seen: create a
       // minimal entity note so the fact has somewhere to live (tier-0 resolvable next run).
       let target = subjectRef;
@@ -355,7 +359,11 @@ export async function consolidate(
       trackFact(entityFacts, target.path, fact);
       // Drop any pending record(s) for this claim so review no longer shows a stale queue.
       if (corroborated) promotedClaimKeys.add(claimKey);
-    } else if (decision.action === 'supersede' && subjectRef) {
+    } else if (decision.action === 'promote') {
+      // #23: the predicate wants an entity object, but the object name is not one we will stub.
+      queued++;
+      newPending.push(pendingRecord(key, c, 'entity object not resolvable', todayMs, priority));
+    } else if (decision.action === 'supersede' && subjectRef && objectReady) {
       const supersededAt = todayMs;
       const newFact = buildFact(c, subjectRef.id, objectId, supersededAt, validAt);
       let changed = false;

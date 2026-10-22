@@ -83,7 +83,10 @@ export function renderReflection(
 
   const sources = [...new Set(facts.map((f) => f.src?.target).filter(Boolean))];
 
-  const bodyLines = [`# ${entity}`, '', `## Facts`, ''];
+  // #22: do NOT use the facts heading — the parser would treat these human-readable summary
+  // lines as fact lines and flag every one (fact.no-fields). A derived overview is not a
+  // facts container.
+  const bodyLines = [`# ${entity}`, '', `## Summary`, ''];
   for (const f of facts) {
     const obj = f.object.kind === 'link' ? `[[${f.object.link.target}]]` : f.object.value;
     bodyLines.push(`- ${f.predicate} ${obj}`);

@@ -66,6 +66,9 @@ describe('reflection', () => {
     if (!/^type: schema$/m.test(content)) throw new Error('Should declare type: schema');
     // #20: a `type: schema` note must also declare `generated`.
     if (!/^generated: \d{4}-\d{2}-\d{2}$/m.test(content)) throw new Error('Should declare generated');
+    // #22: the body must not use the facts heading, or the parser flags every summary line.
+    if (/^## Facts\s*$/m.test(content)) throw new Error('Must not use the facts heading');
+    if (!/^## Summary\s*$/m.test(content)) throw new Error('Overview needs its own heading');
   });
 
   test('returns null when importance below threshold', () => {
@@ -152,7 +155,7 @@ describe('reflection', () => {
 
     // A human edits the body (the test vault is not a git repo, so this proves the
     // detection works without git).
-    writeFileSync(schemaPath, generated.replace('## Facts', '## Facts\n\nHuman note: keep this.'));
+    writeFileSync(schemaPath, generated.replace('## Summary', '## Summary\n\nHuman note: keep this.'));
 
     // Re-running with the same facts must not overwrite the human edit.
     const second = reflect(testVault, 'human-edit-entity', facts, 1);

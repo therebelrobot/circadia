@@ -162,6 +162,27 @@ test('C2/#17: an entity-typed predicate links its object; an unresolved object g
   assert.ok(existsSync(join(v, 'entities/ghost.md')), 'the object stub entity is created');
 });
 
+test('#23: an entity-typed predicate with an implausible object queues, creating no stub', async () => {
+  const v = makeVault('object-guard', {
+    'entities/projects/x.md': entityNote('x', '## Facts\n- [status:: active] [by:: user]\n'),
+    'episodes/2026/09/2026-09-20-move.md': episodeNote('user', 'We moved x to a hash.'),
+  });
+  const cfg = loadConfig(v);
+  buildIndex(v, cfg);
+
+  const restore = mockFetch([{ subject: 'x', predicate: 'runs_on', object: '[[deadbeef00]]', valid: true, confidence: 1 }]);
+  let queued = 0;
+  try {
+    const r = await consolidate(v, cfg);
+    queued = r.queued;
+  } finally {
+    restore();
+  }
+
+  assert.ok(queued >= 1, 'an implausible entity object queues');
+  assert.ok(!existsSync(join(v, 'entities', 'deadbeef00.md')), 'no stub entity is created for a hash object');
+});
+
 test('C3: a user episode supersedes a contradicting fact (roadmap Phase 4 fixture)', async () => {
   const v = makeVault('c3', {
     'entities/projects/x.md': entityNote(
