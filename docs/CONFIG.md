@@ -78,11 +78,18 @@ The REM pass (RFC-0001). A user who never sets any of these gets no dreaming at 
 | `dreaming.llm.model` | *(inherited)* | overrides `extraction.model` for the REM pass only; lets dreaming run a cheaper model than consolidation |
 | `dreaming.llm.apiKeyEnv` | *(inherited)* | overrides `extraction.apiKeyEnv` for the REM pass only |
 | `dreaming.llm.apiKeyFileEnv` | *(inherited)* | overrides `extraction.apiKeyFileEnv` for the REM pass only |
+| `dreaming.llm.timeoutMs` | *(inherited)* | per-request timeout (ms) for the REM pass; overrides `extraction.timeoutMs` for the REM pass only. A REM call is one association judgement, so a shorter budget than a long-episode extraction is often enough |
 
 Every `dreaming.llm.*` field falls back to the matching `extraction.*` value when unset, so
 an unset `dreaming.llm` runs the REM pass on the extraction model — the behavior before this
 key existed. `extraction.routing` still applies to dream calls: routing preferences are not
 overridable per pass.
+
+`dreaming.llm.timeoutMs` inherits `extraction.timeoutMs` by default. This matters: without it
+the REM pass sat on the shared chat client's 30s default while consolidation used the
+configured (often much higher) extraction budget, so a slow hosted dream call was pruned —
+and a timeout is never retried. Set it lower to fail a dream sample faster; set it higher for
+a slow endpoint.
 
 Proposals use the configured `extraction` endpoint (or `dreaming.llm`, when set), a local
 model by default. A hosted endpoint is the user's choice and carries passage text off the

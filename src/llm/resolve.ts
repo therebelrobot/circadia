@@ -15,6 +15,8 @@ export interface LlmRequest {
   apiKeyEnv: string | null;
   apiKeyFileEnv: string | null;
   routing: LlmRouting;
+  /** per-request timeout (ms) for this call site's chat calls */
+  timeoutMs: number;
 }
 
 /** Consolidation and triple extraction: straight from `extraction.*`. */
@@ -27,6 +29,7 @@ export function resolveExtraction(cfg: Config): LlmRequest {
     apiKeyEnv: e.apiKeyEnv,
     apiKeyFileEnv: e.apiKeyFileEnv ?? null,
     routing: e.routing ?? {},
+    timeoutMs: e.timeoutMs,
   };
 }
 
@@ -47,6 +50,10 @@ export function resolveDream(cfg: Config): LlmRequest {
     apiKeyEnv: o.apiKeyEnv === undefined ? base.apiKeyEnv : o.apiKeyEnv,
     apiKeyFileEnv: o.apiKeyFileEnv === undefined ? base.apiKeyFileEnv : (o.apiKeyFileEnv ?? null),
     routing: base.routing,
+    // A dream call is one association judgement, but the extraction budget is the right
+    // default: a vault that raised it for long episodes should not have dreaming quietly
+    // sitting on the shared client's 30s default and pruning a slow sample every night.
+    timeoutMs: o.timeoutMs ?? base.timeoutMs,
   };
 }
 

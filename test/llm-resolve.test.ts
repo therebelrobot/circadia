@@ -40,6 +40,17 @@ test('#13 resolve: routing is shared, not overridable per pass', () => {
   assert.deepEqual(resolveDream(c).routing, { zdr: true, dataCollection: 'deny' });
 });
 
+test('dream timeout: an unset dreaming.llm.timeoutMs inherits extraction.timeoutMs', () => {
+  const c = cfg({ provider: 'http', model: 'extract', timeoutMs: 180000 }, { model: 'dream' });
+  assert.equal(resolveDream(c).timeoutMs, 180000, 'the extraction budget is inherited');
+});
+
+test('dream timeout: dreaming.llm.timeoutMs overrides extraction.timeoutMs for the pass only', () => {
+  const c = cfg({ provider: 'http', model: 'extract', timeoutMs: 180000 }, { model: 'dream', timeoutMs: 5000 });
+  assert.equal(resolveDream(c).timeoutMs, 5000, 'the dream override wins');
+  assert.equal(resolveExtraction(c).timeoutMs, 180000, 'extraction is unchanged');
+});
+
 test('#13 providerBody: empty is undefined; camelCase becomes the wire snake_case', () => {
   assert.equal(providerBody({}), undefined, 'nothing set means no provider field is sent');
   assert.deepEqual(providerBody({ zdr: true }), { zdr: true });

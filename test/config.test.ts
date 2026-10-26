@@ -117,12 +117,13 @@ test('loadConfig: extraction.routing and dreaming.llm deep-merge over the defaul
     join(v, 'circadia.config.json'),
     JSON.stringify({
       extraction: { provider: 'http', model: 'extract', routing: { zdr: true } },
-      dreaming: { llm: { model: 'dream' } },
+      dreaming: { llm: { model: 'dream', timeoutMs: 45000 } },
     }),
   );
   const cfg = loadConfig(v);
   assert.equal(cfg.extraction.routing?.zdr, true);
   assert.equal(cfg.dreaming.llm?.model, 'dream');
+  assert.equal(cfg.dreaming.llm?.timeoutMs, 45000);
   // An untouched nested default is preserved.
   assert.deepEqual(cfg.extraction.routing, { zdr: true });
   rmSync(v, { recursive: true, force: true });
@@ -152,6 +153,20 @@ test('loadConfig: an invalid dreaming.llm.provider fails loudly', () => {
   assert.throws(
     () => loadConfig(v),
     /dreaming\.llm\.provider must be "none" or "http"/,
+  );
+  rmSync(v, { recursive: true, force: true });
+});
+
+test('loadConfig: an invalid dreaming.llm.timeoutMs fails loudly', () => {
+  const v = join(tmp, 'circadia-dream-llm-timeout-bad');
+  mkdirSync(v);
+  writeFileSync(
+    join(v, 'circadia.config.json'),
+    JSON.stringify({ dreaming: { llm: { timeoutMs: 0 } } }),
+  );
+  assert.throws(
+    () => loadConfig(v),
+    /dreaming\.llm\.timeoutMs must be a positive integer/,
   );
   rmSync(v, { recursive: true, force: true });
 });

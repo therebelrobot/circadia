@@ -57,6 +57,13 @@ export interface DreamLlm {
   model?: string;
   apiKeyEnv?: string | null;
   apiKeyFileEnv?: string | null;
+  /**
+   * Per-request timeout (ms) for the REM pass. Falls back to `extraction.timeoutMs` when
+   * unset, so a vault that raised the extraction budget for long episodes gives dreaming the
+   * same one. A REM call is a single association judgement, though, so it is often enough
+   * (and cheaper to fail) with a shorter budget than a long-episode extraction.
+   */
+  timeoutMs?: number;
 }
 
 export interface Config {
@@ -550,6 +557,9 @@ export function validateConfig(c: Config): string[] {
   }
   if (dl.apiKeyFileEnv !== undefined && dl.apiKeyFileEnv !== null && typeof dl.apiKeyFileEnv !== 'string') {
     errs.push('dreaming.llm.apiKeyFileEnv must be a string or null');
+  }
+  if (dl.timeoutMs !== undefined && (!Number.isInteger(dl.timeoutMs) || dl.timeoutMs < 1)) {
+    errs.push('dreaming.llm.timeoutMs must be a positive integer (milliseconds)');
   }
   if (typeof c.consolidation.corroboration !== 'boolean') {
     errs.push('consolidation.corroboration must be a boolean');

@@ -62,6 +62,9 @@ async function startMock(handler: (user: string) => MockResponse | null): Promis
       const r = handler(user);
       if (!r) return; // never respond -> the client times out
       const send = (): void => {
+        // The client may have aborted (timed out) before a delayed response fires; writing
+        // to a dead response would emit an unhandled stream error.
+        if (res.writableEnded || res.destroyed || res.socket?.destroyed) return;
         if (r.status && r.status !== 200) {
           res.writeHead(r.status, { 'Content-Type': 'application/json' });
           res.end('{}');
@@ -115,6 +118,10 @@ interface VaultOpts {
   noiseShare?: number;
   minHops?: number;
   trustFloor?: string;
+  /** extraction.timeoutMs written to the vault config */
+  extractionTimeoutMs?: number;
+  /** dreaming.llm.timeoutMs written to the vault config */
+  dreamTimeoutMs?: number;
   extraNotes?: { path: string; content: string }[];
   accessNodes?: string[];
 }
@@ -144,7 +151,13 @@ function makeVault(opts: VaultOpts): string {
     accessNodes.map((node) => JSON.stringify({ t: NOW - 3_600_000, node, kind: 'recall', q: 'abc' })).join('\n') + '\n',
   );
   const cfg = {
-    extraction: { provider: opts.provider ?? 'http', endpoint: opts.endpoint, model: 'mock', apiKeyEnv: null },
+    extraction: {
+      provider: opts.provider ?? 'http',
+      endpoint: opts.endpoint,
+      model: 'mock',
+      apiKeyEnv: null,
+      ...(opts.extractionTimeoutMs !== undefined ? { timeoutMs: opts.extractionTimeoutMs } : {}),
+    },
     dreaming: {
       enabled: true,
       samplesPerNight: opts.samplesPerNight ?? 1,
@@ -155,6 +168,7 @@ function makeVault(opts: VaultOpts): string {
       recallFragments: 3,
       logTtlHours: 12,
       candidateTtlNights: 14,
+      ...(opts.dreamTimeoutMs !== undefined ? { llm: { timeoutMs: opts.dreamTimeoutMs } } : {}),
     },
   };
   writeFileSync(join(v, 'circadia.config.json'), JSON.stringify(cfg, null, 2) + '\n');
@@ -337,6 +351,45 @@ for (const c of RESPONSE_CASES) {
     }
   });
 }
+
+test('REM pass: the resolved dream timeout is inherited from extraction.timeoutMs', async () => {
+  // The mock answers after 250ms; extraction.timeoutMs is 80ms. An inherited budget times the
+  // call out. Before the fix the pass used chatComplete's 30s default and the sample would
+  // have succeeded, so this test fails before the fix.
+  const mock = await startMock((user) => ({ content: groundedResponse(user), delayMs: 250 }));
+  const v = makeVault({ endpoint: mock.url, extractionTimeoutMs: 80 });
+  try {
+    const cfg = loadConfig(v);
+    assert.equal(cfg.extraction.timeoutMs, 80, 'the vault sets the tight extraction budget');
+    const dbPath = join(v, '.circadia', 'index.sqlite');
+    buildIndex(v, cfg, { dbPath });
+    const r = await runRem(v, cfg, { now: NOW, dbPath });
+    assert.equal(r.kept, 0);
+    assert.deepEqual(r.errors, { 'llm.timeout': 1 }, 'the inherited budget times the sample out');
+  } finally {
+    await mock.close();
+    rmSync(v, { recursive: true, force: true });
+  }
+});
+
+test('REM pass: dreaming.llm.timeoutMs overrides extraction.timeoutMs for the pass', async () => {
+  // extraction is a generous 5000ms; the dream override is 80ms, so the 250ms mock call times
+  // out. This proves the pass uses the override, not extraction.timeoutMs.
+  const mock = await startMock((user) => ({ content: groundedResponse(user), delayMs: 250 }));
+  const v = makeVault({ endpoint: mock.url, extractionTimeoutMs: 5000, dreamTimeoutMs: 80 });
+  try {
+    const cfg = loadConfig(v);
+    assert.equal(cfg.dreaming.llm?.timeoutMs, 80);
+    const dbPath = join(v, '.circadia', 'index.sqlite');
+    buildIndex(v, cfg, { dbPath });
+    const r = await runRem(v, cfg, { now: NOW, dbPath });
+    assert.equal(r.kept, 0);
+    assert.deepEqual(r.errors, { 'llm.timeout': 1 }, 'the override wins over extraction.timeoutMs');
+  } finally {
+    await mock.close();
+    rmSync(v, { recursive: true, force: true });
+  }
+});
 
 test('REM pass: --sample-only prints the sampled pairs and makes no model calls', async () => {
   const mock = await startMock((user) => ({ content: groundedResponse(user) }));

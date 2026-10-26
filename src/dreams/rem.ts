@@ -59,7 +59,10 @@ export interface RemOptions {
   now?: number;
   /** override db path (tests) */
   dbPath?: string;
-  /** request timeout for the extraction model; defaults to the shared chat timeout */
+  /**
+   * Override the resolved dream timeout (ms) for tests. Production leaves this unset: the
+   * effective timeout is `dreaming.llm.timeoutMs`, falling back to `extraction.timeoutMs`.
+   */
   timeoutMs?: number;
   /** consolidation half of the sleep report, when run via `consolidate --dream` */
   consolidation?: ConsolidationReport;
@@ -509,6 +512,10 @@ export async function runRem(vault: string, cfg: Config, opts: RemOptions = {}):
     const candidates: DreamCandidate[] = [];
     const errors: Record<string, number> = {};
     const hopsCache = new Map<string, Map<string, number>>();
+    // The resolved dream timeout (dreaming.llm.timeoutMs -> extraction.timeoutMs), unless a
+    // caller pins an override (tests). Without this the pass silently used chatComplete's
+    // 30s default and pruned a slow sample, even when extraction.timeoutMs was much higher.
+    const callTimeoutMs = opts.timeoutMs ?? llm.timeoutMs;
     let kept = 0;
     let pruned = 0;
 
@@ -524,7 +531,7 @@ export async function runRem(vault: string, cfg: Config, opts: RemOptions = {}):
 
       let association: Association | null;
       try {
-        const r = await propose(llm, pa.text, pb.text, opts.timeoutMs);
+        const r = await propose(llm, pa.text, pb.text, callTimeoutMs);
         if (!r.ok) {
           errors['malformed'] = (errors['malformed'] ?? 0) + 1;
           pruned++;
