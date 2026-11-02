@@ -391,6 +391,30 @@ test('REM pass: dreaming.llm.timeoutMs overrides extraction.timeoutMs for the pa
   }
 });
 
+test('REM pass: a timed-out call is retried, so the sample can still be kept', async () => {
+  // The first attempt never answers (times out at dreamTimeoutMs); the retry answers and
+  // grounds. Before the pass opted into `retryTimeout`, a timeout pruned the sample with
+  // `errors { llm.timeout: 1 }`, so this test fails before the fix.
+  let calls = 0;
+  const mock = await startMock((user) => {
+    calls++;
+    if (calls === 1) return null; // never respond -> llm.timeout on the first attempt
+    return { content: groundedResponse(user) };
+  });
+  const v = makeVault({ endpoint: mock.url, dreamTimeoutMs: 80 });
+  try {
+    const cfg = loadConfig(v);
+    const dbPath = join(v, '.circadia', 'index.sqlite');
+    buildIndex(v, cfg, { dbPath });
+    const r = await runRem(v, cfg, { now: NOW, dbPath });
+    assert.equal(r.kept, 1, 'the retry after a timeout keeps the sample');
+    assert.deepEqual(r.errors, {}, 'no error is recorded when the retry succeeds');
+  } finally {
+    await mock.close();
+    rmSync(v, { recursive: true, force: true });
+  }
+});
+
 test('REM pass: --sample-only prints the sampled pairs and makes no model calls', async () => {
   const mock = await startMock((user) => ({ content: groundedResponse(user) }));
   const v = makeVault({ endpoint: mock.url });

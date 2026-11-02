@@ -260,6 +260,78 @@ test('#12 retry: a non-transient 4xx is not retried', async () => {
   );
 });
 
+test('#12 retry: the default is three attempts, so a later one can succeed', async () => {
+  let calls = 0;
+  await withMock(
+    (_body, res) => {
+      calls++;
+      if (calls < 3) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'busy' }));
+        return;
+      }
+      ok(res, 'ok');
+    },
+    async (url, captured) => {
+      const content = await chatComplete({
+        endpoint: url,
+        model: 'test-model',
+        messages: [{ role: 'user', content: 'hi' }],
+        retryDelayMs: 1,
+      });
+      assert.equal(content, 'ok', 'the third attempt returns the answer');
+      assert.equal(captured.length, 3, 'two retries follow the first failure');
+    },
+  );
+  assert.equal(calls, 3);
+});
+
+test('#12 retry: llm.timeout is not retried unless the caller opts in', async () => {
+  await withMock(
+    () => {
+      // never respond -> the call times out
+    },
+    async (url, captured) => {
+      await assert.rejects(
+        () =>
+          chatComplete({
+            endpoint: url,
+            model: 'test-model',
+            messages: [{ role: 'user', content: 'hi' }],
+            timeoutMs: 60,
+            retryDelayMs: 1,
+          }),
+        (e: unknown) => e instanceof ChatError && e.code === 'llm.timeout',
+      );
+      assert.equal(captured.length, 1, 'a timeout fails on the first attempt by default');
+    },
+  );
+});
+
+test('#12 retry: retryTimeout retries a timeout, and the retry can succeed', async () => {
+  let calls = 0;
+  await withMock(
+    (_body, res) => {
+      calls++;
+      if (calls === 1) return; // first attempt never responds -> llm.timeout
+      ok(res, 'ok');
+    },
+    async (url, captured) => {
+      const content = await chatComplete({
+        endpoint: url,
+        model: 'test-model',
+        messages: [{ role: 'user', content: 'hi' }],
+        timeoutMs: 60,
+        retryDelayMs: 1,
+        retryTimeout: true,
+      });
+      assert.equal(content, 'ok', 'the retry after a timeout returns the answer');
+      assert.equal(captured.length, 2);
+    },
+  );
+  assert.equal(calls, 2);
+});
+
 test('#12 diagnostics: a non-JSON body is named in the error', async () => {
   await withMock(
     (_body, res) => {

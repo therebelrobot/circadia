@@ -45,21 +45,36 @@ export interface ChatOptions {
   timeoutMs?: number;
   /** total attempts on a transient failure; defaults to DEFAULT_CHAT_ATTEMPTS */
   maxAttempts?: number;
-  /** backoff before a retry, in ms; defaults to DEFAULT_CHAT_RETRY_DELAY_MS */
+  /** base backoff before a retry, in ms; defaults to DEFAULT_CHAT_RETRY_DELAY_MS */
   retryDelayMs?: number;
+  /**
+   * Retry `llm.timeout` as well (off by default). A call that truly ran out its budget has
+   * already spent it, so a retry doubles the worst-case latency. But a request the OS
+   * *suspended* — the machine slept mid-call — also surfaces as a timeout, without the
+   * budget ever elapsing. The dream pass opts in: one association per sample is cheap, and
+   * losing the sample is worse than repeating the call.
+   */
+  retryTimeout?: boolean;
 }
 
 /** 30s: long enough for a local model to answer, short enough to fail a dead server. */
 export const DEFAULT_CHAT_TIMEOUT_MS = 30_000;
 
 /**
- * Transient failures are retried once, matching `embeddings.ts` (`requestBatch`). Before
- * this, a single hiccup aborted the whole nightly consolidation: no retry existed on this
- * path, so one non-JSON body lost the entire run. A non-transient failure (4xx other than
- * 429) still fails on the first attempt.
+ * Transient failures are retried a bounded number of times — the same idea as
+ * `embeddings.ts` (`requestBatch`). Before this, a single hiccup aborted the whole nightly
+ * consolidation: no retry existed on this path, so one non-JSON body lost the entire run.
+ * A non-transient failure (4xx other than 429) still fails on the first attempt.
+ *
+ * Three attempts (two retries), spaced by an exponential backoff. The nightly job fires
+ * inside a short macOS maintenance DarkWake, where the network can still be coming up or
+ * drop when the machine returns to sleep mid-run; a couple of spaced attempts ride out a
+ * blip instead of pruning the sample.
  */
-export const DEFAULT_CHAT_ATTEMPTS = 2;
+export const DEFAULT_CHAT_ATTEMPTS = 3;
 export const DEFAULT_CHAT_RETRY_DELAY_MS = 1000;
+/** Cap on the exponential backoff, so a larger `maxAttempts` cannot stall a caller. */
+export const MAX_CHAT_RETRY_DELAY_MS = 10_000;
 
 export type ChatErrorCode =
   | 'llm.http-error'
@@ -101,9 +116,10 @@ export async function chatComplete(opts: ChatOptions): Promise<string> {
     } catch (e) {
       // Give up on a non-transient error, or once the attempts are spent; otherwise
       // back off and try again.
-      if (!(e instanceof ChatError) || !isTransient(e) || attempt >= attempts) throw e;
+      if (!(e instanceof ChatError) || !isTransient(e, opts.retryTimeout === true) || attempt >= attempts) throw e;
     }
-    await sleep(delayMs);
+    // Exponential backoff: base, 2x base, 4x base …, capped.
+    await sleep(Math.min(delayMs * 2 ** (attempt - 1), MAX_CHAT_RETRY_DELAY_MS));
   }
 }
 
@@ -113,16 +129,19 @@ export async function chatComplete(opts: ChatOptions): Promise<string> {
  * error page). A 4xx that is not 429 means the request itself is wrong and a retry would
  * only repeat it.
  *
- * `llm.timeout` is deliberately not retried: it already waited the full budget, so a
- * retry only doubles the worst-case latency (and doubles the model calls a caller like the
- * dream pass records per sample). Callers that must not lose work on a timeout — the
- * consolidation loop — isolate the failure and retry the whole episode next run.
+ * `llm.timeout` is retried only when the caller sets `retryTimeout` (default off): a call
+ * that ran out its budget has already spent it, so a retry doubles the worst-case latency
+ * (and doubles the model calls a caller like the dream pass records per sample). Callers
+ * that must not lose work on a timeout but cannot cheaply repeat it — the consolidation
+ * loop — isolate the failure and retry the whole episode next run instead.
  */
-function isTransient(e: ChatError): boolean {
+function isTransient(e: ChatError, retryTimeout: boolean): boolean {
   switch (e.code) {
     case 'llm.invalid-json':
     case 'llm.malformed-response':
       return true;
+    case 'llm.timeout':
+      return retryTimeout;
     case 'llm.http-error':
       return e.status === null || e.status === 429 || e.status >= 500;
     default:

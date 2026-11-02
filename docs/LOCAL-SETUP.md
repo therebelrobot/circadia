@@ -166,6 +166,21 @@ export PATH
 CIRCADIA_EXTRACTION_KEY_FILE="$HOME/.circadia/openrouter.key"
 export CIRCADIA_EXTRACTION_KEY_FILE
 
+# Wait (bounded) for a usable network before starting. On a lid-closed, battery laptop
+# launchd fires this job inside a short maintenance DarkWake: the link can be down while
+# Wi-Fi reassociates, or drop when the machine returns to sleep mid-run, and the model calls
+# then fail as llm.http-error / llm.timeout. Probe the host the job actually uses first. If
+# the machine sleeps during the wait, the wait suspends with it and resumes on the next wake.
+i=0
+while ! /usr/bin/curl -fsS -m 5 -o /dev/null https://openrouter.ai/api/v1/models; do
+  i=$((i + 1))
+  if [ "$i" -ge 12 ]; then
+    echo "consolidate: network still unreachable after ~2 min; running anyway" >&2
+    break
+  fi
+  sleep 5
+done
+
 echo "consolidate: $(date '+%Y-%m-%d %H:%M:%S') node=$("$node_bin/node" --version)"
 exec "$node_bin/node" "$CIRCADIA_REPO/bin/circadia.mjs" consolidate --vault "$CIRCADIA_VAULT"
 ```
@@ -210,6 +225,16 @@ cat ~/.circadia/logs/consolidate.err.log
 `last exit code = 0` and a `consolidated: ...` line in the log mean it works. If a 03:00 slot
 is missed because the machine is asleep, launchd runs it once on wake. To stop it:
 `launchctl bootout gui/$(id -u)/com.circadia.consolidate`.
+
+> [!NOTE]
+> **Sleep matters.** On a laptop that is asleep, launchd runs this job inside a short macOS
+> *maintenance DarkWake* (~45 s), and the machine can return to sleep mid-run: the network
+> drops and the model calls fail as `llm.http-error` / `llm.timeout`. Two things soften that.
+> The wrapper above waits (bounded) for the host to be reachable before starting, and
+> `chatComplete` retries a transient failure with an exponential backoff; the dream pass also
+> sets `retryTimeout`, because a request the OS *suspended* surfaces as a timeout without the
+> model ever being slow. If errors persist, run the job in a window when the machine is awake
+> instead of relying on a DarkWake.
 
 ### Linux: cron
 

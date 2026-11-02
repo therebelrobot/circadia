@@ -380,6 +380,12 @@ ${fenceData(textB, 'passage-data')}`;
     maxTokens: 512,
     jsonObject: true,
     timeoutMs,
+    // A dream sample is one cheap judgement, and unlike consolidation it is neither
+    // isolated nor retried at a higher level, so recover inside the client. `retryTimeout`
+    // matters because the nightly pass runs inside a short macOS maintenance DarkWake: a
+    // request the OS suspends mid-call (the machine went back to sleep) surfaces as a
+    // timeout even though the model was never slow, and the retry lands on the next wake.
+    retryTimeout: true,
   });
   return parseAssociation(content);
 }

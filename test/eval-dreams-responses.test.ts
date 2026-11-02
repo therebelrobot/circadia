@@ -117,13 +117,15 @@ function makeVault(endpoint: string): string {
   return v;
 }
 
-const EXPECTED: Record<string, { kept: number; pruned: number; errors?: Record<string, number> }> = {
+const EXPECTED: Record<string, { kept: number; pruned: number; errors?: Record<string, number>; calls?: number }> = {
   grounded: { kept: 1, pruned: 0 },
   ungrounded: { kept: 0, pruned: 1 },
   null: { kept: 0, pruned: 1 },
   malformed: { kept: 0, pruned: 1, errors: { malformed: 1 } },
   'prompt-injection-shaped': { kept: 0, pruned: 1 },
-  timeout: { kept: 0, pruned: 1, errors: { 'llm.timeout': 1 } },
+  // The dream pass opts into `retryTimeout`, so a timed-out sample is retried up to
+  // DEFAULT_CHAT_ATTEMPTS (3) before it is pruned — a suspended request is not a slow model.
+  timeout: { kept: 0, pruned: 1, errors: { 'llm.timeout': 1 }, calls: 3 },
 };
 
 for (const rec of readResponses()) {
@@ -141,7 +143,7 @@ for (const rec of readResponses()) {
       assert.equal(r.pruned, want.pruned, `${rec.case}: pruned`);
       if (want.errors) assert.deepEqual(r.errors, want.errors, `${rec.case}: error classes`);
       assert.equal(r.fragments.length, 1, `${rec.case}: every sample becomes a fragment`);
-      assert.equal(mock.requests.length, 1, `${rec.case}: one model call`);
+      assert.equal(mock.requests.length, want.calls ?? 1, `${rec.case}: model calls`);
     } finally {
       await mock.close();
       rmSync(v, { recursive: true, force: true });
