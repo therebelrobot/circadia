@@ -2,8 +2,15 @@
 //
 // Zero dependencies: `node:http` only (ADR-0014). One route, `POST /mcp`, answering with
 // `application/json`. Every Circadia tool returns a single result, so v1 has no SSE and no
-// `GET /mcp` stream. Every other method or path gets 404 *after* the auth check, so there
-// are no unauthenticated routes.
+// `GET /mcp` stream; a non-POST on `/mcp` is answered `405 Method Not Allowed`, and any
+// other path is 404 *after* the auth check, so there are no unauthenticated routes.
+//
+// Stateless: no `Mcp-Session-Id` is issued or required. This matters for interop. A client
+// that opens the optional `GET /mcp` SSE stream gets a 405 and, seeing no session, keeps
+// its connection. Answering 404 here — and issuing a session — made session-holding clients
+// (LibreChat's streamable-HTTP client among them) read the GET as "session lost" and
+// reconnect on every call, so the connection never settled as active. Stateless matches the
+// shape other single-owner streamable-HTTP servers use.
 //
 // Security controls, in order (docs/SECURITY.md T2):
 //   - auth runs first: a missing or bad bearer token is 401 with `WWW-Authenticate: Bearer`;
@@ -14,7 +21,6 @@
 //   - a per-request timeout.
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { randomUUID } from 'node:crypto';
 import { authorize, type Scope, type ServeTokens } from './tokens.ts';
 import type { RpcRequest, RpcResponse } from './protocol.ts';
 
@@ -80,7 +86,6 @@ function readBody(req: IncomingMessage, maxBytes: number): Promise<{ body: strin
 export function createServeHttp(opts: ServeHttpOptions): ServeHttp {
   const timeoutMs = opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   const allowed = new Set(opts.allowedOrigins);
-  const sessions = new Set<string>();
   let inFlight = 0;
   let authFailures = 0;
 
@@ -115,11 +120,18 @@ export function createServeHttp(opts: ServeHttpOptions): ServeHttp {
       return;
     }
 
-    // 3. Route: one method, one path.
+    // 3. Route: one path, one method. A wrong path is 404; the right path with the wrong
+    // method is 405 — the spec's signal that the endpoint exists but offers no GET stream
+    // (or other verb). Returning 404 for `GET /mcp` made some clients treat it as a lost
+    // session and reconnect; 405 tells them to keep the connection.
     const method = req.method ?? 'GET';
     const path = (req.url ?? '').split('?')[0];
-    if (method !== 'POST' || path !== MCP_PATH) {
+    if (path !== MCP_PATH) {
       sendJson(res, 404, { error: 'not found' });
+      return;
+    }
+    if (method !== 'POST') {
+      sendJson(res, 405, { error: 'method not allowed' }, { Allow: 'POST' });
       return;
     }
 
@@ -153,13 +165,8 @@ export function createServeHttp(opts: ServeHttpOptions): ServeHttp {
     res.on('close', done);
     res.on('finish', done);
 
-    // 5. Protocol session header: an unknown supplied id is a 404 (spec); a valid one passes.
-    const incoming = req.headers['mcp-session-id'];
-    let sessionId = typeof incoming === 'string' ? incoming : '';
-    if (sessionId !== '' && !sessions.has(sessionId)) {
-      sendJson(res, 404, { error: 'unknown session' });
-      return;
-    }
+    // The server is stateless: a client-supplied `Mcp-Session-Id` is accepted and ignored,
+    // never validated and never echoed. See the stateless note at the top of this file.
 
     let body: string;
     try {
@@ -189,35 +196,19 @@ export function createServeHttp(opts: ServeHttpOptions): ServeHttp {
     }
 
     const responses: RpcResponse[] = [];
-    let sawInitialize = false;
     for (const msg of messages) {
-      if (msg.method === 'initialize') sawInitialize = true;
       const res = await opts.handleMessage(msg, scope);
       // A notification has no `id` member and gets no response, even in a batch.
       if (Object.prototype.hasOwnProperty.call(msg, 'id')) responses.push(res);
     }
 
-    const headers: Record<string, string> = {};
-    if (sawInitialize) {
-      if (sessionId === '') {
-        sessionId = randomUUID();
-        sessions.add(sessionId);
-        // Bound the set so a long-lived server does not grow without limit.
-        if (sessions.size > 1024) {
-          const first = sessions.values().next().value;
-          if (first !== undefined) sessions.delete(first);
-        }
-      }
-      headers['Mcp-Session-Id'] = sessionId;
-    }
-
     if (responses.length === 0) {
-      res.writeHead(202, headers);
+      res.writeHead(202);
       res.end();
       return;
     }
     const payload = Array.isArray(parsed) ? responses : responses[0];
-    sendJson(res, 200, payload, headers);
+    sendJson(res, 200, payload);
   }
 
   return {

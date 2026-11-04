@@ -14,13 +14,15 @@ contract they meet and the transport rules `circadia serve` adds.
 - **Streamable HTTP** (`circadia serve`, RFC-0003, ADR-0014): `node:http`, still zero
   dependencies. One route, `POST /mcp`, answering `application/json` (no SSE in v1). Rules:
   - auth runs before routing: a missing/bad bearer token is `401` with
-    `WWW-Authenticate: Bearer`; unknown methods/paths `404` only after auth;
+    `WWW-Authenticate: Bearer`; unknown paths `404` only after auth, and a non-`POST` on
+    `/mcp` is `405` with `Allow: POST` (the spec's "endpoint exists, no GET stream" signal);
   - a request carrying an `Origin` is rejected unless the origin is allowlisted (empty by
     default); no CORS headers are ever sent, and `OPTIONS` is not answered;
   - the body is capped while streaming (`413` over the cap); concurrent requests are capped
     (`503` + `Retry-After`); a per-request timeout applies;
-  - `Mcp-Session-Id` is honored per the spec, and is unrelated to the `session` argument on
-    `recall`/`remember` (Circadia's reconsolidation session, supplied by the caller).
+  - **stateless**: no `Mcp-Session-Id` is issued, and a client-supplied one is ignored. This
+    is unrelated to the `session` argument on `recall`/`remember` (Circadia's
+    reconsolidation session, supplied by the caller).
 
 ## Scopes (HTTP transport)
 
