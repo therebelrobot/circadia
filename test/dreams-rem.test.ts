@@ -254,6 +254,26 @@ test('REM pass: never samples below dreaming.trustFloor', async () => {
   }
 });
 
+test('REM pass: the association prompt rejects shared-topic restatements', async () => {
+  const mock = await startMock(() => ({ content: JSON.stringify({ association: null }) }));
+  const v = makeVault({ endpoint: mock.url });
+  try {
+    const cfg = loadConfig(v);
+    const dbPath = join(v, '.circadia', 'index.sqlite');
+    buildIndex(v, cfg, { dbPath });
+    await runRem(v, cfg, { now: NOW, dbPath });
+    assert.equal(mock.requests.length, 1, 'one sampled pair makes one model call');
+    const prompt = mock.requests[0];
+    // The prompt must steer the model away from "both passages discuss …" restatements.
+    assert.match(prompt, /shared topic/i);
+    assert.match(prompt, /both passages discuss/i);
+    assert.match(prompt, /null/i);
+  } finally {
+    await mock.close();
+    rmSync(v, { recursive: true, force: true });
+  }
+});
+
 test('REM pass: refuses to run when .circadia/dreams/ is not git-ignored', async () => {
   const mock = await startMock((user) => ({ content: groundedResponse(user) }));
   const v = makeVault({ endpoint: mock.url });
