@@ -50,22 +50,23 @@ test('auth: 401 without a token, with a wrong token, on /mcp and on an unknown p
   }
 });
 
-test('auth: a valid token reaches the handler; initialize sets Mcp-Session-Id', async () => {
+test('auth: a valid token reaches the handler; the transport is stateless (no Mcp-Session-Id)', async () => {
   const { url } = await startFake({
     handler: async (req) => ({ jsonrpc: '2.0', id: req.id ?? null, result: { protocolVersion: '2025-06-18' } }),
   });
   const res = await post(url, { jsonrpc: '2.0', id: 7, method: 'initialize', params: {} }, { authorization: `Bearer ${W}` });
   assert.equal(res.status, 200);
-  assert.ok(res.headers.get('mcp-session-id'), 'initialize must assign a session id');
+  assert.equal(res.headers.get('mcp-session-id'), null, 'a stateless server must not assign a session id');
   const body = (await res.json()) as { id: number; result: { protocolVersion: string } };
   assert.equal(body.id, 7);
   assert.equal(body.result.protocolVersion, '2025-06-18');
 });
 
-test('auth: an unknown Mcp-Session-Id is a 404', async () => {
+test('stateless: a client-supplied Mcp-Session-Id is accepted and not echoed', async () => {
   const { url } = await startFake();
   const res = await post(url, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, { authorization: `Bearer ${W}`, 'mcp-session-id': 'made-up' });
-  assert.equal(res.status, 404);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('mcp-session-id'), null);
 });
 
 test('auth: the handler sees the scope (read on a read token, write on a write token)', async () => {
@@ -102,10 +103,11 @@ test('browser defense: OPTIONS is not answered as a preflight', async () => {
   assert.equal(res.headers.get('access-control-allow-origin'), null);
 });
 
-test('routing: GET /mcp and any other path 404 after auth', async () => {
+test('routing: GET /mcp is 405 with Allow: POST; any other path is 404', async () => {
   const { url, base } = await startFake();
   const get = await fetch(url, { headers: { authorization: `Bearer ${W}` } });
-  assert.equal(get.status, 404);
+  assert.equal(get.status, 405);
+  assert.equal(get.headers.get('allow'), 'POST');
   const other = await post(`${base}/other`, {}, { authorization: `Bearer ${W}` });
   assert.equal(other.status, 404);
 });
